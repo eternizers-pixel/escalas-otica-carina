@@ -257,6 +257,10 @@ ROUTES.regras=async function(){
       <div class="grid2">
         <div class="field"><label>Mín. de banco p/ sugerir folga (h)</label><input id="r_minbank" type="number" value="${r.min_time_bank_for_dayoff||6}"/></div>
         <div class="field"><label>Folga: mín–máx (h)</label><div style="display:flex;gap:6px"><input id="r_dmin" type="number" value="${r.min_dayoff_hours||3}"/><input id="r_dmax" type="number" value="${r.max_dayoff_hours||8}"/></div></div></div>
+      <div class="grid2">
+        <div class="field"><label>Tipo de folga liberada</label><select id="r_mode"><option value="saida_antecipada" ${(r.dayoff_mode||'saida_antecipada')==='saida_antecipada'?'selected':''}>Só sair mais cedo (recomendado)</option><option value="completa" ${r.dayoff_mode==='completa'?'selected':''}>Permitir folga integral / meio turno</option></select></div>
+        <div class="field"><label>Horas de saída antecipada</label><input id="r_early" type="number" value="${r.early_leave_hours??3}"/></div></div>
+      <div class="reason">No modo recomendado, o sistema só sugere <b>sair mais cedo</b> (manhã ou tarde) — nunca o dia inteiro — evitando o incentivo de "acumular horas para ganhar o dia".</div>
     </div></div>
   </div>
   <div class="section grid2">
@@ -296,6 +300,7 @@ ROUTES.regras=async function(){
       open_time:$('#r_om').value,close_time:$('#r_ca').value,
       min_per_shift:+$('#r_min').value,max_time_bank:+$('#r_maxbank').value,min_time_bank_for_dayoff:+$('#r_minbank').value,
       min_dayoff_hours:+$('#r_dmin').value,max_dayoff_hours:+$('#r_dmax').value,
+      dayoff_mode:$('#r_mode').value,early_leave_hours:+$('#r_early').value||3,
       saturday_open_count:+$('#r_satn').value,saturday_start:$('#r_sats').value,saturday_end:$('#r_sate').value,
       saturday_first_count:+$('#r_sat1').value||3,saturday_second_count:+$('#r_sat2').value||2,
       scale_5x2_enabled:$('#r_5x2').value==='true',updated_at:new Date().toISOString()};

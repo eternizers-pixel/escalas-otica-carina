@@ -247,14 +247,27 @@ window.Engine = (function () {
       if (!chosen) continue;
 
       const remaining = availDay.length - 1;
+      const mode = rules.dayoff_mode || 'saida_antecipada';
       let type, hours, shift;
-      if (cap.maxHours>=7){ type='integral'; hours=Math.min(8,cap.maxHours); shift='dia_inteiro'; }
-      else if (cap.maxHours>=4){ type='meio_turno'; hours=4; shift='tarde'; }
-      else { type='saida_antecipada'; hours=cap.maxHours; shift='tarde'; }
-      const quando = type==='integral' ? 'o dia inteiro' : (shift==='tarde' ? 'à tarde' : 'de manhã');
+      if (mode === 'saida_antecipada'){
+        // só sair mais cedo (manhã ou tarde), nunca o dia inteiro
+        type='saida_antecipada';
+        const want = rules.early_leave_hours ?? 3;
+        hours = Math.max(1, Math.min(want, cap.maxHours));
+        shift = (suggestions.length % 2 === 0) ? 'tarde' : 'manha'; // alterna manhã/tarde
+      } else {
+        // modo completo (capacidade decide o tamanho)
+        if (cap.maxHours>=7){ type='integral'; hours=Math.min(8,cap.maxHours); shift='dia_inteiro'; }
+        else if (cap.maxHours>=4){ type='meio_turno'; hours=4; shift='tarde'; }
+        else { type='saida_antecipada'; hours=cap.maxHours; shift='tarde'; }
+      }
+      let acao;
+      if (type==='integral') acao=`folgar ${DIAS[dow]} (${dStr}) o dia inteiro`;
+      else if (type==='saida_antecipada') acao=`sair ${hours}h mais cedo ${shift==='tarde'?'na tarde':'de manhã'} de ${DIAS[dow]} (${dStr})`;
+      else acao=`folgar meio turno (${shift==='tarde'?'tarde':'manhã'}) de ${DIAS[dow]} (${dStr})`;
       const h=history[chosen.id]||{};
       const since=(h.lastDayOffDays==null?'há bastante tempo':`há ${h.lastDayOffDays} dias`);
-      const reason=`${chosen.name} pode folgar ${DIAS[dow]} (${dStr}), ${quando} — tem ${fmtHoras(chosen.time_bank_balance)} de banco de horas, não folga ${since}, e a loja ainda fica com ${remaining} pessoas no dia (mínimo ${minPer}).`;
+      const reason=`${chosen.name} pode ${acao} — tem ${fmtHoras(chosen.time_bank_balance)} de banco de horas, não folga ${since}, e a loja ainda fica com ${remaining} pessoas no dia (mínimo ${minPer}).`;
       suggestions.push({ employee_id:chosen.id, employee_name:chosen.name, date:dStr, shift, type, hours, reason, score:Math.round(scoreOf(chosen)) });
       logs.push({type:'sugestao', employee_id:chosen.id, employee_name:chosen.name, message:reason});
       used.add(chosen.id);
