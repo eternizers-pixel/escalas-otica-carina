@@ -635,11 +635,11 @@ ROUTES.calendario=async function(){
     for(let d=1;d<=dim;d++){
       const ds=`${year}-${mm}-${String(d).padStart(2,'0')}`; const dow=new Date(year,month-1,d).getDay();
       let ev='';
-      items.filter(x=>x.date===ds).forEach(x=>{ const t=folgaTimeLabel(x,rules); ev+=`<span class="ev folga" title="${esc(x.employee_name||'')} — ${esc(t)}">${esc(x.employee_name||'')} — ${esc(t)}</span>`; });
-      vacs.filter(v=>ds>=v.start_date&&ds<=v.end_date).forEach(v=>ev+=`<span class="ev fer">${esc(nm[v.employee_id]||'')} — Férias</span>`);
-      rot.filter(r=>r.saturday_date===ds).forEach(r=>ev+=`<span class="ev sab">${esc(r.employee_name||nm[r.employee_id]||'')} — Sábado ${(rules.saturday_start||'14:00').slice(0,5)}</span>`);
-      if(sats.includes(ds) && !rot.some(r=>r.saturday_date===ds)) ev+=`<span class="ev sab">Sábado aberto (definir)</span>`;
-      if(blk.some(b=>b.date===ds)) ev+=`<span class="ev blk">${esc((blk.find(b=>b.date===ds)||{}).reason||'Bloqueado')}</span>`;
+      items.filter(x=>x.date===ds).forEach(x=>{ const fn=(x.employee_name||'').split(' ')[0]; const t=folgaTimeLabel(x,rules); ev+=`<span class="ev folga" title="${esc(x.employee_name||'')} — ${esc(t)}">${esc(fn)}<span class="evt">${esc(t)}</span></span>`; });
+      vacs.filter(v=>ds>=v.start_date&&ds<=v.end_date).forEach(v=>{ const fn=(nm[v.employee_id]||'').split(' ')[0]; ev+=`<span class="ev fer">${esc(fn)}<span class="evt">Férias</span></span>`; });
+      rot.filter(r=>r.saturday_date===ds).forEach(r=>{ const fn=(r.employee_name||nm[r.employee_id]||'').split(' ')[0]; ev+=`<span class="ev sab" title="${esc(r.employee_name||'')}">${esc(fn)}</span>`; });
+      if(sats.includes(ds) && !rot.some(r=>r.saturday_date===ds)) ev+=`<span class="ev sab">Sábado (definir)</span>`;
+      if(blk.some(b=>b.date===ds)) ev+=`<span class="ev blk">Bloqueio</span>`;
       cells+=`<div class="day ${dow===6?'sat':''}"><span class="dn">${d}</span>${ev}</div>`;
     }
     $('#view').innerHTML=`
