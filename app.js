@@ -216,8 +216,10 @@ function empModal(e){
       <div class="reason">No rodízio de sábado, cada dia precisa de pelo menos 1 especialista junto com 1 que sabe menos.</div></div>
     <div class="field"><label>Preferência ao compensar folga</label><select id="f_dpref">
       <option value="qualquer" ${(!e.dayoff_pref||e.dayoff_pref==='qualquer')?'selected':''}>Tanto faz (o sistema alterna)</option>
-      <option value="manha" ${e.dayoff_pref==='manha'?'selected':''}>Entrar mais tarde (manhã)</option>
-      <option value="tarde" ${e.dayoff_pref==='tarde'?'selected':''}>Sair mais cedo (tarde)</option></select></div>
+      <option value="manha_entrar" ${e.dayoff_pref==='manha_entrar'?'selected':''}>Entrar mais tarde (manhã)</option>
+      <option value="manha_sair" ${e.dayoff_pref==='manha_sair'?'selected':''}>Sair mais cedo (manhã)</option>
+      <option value="tarde_entrar" ${e.dayoff_pref==='tarde_entrar'?'selected':''}>Entrar mais tarde (tarde)</option>
+      <option value="tarde_sair" ${e.dayoff_pref==='tarde_sair'?'selected':''}>Sair mais cedo (tarde)</option></select></div>
     <div class="grid3">
       <div class="field"><label>Carga semanal (h)</label><input id="f_wh" type="number" value="${e.weekly_hours||44}"/></div>
       <div class="field"><label>Banco de horas (h)</label><input id="f_bank" type="number" step="0.5" value="${e.time_bank_balance||0}"/></div>

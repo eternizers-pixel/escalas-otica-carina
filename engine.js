@@ -259,21 +259,30 @@ window.Engine = (function () {
         // compensar em pedaços, nunca o dia inteiro
         const want = rules.early_leave_hours ?? 3;
         hours = Math.max(1, Math.min(want, cap.maxHours));
-        // critério do período: preferência da funcionária; se não houver, alterna para variar
+        // 4 combinações: entrar/sair × manhã/tarde — pela preferência da funcionária
         const pref = chosen.dayoff_pref || 'qualquer';
-        const period = pref==='manha' ? 'manha' : pref==='tarde' ? 'tarde' : ((suggestions.length % 2 === 0) ? 'tarde' : 'manha');
-        if (period==='manha'){ type='entrada_tarde'; shift='manha'; }  // manhã => entrar mais tarde (loja abre)
-        else { type='saida_antecipada'; shift='tarde'; }               // tarde  => sair mais cedo (loja fecha)
+        switch (pref){
+          case 'manha_entrar': shift='manha'; type='entrada_tarde'; break;
+          case 'manha_sair':   shift='manha'; type='saida_antecipada'; break;
+          case 'tarde_entrar': shift='tarde'; type='entrada_tarde'; break;
+          case 'tarde_sair':   shift='tarde'; type='saida_antecipada'; break;
+          case 'manha':        shift='manha'; type='entrada_tarde'; break; // legado
+          case 'tarde':        shift='tarde'; type='saida_antecipada'; break; // legado
+          default: // sem preferência: alterna entre sair cedo à tarde e entrar tarde de manhã
+            if (suggestions.length % 2 === 0){ shift='tarde'; type='saida_antecipada'; }
+            else { shift='manha'; type='entrada_tarde'; }
+        }
       } else {
         // modo completo (capacidade decide o tamanho)
         if (cap.maxHours>=7){ type='integral'; hours=Math.min(8,cap.maxHours); shift='dia_inteiro'; }
         else if (cap.maxHours>=4){ type='meio_turno'; hours=4; shift='tarde'; }
         else { type='saida_antecipada'; hours=cap.maxHours; shift='tarde'; }
       }
+      const periodoTxt = shift==='manha' ? 'de manhã' : 'à tarde';
       let acao;
       if (type==='integral') acao=`folgar ${DIAS[dow]} (${dStr}) o dia inteiro`;
-      else if (type==='entrada_tarde') acao=`entrar ${hours}h mais tarde na manhã de ${DIAS[dow]} (${dStr})`;
-      else if (type==='saida_antecipada') acao=`sair ${hours}h mais cedo na tarde de ${DIAS[dow]} (${dStr})`;
+      else if (type==='entrada_tarde') acao=`entrar ${hours}h mais tarde ${periodoTxt} de ${DIAS[dow]} (${dStr})`;
+      else if (type==='saida_antecipada') acao=`sair ${hours}h mais cedo ${periodoTxt} de ${DIAS[dow]} (${dStr})`;
       else acao=`folgar meio turno (${shift==='tarde'?'tarde':'manhã'}) de ${DIAS[dow]} (${dStr})`;
       const h=history[chosen.id]||{};
       const since=(h.lastDayOffDays==null?'há bastante tempo':`há ${h.lastDayOffDays} dias`);
