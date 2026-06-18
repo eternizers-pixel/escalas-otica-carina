@@ -114,18 +114,21 @@ async function boot(){
 // ---------- Nav model ----------
 const NAV=[
   ['dashboard','📊','b','Dashboard','Visão geral, alertas e resumo do mês'],
-  ['funcionarias','👥','g','Funcionárias','Cadastro, cargos e banco de horas'],
   ['folgas','🌴','t','Motor de folgas','Sugestões inteligentes e justas'],
   ['escala','📋','g','Folgas aprovadas','Ver, editar e lançar folgas'],
   ['sabados','📅','p','Rodízio de sábados','2 primeiros sábados, equilibrado'],
   ['calendario','🗓️','b','Calendário','Visão mensal de folgas e férias'],
+  ['config','⚙️','p','Configurações','Funcionárias, regras, TiqueTaque e mais'],
+  ['funcionarias','👥','g','Funcionárias','Cadastro, cargos e banco de horas'],
   ['ferias','✈️','a','Férias','Períodos e impacto na escala'],
   ['pedidos','📨','k','Pedidos & exceções','Folgas, faltas, atestados, trocas'],
   ['tiquetaque','🔄','t','TiqueTaque','Sincronizar banco de horas'],
-  ['regras','⚙️','p','Regras da loja','Horários, turnos e limites'],
+  ['regras','🏪','p','Regras da loja','Horários, turnos e limites'],
   ['relatorios','📈','g','Relatórios','Resumo e índice de justiça'],
   ['simulacao','🧪','r','Simulação','Teste cenários sem risco'],
 ];
+const HOME_KEYS=['dashboard','folgas','escala','sabados','calendario','config'];
+const CONFIG_KEYS=['funcionarias','ferias','pedidos','tiquetaque','regras','relatorios','simulacao'];
 
 function updateSimBanner(){ $('#simBanner').innerHTML = S.sim ? `<div class="simbanner">🧪 MODO SIMULAÇÃO — dados fictícios. Nada aqui afeta os dados reais.</div>`:''; }
 
@@ -138,6 +141,9 @@ function route(){
   const def=NAV.find(n=>n[0]===k);
   $('#pageTitle').textContent=def?def[3]:'';
   $('#backBtn').classList.remove('hidden');
+  const inConfig=CONFIG_KEYS.includes(k);
+  $('#backBtn').textContent = inConfig ? '← Configurações' : '← Início';
+  $('#backBtn').onclick=()=>{ location.hash = inConfig ? '#config' : '#home'; };
   const fn=ROUTES[k]||renderHome;
   $('#view').innerHTML='<p class="muted">Carregando…</p>';
   fn();
@@ -145,23 +151,23 @@ function route(){
 window.addEventListener('hashchange',route);
 
 // ---------- HOME ----------
+function cardsFor(keys){
+  return `<div class="home-grid">${keys.map(k=>{const n=NAV.find(x=>x[0]===k); return n?`<div class="hcard" data-go="${k}"><div class="ic ${n[2]}">${n[1]}</div><h3>${esc(n[3])}</h3><p>${esc(n[4])}</p></div>`:'';}).join('')}</div>`;
+}
 function renderHome(){
   $('#backBtn').classList.add('hidden'); $('#pageTitle').textContent='';
   $('#view').innerHTML=`
   <div class="hero">
     <div class="logo"><span class="em">👓</span> Ótica Carina</div>
     <div class="tag">Sistema de Escalas &amp; Banco de Horas</div>
-    <div style="margin-top:14px">
-      <button class="btn ${S.sim?'':'sec'} sm" id="simBtn">${S.sim?'🧪 Simulação ON':'🧪 Modo simulação'}</button>
-    </div>
   </div>
-  <div class="home-grid">
-    ${NAV.map(([k,i,c,t,d])=>`<div class="hcard" data-go="${k}">
-      <div class="ic ${c}">${i}</div><h3>${t}</h3><p>${d}</p></div>`).join('')}
-  </div>`;
+  ${cardsFor(HOME_KEYS)}`;
   $$('[data-go]').forEach(el=>el.onclick=()=>location.hash='#'+el.dataset.go);
-  $('#simBtn').onclick=()=>{ S.sim=!S.sim; route(); };
 }
+ROUTES.config=function(){
+  $('#view').innerHTML=`${box('info','Aqui ficam os ajustes e cadastros. As telas do dia a dia (folgas, sábados, calendário) estão na tela inicial.')}${cardsFor(CONFIG_KEYS)}`;
+  $$('[data-go]').forEach(el=>el.onclick=()=>location.hash='#'+el.dataset.go);
+};
 
 // ---------- DASHBOARD ----------
 ROUTES.dashboard=async function(){
@@ -703,18 +709,22 @@ ROUTES.relatorios=async function(){
 // ---------- SIMULAÇÃO ----------
 ROUTES.simulacao=async function(){
   $('#view').innerHTML=`
-  ${box('info','<b>Modo simulação.</b> Crie funcionárias fictícias e teste cenários sem tocar nos dados reais. Ative “Modo simulação” na tela inicial para navegar com esses dados.')}
+  ${box('info','<b>Modo simulação.</b> Crie funcionárias fictícias e teste cenários sem tocar nos dados reais. Com o modo ativo, todo o sistema passa a mostrar os dados fictícios (uma faixa roxa avisa no topo).')}
+  <div class="toolbar">
+    <button class="btn ${S.sim?'':'sec'}" id="simToggle">${S.sim?'🧪 Modo simulação ATIVO — clique para sair':'🧪 Ativar modo simulação'}</button></div>
   <div class="toolbar"><button class="btn" id="seedSim" ${isGestor()?'':'disabled'}>🌱 Criar/Resetar funcionárias fictícias</button>
     <button class="btn sec" id="clearSim" ${isGestor()?'':'disabled'}>🗑️ Limpar dados de simulação</button></div>
+  <p id="simToggleNote"></p>
   <div class="section panel"><div class="ph"><h3>Cenários prontos</h3></div><div class="pb">
     <div class="cards">${Engine.SCENARIOS.map((s,i)=>`<div class="card"><h3 style="text-transform:none;color:var(--ink);font-size:14px">${esc(s.name)}</h3><button class="btn sm" data-scn="${i}" style="margin-top:6px" ${isGestor()?'':'disabled'}>Aplicar</button></div>`).join('')}</div>
     <div id="scnOut" class="section"></div></div></div>`;
+  $('#simToggle').onclick=()=>{ S.sim=!S.sim; route(); };
   $('#seedSim')?.addEventListener('click',async()=>{ if(!gate())return;
     await T('employees').delete().eq('is_simulation',true);
     const res=await T('employees').insert(Engine.simEmployees().map(e=>({...e,is_simulation:true}))); if(res.error){toast(res.error.message);return;}
-    toast('6 fictícias criadas. Ative o modo Simulação na tela inicial.'); S.sim=true; });
+    S.sim=true; toast('6 fictícias criadas e modo simulação ativado.'); route(); });
   $('#clearSim')?.addEventListener('click',async()=>{ if(!gate())return; if(!confirm('Apagar dados de simulação?'))return;
-    await T('employees').delete().eq('is_simulation',true); await T('schedules').delete().eq('is_simulation',true); toast('Removidos.'); });
+    await T('employees').delete().eq('is_simulation',true); await T('schedules').delete().eq('is_simulation',true); S.sim=false; toast('Dados de simulação removidos.'); route(); });
   $$('[data-scn]').forEach(b=>b.onclick=async()=>{
     const scn=Engine.SCENARIOS[+b.dataset.scn];
     let emps=await getAll('employees',q=>q.eq('is_simulation',true));
