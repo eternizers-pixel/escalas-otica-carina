@@ -160,6 +160,7 @@ function renderHome(){
   <div class="hero">
     <div class="logo"><span class="em">👓</span> Ótica Carina</div>
     <div class="tag">Sistema de Escalas &amp; Banco de Horas</div>
+    <div style="margin-top:12px"><a href="#tiquetaque" style="color:var(--brand);font-weight:600;font-size:14px">🔄 Sincronizar banco de horas (TiqueTaque)</a></div>
   </div>
   ${cardsFor(HOME_KEYS,'cols3')}`;
   $$('[data-go]').forEach(el=>el.onclick=()=>location.hash='#'+el.dataset.go);
