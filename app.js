@@ -194,7 +194,7 @@ ROUTES.funcionarias=async function(){
   <div class="panel"><div class="pb" style="padding:0"><table>
     <thead><tr><th>Nome</th><th>Cargo</th><th>Status</th><th>Carga</th><th>Banco</th><th>Prioridade</th><th></th></tr></thead>
     <tbody>${emps.map(e=>`<tr>
-      <td><b>${esc(e.name)}</b><br><span class="muted" style="font-size:11.5px">${esc(e.preferences||'')}</span></td>
+      <td><b>${esc(e.name)}</b>${e.is_expert?' <span title="Especialista em ótica">⭐</span>':''}<br><span class="muted" style="font-size:11.5px">${esc(e.preferences||'')}</span></td>
       <td>${esc(e.cargo||'—')}</td><td><span class="pill ${e.status}">${e.status}</span></td>
       <td>${e.weekly_hours||44}h</td><td><b>${fmtH(e.time_bank_balance)}</b></td><td>${e.manual_priority||0}</td>
       <td class="row-actions"><button class="btn ghost sm" data-edit="${e.id}">Editar</button>
@@ -212,6 +212,8 @@ function empModal(e){
     <div class="grid2">
       <div class="field"><label>Cargo / função</label><input id="f_cargo" value="${esc(e.cargo||'')}" placeholder="Vendedora, Caixa, Óptica…"/></div>
       <div class="field"><label>Status</label><select id="f_status">${['ativa','ferias','licenca','afastada','desligada'].map(s=>`<option ${e.status===s?'selected':''}>${s}</option>`).join('')}</select></div></div>
+    <div class="field"><label>Atendimento na ótica</label><select id="f_expert"><option value="false" ${!e.is_expert?'selected':''}>Sabe menos (precisa de apoio)</option><option value="true" ${e.is_expert?'selected':''}>⭐ Especialista (bem treinada)</option></select>
+      <div class="reason">No rodízio de sábado, cada dia precisa de pelo menos 1 especialista junto com 1 que sabe menos.</div></div>
     <div class="grid3">
       <div class="field"><label>Carga semanal (h)</label><input id="f_wh" type="number" value="${e.weekly_hours||44}"/></div>
       <div class="field"><label>Banco de horas (h)</label><input id="f_bank" type="number" step="0.5" value="${e.time_bank_balance||0}"/></div>
@@ -224,7 +226,7 @@ function empModal(e){
     const name=$('#f_name').value.trim(); if(!name){toast('Informe o nome.');return false;}
     const payload={name,cargo:$('#f_cargo').value.trim(),status:$('#f_status').value,weekly_hours:+$('#f_wh').value||44,
       time_bank_balance:+$('#f_bank').value||0,manual_priority:+$('#f_prio').value||0,preferences:$('#f_pref').value.trim(),
-      restrictions:$('#f_restr').value.trim(),notes:$('#f_notes').value.trim(),is_simulation:S.sim,updated_at:new Date().toISOString()};
+      restrictions:$('#f_restr').value.trim(),notes:$('#f_notes').value.trim(),is_expert:$('#f_expert').value==='true',is_simulation:S.sim,updated_at:new Date().toISOString()};
     const r = e.id ? await T('employees').update(payload).eq('id',e.id) : await T('employees').insert(payload);
     if(r.error){toast('Erro: '+r.error.message);return false;}
     toast('Salvo.'); route(); return true;
@@ -478,6 +480,7 @@ ROUTES.sabados=async function(){
       getAll('saturday_rotation',b=>b.order('saturday_date',{ascending:false}).limit(12))]);
     const active=emps.filter(e=>e.status==='ativa');
     const empName=Object.fromEntries(emps.map(e=>[e.id,e.name]));
+    const expert=new Set(emps.filter(e=>e.is_expert).map(e=>e.id));
     const sats=Engine.saturdaysOfMonth(year,month).slice(0,rules.saturday_open_count||2).map(Engine.fmt);
     const meta=Engine.saturdayRotation(active,rules,year,month,hist);
     const targets=meta.counts||[rules.saturday_first_count??3, rules.saturday_second_count??2];
@@ -491,12 +494,14 @@ ROUTES.sabados=async function(){
         const assigned=state.filter(a=>a.saturday_number===n);
         const avail=active.filter(e=>!assigned.some(a=>a.employee_id===e.id));
         const ok=assigned.length===tgt;
+        const noExp=assigned.length>0 && !assigned.some(a=>expert.has(a.employee_id));
         return `<div class="panel" style="margin-bottom:12px"><div class="ph">
           <h3>${n}º sábado · ${d.split('-').reverse().join('/')}</h3>
           <span class="pill ${ok?'ativa':'ferias'}">${assigned.length}/${tgt} pessoas</span></div>
           <div class="pb">
-            ${assigned.map(a=>`<span class="pill ativa" style="margin:0 8px 8px 0;display:inline-flex;align-items:center;gap:7px;font-size:13px">${esc(a.employee_name)} ${isGestor()?`<button class="x" style="font-size:15px;line-height:1;padding:0" data-rm="${n}|${a.employee_id}" title="remover">×</button>`:''}</span>`).join('')||'<span class="muted">Ninguém escalado ainda.</span>'}
-            ${isGestor()?`<div style="margin-top:10px;max-width:300px"><select data-add="${n}"><option value="">+ adicionar funcionária…</option>${avail.map(e=>`<option value="${e.id}">${esc(e.name)}</option>`).join('')}</select></div>`:''}
+            ${assigned.map(a=>`<span class="pill ativa" style="margin:0 8px 8px 0;display:inline-flex;align-items:center;gap:7px;font-size:13px">${esc(a.employee_name)}${expert.has(a.employee_id)?' ⭐':''} ${isGestor()?`<button class="x" style="font-size:15px;line-height:1;padding:0" data-rm="${n}|${a.employee_id}" title="remover">×</button>`:''}</span>`).join('')||'<span class="muted">Ninguém escalado ainda.</span>'}
+            ${noExp?`<div class="alert warn" style="margin-top:8px">⚠️ Este sábado está <b>sem especialista</b> (⭐). Adicione pelo menos uma.</div>`:''}
+            ${isGestor()?`<div style="margin-top:10px;max-width:300px"><select data-add="${n}"><option value="">+ adicionar funcionária…</option>${avail.map(e=>`<option value="${e.id}">${esc(e.name)}${e.is_expert?' ⭐':''}</option>`).join('')}</select></div>`:''}
           </div></div>`;
       }).join('');
       $('#satEditor').innerHTML=cards+(invNote?`<div class="section">${invNote}</div>`:'');

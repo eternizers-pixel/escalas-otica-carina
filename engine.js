@@ -133,26 +133,32 @@ window.Engine = (function () {
       return (b.manual_priority||0)-(a.manual_priority||0);
     });
 
+    const isExp = e => !!e.is_expert; // especialista em atendimento de ótica
     const usedFirst=new Set();
     sats.forEach((satDate, idx)=>{
       const need=counts[idx]||0;
-      // sem sobreposição: no 2º sábado, evita quem já trabalhou no 1º
-      let avail = ranked.filter(e => idx===0 ? true : !usedFirst.has(e.id));
-      let pick = avail.slice(0, need);
-      if (pick.length<need){ // se faltar gente sem repetir, completa com os demais
-        const extra = ranked.filter(e=>!pick.includes(e)).slice(0, need-pick.length);
-        pick = pick.concat(extra);
-      }
-      pick.forEach(e=>{
+      const pool = ranked.filter(e => idx===0 ? true : !usedFirst.has(e.id)); // sem sobreposição
+      const pick=[]; const add=e=>{ if(e && !pick.includes(e)) pick.push(e); };
+      // 1) garante ao menos 1 ESPECIALISTA
+      add(pool.find(e=>isExp(e)));
+      // 2) garante ao menos 1 das que SABEM MENOS (quando há 2+ vagas)
+      if (need>=2) add(pool.find(e=>!isExp(e)));
+      // 3) completa o restante pelo ranking de justiça
+      for (const e of pool){ if(pick.length>=need) break; add(e); }
+      const finalPick = pick.slice(0, need);
+      finalPick.forEach(e=>{
         if (idx===0) usedFirst.add(e.id);
         assignments.push({ saturday_number: idx+1, saturday_date: fmt(satDate), employee_id:e.id, employee_name:e.name });
       });
-      const nomes = pick.map(e=>e.name).join(', ') || '—';
+      const nomes = finalPick.map(e=>e.name+(isExp(e)?' ⭐':'')).join(', ') || '—';
       let nota = '';
-      if (idx===0) nota = inverted ? ` (Reduzido para ${need}: o reforço foi para o 2º sábado por causa de ${commName}.)` : ' (1º sábado costuma ter mais movimento — pós-pagamento.)';
-      else nota = inverted ? ` (Reforço para ${need} por causa de ${commName} perto deste sábado.)` : '';
+      if (idx===0) nota = inverted ? ` Reduzido para ${need} (reforço foi para o 2º por causa de ${commName}).` : ' (1º sábado: mais movimento, pós-pagamento.)';
+      else nota = inverted ? ` Reforço para ${need} por causa de ${commName}.` : '';
+      let alerta='';
+      if (!finalPick.some(isExp)) alerta=' ⚠️ Nenhuma especialista disponível — revise manualmente.';
+      else if (need>=2 && !finalPick.some(e=>!isExp(e))) alerta=' (Ninguém do grupo que sabe menos disponível neste sábado.)';
       logs.push({type:'rodizio',
-        message:`${idx+1}º sábado (${fmt(satDate)}, ${hhmm}): ${need} funcionária(s) — ${nomes}.${nota}`});
+        message:`${idx+1}º sábado (${fmt(satDate)}, ${hhmm}): ${need} pessoa(s) — ${nomes}.${nota}${alerta}`});
     });
     return { saturdays: sats.map(fmt), assignments, logs, counts, inverted, commName };
   }
