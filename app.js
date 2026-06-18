@@ -523,16 +523,19 @@ ROUTES.escala=async function(){
   <div class="toolbar"><button class="btn" id="addFolga" ${isGestor()?'':'disabled'}>+ Lançar folga</button>
     <div class="spacer"></div><span class="muted">${items.length} folga(s) a partir deste mês</span></div>
   ${box('info','Todas as folgas aprovadas. <b>Editar</b> troca o dia/horário, <b>Remover</b> apaga — útil quando a funcionária pede um dia diferente do que o sistema sugeriu. Você também pode <b>lançar</b> uma folga do zero.')}
-  <div class="panel"><div class="pb" style="padding:0"><table>
-    <thead><tr><th>Data</th><th>Funcionária</th><th>Compensação</th><th>Status</th><th></th></tr></thead>
-    <tbody>${items.map(it=>`<tr>
-      <td><b>${(it.date||'').split('-').reverse().join('/')}</b><br><span class="muted" style="font-size:11.5px">${it.date?Engine.DOW[Engine.parse(it.date).getDay()]:''}</span></td>
-      <td><b>${esc(it.employee_name||map[it.employee_id]||'')}</b></td>
-      <td><b>${folgaTimeLabel(it,rules)}</b> <span class="muted">(${TYPE_LABEL[it.type]||it.type}${it.hours?' · '+it.hours+'h':''})</span></td>
-      <td><span class="pill ${it.status==='aprovado'?'ativa':it.status==='recusado'?'afastada':'ferias'}">${it.status==='aprovado'?'Aprovado':it.status}</span></td>
-      <td class="row-actions">${isGestor()?`<button class="btn ghost sm" data-edf="${it.id}">Editar</button><button class="btn ghost sm" style="color:var(--red)" data-delf="${it.id}">Remover</button>`:''}</td>
-    </tr>`).join('')||'<tr><td colspan=5 class="muted" style="padding:18px">Nenhuma folga registrada. Aprove no Motor de folgas ou clique em “Lançar folga”.</td></tr>'}
-    </tbody></table></div></div>`;
+  <div class="panel"><div class="pb">
+    ${items.map(it=>`<div class="card" style="margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
+        <div style="min-width:0">
+          <div style="font-weight:700">${esc(it.employee_name||map[it.employee_id]||'')}</div>
+          <div class="muted" style="font-size:13px;margin-top:2px">${(it.date||'').split('-').reverse().join('/')} ${it.date?'('+Engine.DOW[Engine.parse(it.date).getDay()]+')':''} · <b style="color:var(--ink)">${folgaTimeLabel(it,rules)}</b> · ${TYPE_LABEL[it.type]||it.type}${it.hours?' '+it.hours+'h':''}</div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <span class="pill ${it.status==='aprovado'?'ativa':it.status==='recusado'?'afastada':'ferias'}">${it.status==='aprovado'?'Aprovado':it.status}</span>
+          ${isGestor()?`<button class="btn ghost sm" data-edf="${it.id}">Editar</button><button class="btn ghost sm" style="color:var(--red)" data-delf="${it.id}">Remover</button>`:''}
+        </div>
+      </div></div>`).join('')||'<p class="muted" style="margin:0">Nenhuma folga registrada. Aprove no Motor de folgas ou clique em “Lançar folga”.</p>'}
+  </div></div>`;
   $('#addFolga')?.addEventListener('click',()=>folgaModal(null,emps,rules));
   $$('[data-edf]').forEach(b=>b.onclick=()=>folgaModal(items.find(x=>x.id===b.dataset.edf),emps,rules));
   $$('[data-delf]').forEach(b=>b.onclick=async()=>{ if(!gate())return; if(!confirm('Remover esta folga?'))return; await T('schedule_items').delete().eq('id',b.dataset.delf); toast('Folga removida.'); route(); });
