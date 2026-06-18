@@ -96,7 +96,10 @@ async function logout(){ await sb.auth.signOut(); location.reload(); }
 
 // ---------- Boot ----------
 async function boot(){
-  const {data:{user}}=await sb.auth.getUser();
+  // sessão local (rápido) — evita o flash da tela de login no refresh
+  const {data:{session}}=await sb.auth.getSession();
+  const user=session?.user;
+  $('#boot') && ($('#boot').style.display='none');
   if(!user){ $('#login').style.display='flex'; $('#app').style.display='none'; return; }
   S.user=user;
   let {data:prof}=await T('profiles').select('*').eq('id',user.id).maybeSingle();
@@ -693,8 +696,8 @@ ROUTES.calendario=async function(){
       getAll('saturday_rotation',b=>b.eq('year',year).eq('month',month))]);
     const nm=Object.fromEntries(emps.map(e=>[e.id,e.name]));
     const sats=Engine.saturdaysOfMonth(year,month).slice(0,rules.saturday_open_count||2).map(Engine.fmt);
-    let cells='';
-    for(let i=0;i<startDow;i++) cells+=`<div class="day out"></div>`;
+    const dowFull=['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];
+    const dayEv=[];
     for(let d=1;d<=dim;d++){
       const ds=`${year}-${mm}-${String(d).padStart(2,'0')}`; const dow=new Date(year,month-1,d).getDay();
       let ev='';
@@ -703,12 +706,25 @@ ROUTES.calendario=async function(){
       rot.filter(r=>r.saturday_date===ds).forEach(r=>{ const fn=(r.employee_name||nm[r.employee_id]||'').split(' ')[0]; ev+=`<span class="ev sab" title="${esc(r.employee_name||'')}">${esc(fn)}</span>`; });
       if(sats.includes(ds) && !rot.some(r=>r.saturday_date===ds)) ev+=`<span class="ev sab">Sábado (definir)</span>`;
       if(blk.some(b=>b.date===ds)) ev+=`<span class="ev blk">Bloqueio</span>`;
-      cells+=`<div class="day ${dow===6?'sat':''}"><span class="dn">${d}</span>${ev}</div>`;
+      dayEv[d]={ev,dow};
+    }
+    const mobile = window.innerWidth < 720;
+    let body;
+    if(mobile){
+      let rows='';
+      for(let d=1;d<=dim;d++){ const x=dayEv[d]; if(!x.ev) continue;
+        rows+=`<div style="display:flex;gap:12px;padding:11px 2px;border-bottom:1px solid var(--line)"><div style="min-width:54px;text-align:center"><div style="font-size:21px;font-weight:800;line-height:1">${d}</div><div class="muted" style="font-size:11px">${dowFull[x.dow].slice(0,3)}</div></div><div style="flex:1;min-width:0">${x.ev}</div></div>`; }
+      body=`<div class="panel"><div class="pb">${rows||'<p class="muted" style="margin:0">Nada agendado neste mês.</p>'}</div></div>`;
+    } else {
+      let cells='';
+      for(let i=0;i<startDow;i++) cells+=`<div class="day out"></div>`;
+      for(let d=1;d<=dim;d++){ const x=dayEv[d]; cells+=`<div class="day ${x.dow===6?'sat':''}"><span class="dn">${d}</span>${x.ev}</div>`; }
+      body=`<div class="panel"><div class="pb"><div class="cal">${['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'].map(d=>`<div class="dow">${d}</div>`).join('')}${cells}</div></div></div>`;
     }
     $('#view').innerHTML=`
-    <div class="toolbar"><button class="btn sec sm" id="prev">←</button><b style="min-width:170px;text-align:center">${MONTHS[month-1]} ${year}</b><button class="btn sec sm" id="next">→</button><div class="spacer"></div>
-      <div class="legend"><span><i class="dot" style="background:var(--green)"></i>Aprovada</span><span><i class="dot" style="background:var(--brand)"></i>Sugerida</span><span><i class="dot" style="background:var(--amber)"></i>Férias</span><span><i class="dot" style="background:var(--purple)"></i>Sábado</span><span><i class="dot" style="background:var(--red)"></i>Bloqueio</span></div></div>
-    <div class="panel"><div class="pb"><div class="cal">${['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'].map(d=>`<div class="dow">${d}</div>`).join('')}${cells}</div></div></div>`;
+    <div class="toolbar"><button class="btn sec sm" id="prev">←</button><b style="min-width:140px;text-align:center">${MONTHS[month-1]} ${year}</b><button class="btn sec sm" id="next">→</button><div class="spacer"></div>
+      <div class="legend"><span><i class="dot" style="background:var(--green)"></i>Folga</span><span><i class="dot" style="background:var(--amber)"></i>Férias</span><span><i class="dot" style="background:var(--purple)"></i>Sábado</span><span><i class="dot" style="background:var(--red)"></i>Bloqueio</span></div></div>
+    ${body}`;
     $('#prev').onclick=()=>{month--;if(month<1){month=12;year--;}draw();};
     $('#next').onclick=()=>{month++;if(month>12){month=1;year++;}draw();};
   }
@@ -815,5 +831,5 @@ $('#liSignup').onclick=(e)=>{e.preventDefault();doSignup();};
 $('#liPass').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin();});
 $('#logoutBtn').onclick=logout;
 $('#backBtn').onclick=()=>{ location.hash='#home'; };
-if(sb) boot(); else { $('#login').style.display='flex'; $('#loginErr').innerHTML=box('err','config.js não configurado.'); }
+if(sb) boot(); else { $('#boot') && ($('#boot').style.display='none'); $('#login').style.display='flex'; $('#loginErr').innerHTML=box('err','config.js não configurado.'); }
 })();

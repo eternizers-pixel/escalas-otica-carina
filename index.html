@@ -135,12 +135,41 @@ label{display:block;font-size:12.5px;color:var(--muted);margin:0 0 5px;font-weig
 .toast.show{opacity:1;transform:none}
 .simbanner{background:var(--purple);color:#fff;text-align:center;padding:7px;font-size:12.5px;font-weight:600;border-radius:12px;margin:0 26px}
 @media(max-width:680px){.grid2,.grid3,.grid4{grid-template-columns:1fr}}
+@media(max-width:640px){
+  body{font-size:14px}
+  .content{padding:8px 10px 30px}
+  .apphead{padding:10px 10px;gap:6px;flex-wrap:wrap}
+  .head-right{font-size:12px;gap:8px}
+  .pagetitle{font-size:16px}
+  .backbtn{padding:7px 11px;font-size:13px}
+  .hero{padding:8px 0 18px}
+  .hero .logo{font-size:24px}
+  .hero .logo .em{font-size:26px}
+  .panel .pb{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  table{font-size:12.5px}
+  th{padding:7px 8px;font-size:10px}
+  td{padding:8px 8px}
+  .hcard{padding:18px 14px}
+  .hcard .ic{width:54px;height:54px;font-size:23px}
+  .hcard h3{font-size:16px}
+  .modal{width:100%}
+  .modal .mb{padding:16px}
+  .toolbar{gap:8px}
+  .kpi{font-size:22px}
+  .legend{font-size:11px;gap:10px}
+  .login-card{padding:28px 22px}
+}
 </style>
 </head>
 <body>
 
+<!-- ============ CARREGANDO ============ -->
+<div id="boot" style="min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#6b7790;gap:10px">
+  <div style="font-size:34px">👓</div><div style="font-size:14px">Carregando…</div>
+</div>
+
 <!-- ============ LOGIN ============ -->
-<div id="login">
+<div id="login" style="display:none">
   <div class="login-card">
     <div class="brandmark">👓</div>
     <h1>Escalas · Ótica Carina</h1>
