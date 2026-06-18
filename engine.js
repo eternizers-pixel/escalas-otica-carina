@@ -256,11 +256,14 @@ window.Engine = (function () {
       const mode = rules.dayoff_mode || 'saida_antecipada';
       let type, hours, shift;
       if (mode === 'saida_antecipada'){
-        // só sair mais cedo (manhã ou tarde), nunca o dia inteiro
-        type='saida_antecipada';
+        // compensar em pedaços, nunca o dia inteiro
         const want = rules.early_leave_hours ?? 3;
         hours = Math.max(1, Math.min(want, cap.maxHours));
-        shift = (suggestions.length % 2 === 0) ? 'tarde' : 'manha'; // alterna manhã/tarde
+        // critério do período: preferência da funcionária; se não houver, alterna para variar
+        const pref = chosen.dayoff_pref || 'qualquer';
+        const period = pref==='manha' ? 'manha' : pref==='tarde' ? 'tarde' : ((suggestions.length % 2 === 0) ? 'tarde' : 'manha');
+        if (period==='manha'){ type='entrada_tarde'; shift='manha'; }  // manhã => entrar mais tarde (loja abre)
+        else { type='saida_antecipada'; shift='tarde'; }               // tarde  => sair mais cedo (loja fecha)
       } else {
         // modo completo (capacidade decide o tamanho)
         if (cap.maxHours>=7){ type='integral'; hours=Math.min(8,cap.maxHours); shift='dia_inteiro'; }
@@ -269,7 +272,8 @@ window.Engine = (function () {
       }
       let acao;
       if (type==='integral') acao=`folgar ${DIAS[dow]} (${dStr}) o dia inteiro`;
-      else if (type==='saida_antecipada') acao=`sair ${hours}h mais cedo ${shift==='tarde'?'na tarde':'de manhã'} de ${DIAS[dow]} (${dStr})`;
+      else if (type==='entrada_tarde') acao=`entrar ${hours}h mais tarde na manhã de ${DIAS[dow]} (${dStr})`;
+      else if (type==='saida_antecipada') acao=`sair ${hours}h mais cedo na tarde de ${DIAS[dow]} (${dStr})`;
       else acao=`folgar meio turno (${shift==='tarde'?'tarde':'manhã'}) de ${DIAS[dow]} (${dStr})`;
       const h=history[chosen.id]||{};
       const since=(h.lastDayOffDays==null?'há bastante tempo':`há ${h.lastDayOffDays} dias`);

@@ -214,6 +214,10 @@ function empModal(e){
       <div class="field"><label>Status</label><select id="f_status">${['ativa','ferias','licenca','afastada','desligada'].map(s=>`<option ${e.status===s?'selected':''}>${s}</option>`).join('')}</select></div></div>
     <div class="field"><label>Atendimento na ótica</label><select id="f_expert"><option value="false" ${!e.is_expert?'selected':''}>Sabe menos (precisa de apoio)</option><option value="true" ${e.is_expert?'selected':''}>⭐ Especialista (bem treinada)</option></select>
       <div class="reason">No rodízio de sábado, cada dia precisa de pelo menos 1 especialista junto com 1 que sabe menos.</div></div>
+    <div class="field"><label>Preferência ao compensar folga</label><select id="f_dpref">
+      <option value="qualquer" ${(!e.dayoff_pref||e.dayoff_pref==='qualquer')?'selected':''}>Tanto faz (o sistema alterna)</option>
+      <option value="manha" ${e.dayoff_pref==='manha'?'selected':''}>Entrar mais tarde (manhã)</option>
+      <option value="tarde" ${e.dayoff_pref==='tarde'?'selected':''}>Sair mais cedo (tarde)</option></select></div>
     <div class="grid3">
       <div class="field"><label>Carga semanal (h)</label><input id="f_wh" type="number" value="${e.weekly_hours||44}"/></div>
       <div class="field"><label>Banco de horas (h)</label><input id="f_bank" type="number" step="0.5" value="${e.time_bank_balance||0}"/></div>
@@ -226,7 +230,7 @@ function empModal(e){
     const name=$('#f_name').value.trim(); if(!name){toast('Informe o nome.');return false;}
     const payload={name,cargo:$('#f_cargo').value.trim(),status:$('#f_status').value,weekly_hours:+$('#f_wh').value||44,
       time_bank_balance:+$('#f_bank').value||0,manual_priority:+$('#f_prio').value||0,preferences:$('#f_pref').value.trim(),
-      restrictions:$('#f_restr').value.trim(),notes:$('#f_notes').value.trim(),is_expert:$('#f_expert').value==='true',is_simulation:S.sim,updated_at:new Date().toISOString()};
+      restrictions:$('#f_restr').value.trim(),notes:$('#f_notes').value.trim(),is_expert:$('#f_expert').value==='true',dayoff_pref:$('#f_dpref').value,is_simulation:S.sim,updated_at:new Date().toISOString()};
     const r = e.id ? await T('employees').update(payload).eq('id',e.id) : await T('employees').insert(payload);
     if(r.error){toast('Erro: '+r.error.message);return false;}
     toast('Salvo.'); route(); return true;
