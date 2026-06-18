@@ -190,7 +190,7 @@ ROUTES.dashboard=async function(){
   const totalBank=emps.reduce((s,e)=>s+(+e.time_bank_balance||0),0);
   let alerts='';
   if(cap.availableForShift<=cap.minPerShift) alerts+=box('err',`<b>Cobertura mínima em risco:</b> ${cap.availableForShift} ativa(s) para mínimo de ${cap.minPerShift} por turno.`);
-  if(onVac.length>=1) alerts+=box('warn',`<b>Equipe reduzida:</b> ${onVac.length} em férias. ${cap.note}`);
+  if(onVac.length>=1) alerts+=box('warn',`<b>Equipe reduzida:</b> ${onVac.length} funcionária(s) em férias.`);
   if(highBank.length) alerts+=box('warn',`<b>Banco de horas alto:</b> ${highBank.map(e=>e.name+' ('+fmtH(e.time_bank_balance)+')').join(', ')} acima de ${fmtH(rules.max_time_bank||20)}.`);
   if(!alerts) alerts=box('ok','Tudo sob controle: cobertura adequada e banco dentro do limite.');
   const fresh=await bankFreshnessBanner();
@@ -200,7 +200,7 @@ ROUTES.dashboard=async function(){
     <div class="card"><h3>Funcionárias ativas</h3><div class="kpi">${active.length}<small> / ${emps.length}</small></div></div>
     <div class="card"><h3>Em férias</h3><div class="kpi">${onVac.length}</div></div>
     <div class="card"><h3>Banco de horas total</h3><div class="kpi">${fmtH(totalBank)}</div></div>
-    <div class="card"><h3>Capacidade operacional</h3><div class="kpi" style="font-size:17px;text-transform:capitalize">${cap.level.replace('_',' ')}</div><div class="reason">${cap.note}</div></div>
+    <div class="card"><h3>Capacidade operacional</h3><div class="kpi" style="font-size:17px;text-transform:capitalize">${cap.level.replace('_',' ')}</div></div>
   </div>
   <div class="section">${alerts}</div>
   <div class="toolbar">
@@ -226,7 +226,7 @@ ROUTES.funcionarias=async function(){
   <div class="panel"><div class="pb" style="padding:0"><table>
     <thead><tr><th>Nome</th><th>Cargo</th><th>Status</th><th>Carga</th><th>Banco</th><th>Prioridade</th><th></th></tr></thead>
     <tbody>${emps.map(e=>`<tr>
-      <td><b>${esc(e.name)}</b>${e.is_expert?' <span title="Especialista em ótica">⭐</span>':''}<br><span class="muted" style="font-size:11.5px">${esc(e.preferences||'')}</span></td>
+      <td><b>${esc(e.name)}</b><br><span class="muted" style="font-size:11.5px">${esc(e.preferences||'')}</span></td>
       <td>${esc(e.cargo||'—')}</td><td><span class="pill ${e.status}">${e.status}</span></td>
       <td>${e.weekly_hours||44}h</td><td><b>${fmtH(e.time_bank_balance)}</b></td><td>${e.manual_priority||0}</td>
       <td class="row-actions"><button class="btn ghost sm" data-edit="${e.id}">Editar</button>
@@ -244,7 +244,7 @@ function empModal(e){
     <div class="grid2">
       <div class="field"><label>Cargo / função</label><input id="f_cargo" value="${esc(e.cargo||'')}" placeholder="Vendedora, Caixa, Óptica…"/></div>
       <div class="field"><label>Status</label><select id="f_status">${['ativa','ferias','licenca','afastada','desligada'].map(s=>`<option ${e.status===s?'selected':''}>${s}</option>`).join('')}</select></div></div>
-    <div class="field"><label>Atendimento na ótica</label><select id="f_expert"><option value="false" ${!e.is_expert?'selected':''}>Sabe menos (precisa de apoio)</option><option value="true" ${e.is_expert?'selected':''}>⭐ Especialista (bem treinada)</option></select>
+    <div class="field"><label>Atendimento na ótica</label><select id="f_expert"><option value="false" ${!e.is_expert?'selected':''}>Sabe menos (precisa de apoio)</option><option value="true" ${e.is_expert?'selected':''}>Especialista (sabe mais)</option></select>
       <div class="reason">No rodízio de sábado, cada dia precisa de pelo menos 1 especialista junto com 1 que sabe menos.</div></div>
     <div class="field"><label>Preferências ao compensar folga (marque uma ou mais)</label>
       <div style="display:flex;flex-direction:column;gap:7px">
@@ -644,9 +644,9 @@ ROUTES.sabados=async function(){
           <h3>${n}º sábado · ${d.split('-').reverse().join('/')}</h3>
           <span class="pill ${ok?'ativa':'ferias'}">${assigned.length}/${tgt} pessoas</span></div>
           <div class="pb">
-            ${assigned.map(a=>`<span class="pill ativa" style="margin:0 8px 8px 0;display:inline-flex;align-items:center;gap:7px;font-size:13px">${esc(a.employee_name)}${expert.has(a.employee_id)?' ⭐':''} ${isGestor()?`<button class="x" style="font-size:15px;line-height:1;padding:0" data-rm="${n}|${a.employee_id}" title="remover">×</button>`:''}</span>`).join('')||'<span class="muted">Ninguém escalado ainda.</span>'}
-            ${noExp?`<div class="alert warn" style="margin-top:8px">⚠️ Este sábado está <b>sem especialista</b> (⭐). Adicione pelo menos uma.</div>`:''}
-            ${isGestor()?`<div style="margin-top:10px;max-width:300px"><select data-add="${n}"><option value="">+ adicionar funcionária…</option>${avail.map(e=>`<option value="${e.id}">${esc(e.name)}${e.is_expert?' ⭐':''}</option>`).join('')}</select></div>`:''}
+            ${assigned.map(a=>`<span class="pill ativa" style="margin:0 8px 8px 0;display:inline-flex;align-items:center;gap:7px;font-size:13px">${esc(a.employee_name)} ${isGestor()?`<button class="x" style="font-size:15px;line-height:1;padding:0" data-rm="${n}|${a.employee_id}" title="remover">×</button>`:''}</span>`).join('')||'<span class="muted">Ninguém escalado ainda.</span>'}
+            ${noExp?`<div class="alert warn" style="margin-top:8px">⚠️ Este sábado está <b>sem ninguém com mais conhecimento</b>. Evite deixar só quem sabe menos — inclua pelo menos uma das mais experientes.</div>`:''}
+            ${isGestor()?`<div style="margin-top:10px;max-width:300px"><select data-add="${n}"><option value="">+ adicionar funcionária…</option>${avail.map(e=>`<option value="${e.id}">${esc(e.name)}</option>`).join('')}</select></div>`:''}
           </div></div>`;
       }).join('');
       $('#satEditor').innerHTML=cards+(invNote?`<div class="section">${invNote}</div>`:'');

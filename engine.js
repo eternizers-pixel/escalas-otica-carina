@@ -150,7 +150,7 @@ window.Engine = (function () {
         if (idx===0) usedFirst.add(e.id);
         assignments.push({ saturday_number: idx+1, saturday_date: fmt(satDate), employee_id:e.id, employee_name:e.name });
       });
-      const nomes = finalPick.map(e=>e.name+(isExp(e)?' ⭐':'')).join(', ') || '—';
+      const nomes = finalPick.map(e=>e.name).join(', ') || '—';
       let nota = '';
       if (idx===0) nota = inverted ? ` Reduzido para ${need} (reforço foi para o 2º por causa de ${commName}).` : ' (1º sábado: mais movimento, pós-pagamento.)';
       else nota = inverted ? ` Reforço para ${need} por causa de ${commName}.` : '';
