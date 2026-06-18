@@ -262,16 +262,15 @@ ROUTES.tiquetaque=async function(){
   const imports=await getAll('time_bank_imports',b=>b.order('imported_at',{ascending:false}).limit(10));
   const firstDay=new Date(); firstDay.setDate(1);
   $('#view').innerHTML=`
-  ${box('info','<b>Sincronização automática (API):</b> traz nomes, cargos e o <b>saldo consolidado do último mês fechado</b> — o número confiável que a API do TiqueTaque entrega. O <b>Total ao vivo</b> (saldo + parcial do mês corrente) não é exposto pela API; para ele, use <b>Exportar</b> no TiqueTaque e importe a planilha aqui (o sistema lê a coluna <b>Total</b>).')}
+  ${box('info','<b>Duas fontes, sem conflito — cada uma cuida de uma coisa:</b><br>🧩 <b>API (cadastro):</b> mantém nomes e cargos atualizados. <u>Não mexe no banco de horas.</u><br>📊 <b>Planilha (banco de horas):</b> é a única dona do banco de horas — use a coluna <b>Total</b> da exportação do TiqueTaque, que é o saldo real disponível.')}
   <div class="grid2">
-    <div class="panel"><div class="ph"><h3>🔄 Sincronizar agora</h3></div><div class="pb">
-      <div class="grid2"><div class="field"><label>Período de</label><input id="tt_from" type="date" value="${firstDay.toISOString().slice(0,10)}"/></div>
-        <div class="field"><label>Período até</label><input id="tt_to" type="date" value="${todayStr()}"/></div></div>
-      <button class="btn" id="ttSync" ${isGestor()?'':'disabled'}>🔄 Sincronizar funcionárias e banco de horas</button>
+    <div class="panel"><div class="ph"><h3>🧩 Cadastro (API)</h3></div><div class="pb">
+      <p class="muted" style="margin-top:0">Puxa <b>nomes e cargos</b> direto do TiqueTaque. Rápido e sem digitação. Não altera o banco de horas.</p>
+      <button class="btn" id="ttSync" ${isGestor()?'':'disabled'}>🧩 Sincronizar cadastro</button>
       <div id="ttOut" class="section"></div>
     </div></div>
-    <div class="panel"><div class="ph"><h3>Importar planilha (alternativa)</h3></div><div class="pb">
-      <p class="muted" style="margin-top:0">Exporte o banco de horas no TiqueTaque (botão Exportar) e importe aqui. O sistema usa a coluna <b>Total</b> (saldo real); se não houver, usa Saldo. Aceita formatos como <i>11h07min</i> ou <i>11,12</i>.</p>
+    <div class="panel"><div class="ph"><h3>📊 Banco de horas (planilha)</h3></div><div class="pb">
+      <p class="muted" style="margin-top:0">No TiqueTaque, em Banco de horas, clique em <b>Exportar</b> e importe aqui. O sistema usa a coluna <b>Total</b> (saldo real disponível); se não houver, usa Saldo. Aceita formatos como <i>11h07min</i> ou <i>11,12</i>.</p>
       <div class="field"><label>Arquivo (.xlsx/.csv)</label><input id="imp_file" type="file" accept=".xlsx,.xls,.csv" ${isGestor()?'':'disabled'}/></div>
       <div id="impPreview"></div>
     </div></div>
@@ -285,20 +284,20 @@ ROUTES.tiquetaque=async function(){
     const btn=$('#ttSync'); btn.disabled=true; btn.textContent='Sincronizando…';
     $('#ttOut').innerHTML='<p class="muted">Consultando o TiqueTaque…</p>';
     try{
-      const {data,error}=await sb.functions.invoke('sync-tiquetaque',{body:{start_date:$('#tt_from').value,end_date:$('#tt_to').value}});
+      const {data,error}=await sb.functions.invoke('sync-tiquetaque',{body:{}});
       if(error) throw error;
       if(data && data.error){ $('#ttOut').innerHTML=box('err','TiqueTaque: '+esc(data.error)+(data.hint?'<br><span class="muted">'+esc(data.hint)+'</span>':'')); }
       else{
-        const rows=(data.items||[]).map(x=>`<tr><td><b>${esc(x.name)}</b></td><td>${x.balance_hours}h</td><td>${x.absences||0}/${x.lates||0}</td><td>${x.matched?'✅ vinculada':'➕ criada'}</td></tr>`).join('');
-        $('#ttOut').innerHTML=box('ok',`Sincronizado: <b>${data.employees||0}</b> funcionária(s), banco de horas atualizado.`)+
-          `<table><thead><tr><th>Funcionária</th><th>Banco</th><th>Faltas/Atrasos</th><th>Status</th></tr></thead><tbody>${rows||''}</tbody></table>`;
-        toast('TiqueTaque sincronizado.');
+        const rows=(data.items||[]).map(x=>`<tr><td><b>${esc(x.name)}</b></td><td>${esc(x.cargo||'—')}</td><td>${x.matched?'✅ atualizada':'➕ criada'}</td></tr>`).join('');
+        $('#ttOut').innerHTML=box('ok',`Cadastro sincronizado: <b>${data.employees||0}</b> funcionária(s). O banco de horas não foi alterado (use a planilha ao lado).`)+
+          `<table><thead><tr><th>Funcionária</th><th>Cargo</th><th>Status</th></tr></thead><tbody>${rows||''}</tbody></table>`;
+        toast('Cadastro sincronizado.');
       }
     }catch(err){
       const msg=(err&&err.message)||'falha na sincronização';
       $('#ttOut').innerHTML=box('err','Não foi possível sincronizar: '+esc(msg)+'<br><span class="muted">Verifique se a Edge Function <b>sync-tiquetaque</b> está publicada e se o segredo <b>TIQUETAQUE_TOKEN</b> foi configurado no Supabase.</span>');
     }
-    btn.disabled=false; btn.textContent='🔄 Sincronizar funcionárias e banco de horas';
+    btn.disabled=false; btn.textContent='🧩 Sincronizar cadastro';
   });
   // --- planilha fallback ---
   let parsed=[];
