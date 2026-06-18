@@ -16,6 +16,38 @@ window.Engine = (function () {
     return out;
   }
   function daysInMonth(year, month){ return new Date(year, month, 0).getDate(); }
+  function nthWeekdayOfMonth(year, month, weekday, n){ // month 1-12
+    const d=new Date(year, month-1, 1); let c=0;
+    while(d.getMonth()===month-1){ if(d.getDay()===weekday){ c++; if(c===n) return new Date(d); } d.setDate(d.getDate()+1); }
+    return null;
+  }
+  function lastWeekdayOfMonth(year, month, weekday){
+    const d=new Date(year, month, 0);
+    while(d.getDay()!==weekday) d.setDate(d.getDate()-1);
+    return new Date(d);
+  }
+  // Datas comemorativas de alto movimento (relevantes p/ varejo de ótica)
+  function commemorativeDates(year){
+    const out=[];
+    const maes=nthWeekdayOfMonth(year,5,0,2); if(maes) out.push({date:fmt(maes), name:'Dia das Mães'});
+    out.push({date:fmt(new Date(year,5,12)), name:'Dia dos Namorados'});
+    const pais=nthWeekdayOfMonth(year,8,0,2); if(pais) out.push({date:fmt(pais), name:'Dia dos Pais'});
+    out.push({date:fmt(new Date(year,9,12)), name:'Dia das Crianças'});
+    const bf=lastWeekdayOfMonth(year,11,5); if(bf) out.push({date:fmt(bf), name:'Black Friday'});
+    out.push({date:fmt(new Date(year,11,25)), name:'Natal'});
+    return out.sort((a,b)=>a.date<b.date?-1:1);
+  }
+  // se a data está na própria data comemorativa ou na semana que a antecede, devolve o nome
+  function commemorativeBlock(dStr, leadDays){
+    const y=+dStr.slice(0,4);
+    const dates=[...commemorativeDates(y), ...commemorativeDates(y+1)];
+    const target=parse(dStr);
+    for(const c of dates){
+      const diff=Math.round((parse(c.date)-target)/86400000);
+      if(diff>=0 && diff<=leadDays) return c.name; // alvo é a data ou até leadDays antes
+    }
+    return null;
+  }
 
   // ---- Capacidade Operacional ----
   // Quantas pessoas em férias/afastadas reduzem o tamanho das folgas liberadas.
@@ -121,7 +153,8 @@ window.Engine = (function () {
       const bank=e.time_bank_balance||0;
       const since=(h.lastDayOffDays==null?45:h.lastDayOffDays);
       const recentPenalty=(h.lastDayOffDays!=null && h.lastDayOffDays<7)?20:0;
-      return bank*1.4 + since*0.8 + (e.manual_priority||0)*5 - recentPenalty;
+      // justiça: + banco, + tempo sem folgar, + prioridade; − quem já folgou mais, − quem folgou há pouco
+      return bank*1.4 + since*0.8 + (e.manual_priority||0)*5 - recentPenalty - (h.dayoffs||0)*4;
     };
 
     // equipe abaixo do mínimo: nem gera (exige aprovação manual)
@@ -148,11 +181,24 @@ window.Engine = (function () {
 
       // disponíveis de fato nesse dia (ativas e não de férias)
       const availDay = active.filter(e=>!onVac(e,dStr));
+      const isFri = dow===5;
       const cands = pool
         .filter(e=>!used.has(e.id) && !onVac(e,dStr))
         .filter(e=>!refusals.some(r=>r.employee_id===e.id && r.date===dStr))
-        .sort((a,b)=>scoreOf(b)-scoreOf(a));
+        .sort((a,b)=>{
+          // nas sextas, quem já pegou menos sextas vai primeiro (revezamento)
+          if (isFri){ const fa=(history[a.id]?.fridaysOff)||0, fb=(history[b.id]?.fridaysOff)||0; if(fa!==fb) return fa-fb; }
+          return scoreOf(b)-scoreOf(a);
+        });
       if (cands.length===0) continue;
+
+      // alto movimento: datas comemorativas e a semana que as antecede
+      const leadDays = rules.high_traffic_lead_days ?? 7;
+      const comm = (rules.block_commemorative!==false) ? commemorativeBlock(dStr, leadDays) : null;
+      if (comm){
+        logs.push({type:'bloqueio', message:`${DIAS[dow]} (${dStr}): sem folga — semana de ${comm} (alto movimento). As folgas ficam para depois da data.`});
+        continue;
+      }
 
       // liberar 1 folga nesse dia deixa quantos na loja?
       if (availDay.length - 1 < minPer){
@@ -221,5 +267,6 @@ window.Engine = (function () {
   ];
 
   return { saturdaysOfMonth, daysInMonth, operationalCapacity, fairnessIndex,
-           saturdayRotation, suggestDayOffs, simEmployees, SCENARIOS, DOW, fmt, parse };
+           saturdayRotation, suggestDayOffs, simEmployees, SCENARIOS, DOW, fmt, parse,
+           commemorativeDates };
 })();

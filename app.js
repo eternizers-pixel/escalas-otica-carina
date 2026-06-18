@@ -38,6 +38,26 @@ async function bankFreshnessBanner(){
   return box('ok',`<b>Banco de horas atualizado em ${quando}</b> ${days>0?`(há ${days} dia${days>1?'s':''})`:'(hoje)'} — dado fresco para planejar.`);
 }
 
+// Histórico real (justiça): folgas aprovadas + sábados trabalhados por funcionária
+async function buildHistory(){
+  const scheds=await getAll('schedules',b=>b.eq('is_simulation',S.sim));
+  const schedIds=new Set(scheds.map(s=>s.id));
+  const items=(await getAll('schedule_items',b=>b.eq('status','aprovado'))).filter(it=>schedIds.has(it.schedule_id));
+  const rot=await getAll('saturday_rotation');
+  const today=new Date();
+  const h={};
+  const get=(id)=> h[id]||(h[id]={dayoffs:0,fridaysOff:0,mondaysOff:0,saturdays:0,lastDayOffDays:null});
+  for(const it of items){ if(!it.employee_id||!it.date) continue;
+    const r=get(it.employee_id); r.dayoffs++;
+    const d=new Date(it.date+'T00:00:00'); const dow=d.getDay();
+    if(dow===5) r.fridaysOff++; if(dow===1) r.mondaysOff++;
+    const days=Math.floor((today-d)/86400000);
+    if(r.lastDayOffDays==null||days<r.lastDayOffDays) r.lastDayOffDays=days;
+  }
+  for(const s of rot){ if(s.employee_id && s.worked!==false) get(s.employee_id).saturdays++; }
+  return h;
+}
+
 // ---------- Auth ----------
 async function doLogin(){
   const email=$('#liEmail').value.trim(), pass=$('#liPass').value;
@@ -215,6 +235,10 @@ function empModal(e){
 ROUTES.regras=async function(){
   const r=(await T('store_rules').select('*').eq('id',1).maybeSingle()).data||{};
   const blocked=await getAll('blocked_dates',b=>b.order('date'));
+  const cy=new Date().getFullYear(), lead=r.high_traffic_lead_days??7, todayS=todayStr();
+  const comm=[...Engine.commemorativeDates(cy),...Engine.commemorativeDates(cy+1)].filter(c=>c.date>=todayS).slice(0,8);
+  const commRows=comm.map(c=>{ const d=new Date(c.date+'T00:00:00'); const ini=new Date(d); ini.setDate(ini.getDate()-lead);
+    return `<tr><td><b>${esc(c.name)}</b></td><td>${c.date.split('-').reverse().join('/')}</td><td class="muted">${ini.toLocaleDateString('pt-BR')} → ${d.toLocaleDateString('pt-BR')}</td></tr>`; }).join('');
   $('#view').innerHTML=`
   <div class="grid2">
     <div class="panel"><div class="ph"><h3>Horário de funcionamento</h3></div><div class="pb">
@@ -249,7 +273,20 @@ ROUTES.regras=async function(){
       <div class="pb" style="padding:0"><table><thead><tr><th>Data</th><th>Tipo</th><th>Motivo</th><th></th></tr></thead>
       <tbody>${blocked.map(b=>`<tr><td>${b.date}</td><td>${b.type}</td><td>${esc(b.reason||'')}</td><td>${isGestor()?`<button class="btn ghost sm" style="color:var(--red)" data-delblk="${b.id}">remover</button>`:''}</td></tr>`).join('')||'<tr><td colspan=4 class="muted" style="padding:16px">Nenhum dia bloqueado.</td></tr>'}
       </tbody></table></div></div>
-  </div>`;
+  </div>
+  <div class="section panel"><div class="ph"><h3>🎁 Datas comemorativas (alto movimento)</h3></div><div class="pb">
+    <p class="muted" style="margin-top:0">Nessas datas <b>e na semana que as antecede</b>, o sistema <b>não sugere folga</b> — joga para depois da data. O sábado (manhã e tarde) também nunca recebe folga.</p>
+    <div class="grid2">
+      <div class="field"><label>Proteção de datas comemorativas</label><select id="r_comm"><option value="true" ${r.block_commemorative!==false?'selected':''}>Ativada</option><option value="false" ${r.block_commemorative===false?'selected':''}>Desativada</option></select></div>
+      <div class="field"><label>Dias antes da data a proteger</label><input id="r_lead" type="number" value="${lead}"/></div>
+    </div>
+    <table><thead><tr><th>Data</th><th>Quando</th><th>Período sem folga</th></tr></thead><tbody>${commRows||'<tr><td colspan=3 class="muted">—</td></tr>'}</tbody></table>
+    <p class="muted" style="margin-top:8px">Datas fixas de varejo (Mães, Namorados, Pais, Crianças, Black Friday, Natal). Precisa de uma data extra (liquidação, evento)? Adicione em “Dias bloqueados” acima com o tipo <i>Alto movimento</i>.</p>
+    <button class="btn" id="saveComm" style="margin-top:10px" ${isGestor()?'':'disabled'}>Salvar datas comemorativas</button>
+  </div></div>`;
+  $('#saveComm')?.addEventListener('click',async()=>{ if(!gate())return;
+    const res=await T('store_rules').update({block_commemorative:$('#r_comm').value==='true',high_traffic_lead_days:+$('#r_lead').value||7,updated_at:new Date().toISOString()}).eq('id',1);
+    if(res.error){toast('Erro: '+res.error.message);return;} toast('Datas comemorativas salvas.'); route(); });
   $('#saveRules')?.addEventListener('click',async()=>{ if(!gate())return;
     const payload={id:1,open_morning:$('#r_om').value,close_morning:$('#r_cm').value,open_afternoon:$('#r_oa').value,close_afternoon:$('#r_ca').value,
       open_time:$('#r_om').value,close_time:$('#r_ca').value,
@@ -383,6 +420,7 @@ ROUTES.folgas=async function(){
     T('store_rules').select('*').eq('id',1).maybeSingle().then(r=>r.data||{}),
     getAll('vacation_periods'),getAll('dayoff_requests'),getAll('blocked_dates')]);
   const refusals=reqs.filter(r=>r.request_type==='recusa_folga');
+  const history=await buildHistory();
   const fresh=await bankFreshnessBanner();
   $('#view').innerHTML=`
   ${fresh}
@@ -390,7 +428,7 @@ ROUTES.folgas=async function(){
     <button class="btn sec" id="regen">↻ Recalcular</button><div class="spacer"></div><span class="muted" id="capInfo"></span></div>
   <div id="folgaOut"><p class="muted">O sistema sugere — você aprova. Clique em “Gerar sugestões”.</p></div>`;
   async function run(){
-    const out=Engine.suggestDayOffs({employees:emps,rules,vacations:vacs,requests:reqs,refusals,blockedDates:blk,year,month,horizonDays:14,startDate:todayStr(),history:{}});
+    const out=Engine.suggestDayOffs({employees:emps,rules,vacations:vacs,requests:reqs,refusals,blockedDates:blk,year,month,horizonDays:14,startDate:todayStr(),history});
     $('#capInfo').textContent=`Capacidade: ${out.capacity.level.replace('_',' ')} · folga máx ${out.capacity.maxHours}h`;
     const sugRows=out.suggestions.map((s,i)=>`<tr><td><b>${esc(s.employee_name)}</b></td><td>${Engine.DOW[Engine.parse(s.date).getDay()]} ${s.date}</td><td>${SHIFT_LABEL[s.shift]||s.shift}</td><td>${TYPE_LABEL[s.type]}</td><td>${s.hours}h</td>
       <td class="row-actions">${isGestor()?`<button class="btn sm" data-ap="${i}">Aprovar</button><button class="btn sec sm" data-rf="${i}">Recusar</button>`:'<span class="muted">—</span>'}</td></tr>
@@ -497,7 +535,8 @@ function reqTypeLabel(t){return {pedido_folga:'Pedido de folga',recusa_folga:'Re
 ROUTES.relatorios=async function(){
   const now=new Date(), year=now.getFullYear(), month=now.getMonth()+1;
   const [emps,items,reqs,rot]=await Promise.all([getAll('employees',b=>b.eq('is_simulation',S.sim)),getAll('schedule_items'),getAll('dayoff_requests'),getAll('saturday_rotation')]);
-  const fair=Engine.fairnessIndex(emps,{});
+  const history=await buildHistory();
+  const fair=Engine.fairnessIndex(emps,history);
   const ballColor={justo:'var(--green)',aceitavel:'var(--brand)',atencao:'var(--amber)',desequilibrado:'var(--red)'}[fair.status];
   const perEmp=emps.map(e=>({e,folgas:items.filter(i=>i.employee_id===e.id&&i.status==='aprovado').length,sabados:rot.filter(r=>r.employee_id===e.id).length,faltas:reqs.filter(r=>r.employee_id===e.id&&r.request_type==='falta').length,recusas:reqs.filter(r=>r.employee_id===e.id&&r.request_type==='recusa_folga').length}));
   $('#view').innerHTML=`
