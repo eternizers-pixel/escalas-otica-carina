@@ -456,62 +456,76 @@ ROUTES.folgas=async function(){
   $('#gen')?.addEventListener('click',run); $('#regen').onclick=run;
 };
 
-// ---------- SÁBADOS (editável) ----------
+// ---------- SÁBADOS (editável + navegação de mês) ----------
 ROUTES.sabados=async function(){
-  const now=new Date(), year=now.getFullYear(), month=now.getMonth()+1;
-  const [emps,rules,saved,hist,recent]=await Promise.all([
-    getAll('employees',b=>b.eq('is_simulation',S.sim).order('name')),
-    T('store_rules').select('*').eq('id',1).maybeSingle().then(r=>r.data||{}),
-    getAll('saturday_rotation',b=>b.eq('year',year).eq('month',month).order('saturday_number')),
-    buildHistory(),
-    getAll('saturday_rotation',b=>b.order('saturday_date',{ascending:false}).limit(12))]);
-  const active=emps.filter(e=>e.status==='ativa');
-  const empName=Object.fromEntries(emps.map(e=>[e.id,e.name]));
-  const sats=Engine.saturdaysOfMonth(year,month).slice(0,rules.saturday_open_count||2).map(Engine.fmt);
-  const meta=Engine.saturdayRotation(active,rules,year,month,hist);
-  const targets=meta.counts||[rules.saturday_first_count??3, rules.saturday_second_count??2];
-  let state=saved.map(r=>({saturday_number:r.saturday_number, saturday_date:r.saturday_date||sats[r.saturday_number-1], employee_id:r.employee_id, employee_name:r.employee_name||empName[r.employee_id]}));
-  const invNote=meta.inverted?`<div class="reason" style="border-left-color:var(--purple)">🔁 Inversão automática: <b>${esc(meta.commName)}</b> perto do 2º sábado → reforço no 2º sábado (mais gente lá).</div>`:'';
+  const today=new Date(); const todayISO=Engine.fmt(today);
+  let year=today.getFullYear(), month=today.getMonth()+1;
+  // se os sábados abertos do mês atual já passaram, abre no próximo mês
+  const s0=Engine.saturdaysOfMonth(year,month).slice(0,2);
+  if(s0.length && Engine.fmt(s0[s0.length-1]) < todayISO){ month++; if(month>12){month=1;year++;} }
 
-  function renderEditor(){
-    const cards=sats.map((d,idx)=>{
-      const n=idx+1, tgt=targets[idx]||0;
-      const assigned=state.filter(a=>a.saturday_number===n);
-      const avail=active.filter(e=>!assigned.some(a=>a.employee_id===e.id));
-      const ok=assigned.length===tgt;
-      return `<div class="panel" style="margin-bottom:12px"><div class="ph">
-        <h3>${n}º sábado · ${d.split('-').reverse().join('/')}</h3>
-        <span class="pill ${ok?'ativa':'ferias'}">${assigned.length}/${tgt} pessoas</span></div>
-        <div class="pb">
-          ${assigned.map(a=>`<span class="pill ativa" style="margin:0 8px 8px 0;display:inline-flex;align-items:center;gap:7px;font-size:13px">${esc(a.employee_name)} ${isGestor()?`<button class="x" style="font-size:15px;line-height:1;padding:0" data-rm="${n}|${a.employee_id}" title="remover">×</button>`:''}</span>`).join('')||'<span class="muted">Ninguém escalado ainda.</span>'}
-          ${isGestor()?`<div style="margin-top:10px;max-width:300px"><select data-add="${n}"><option value="">+ adicionar funcionária…</option>${avail.map(e=>`<option value="${e.id}">${esc(e.name)}</option>`).join('')}</select></div>`:''}
-        </div></div>`;
-    }).join('');
-    $('#satEditor').innerHTML=cards+(invNote?`<div class="section">${invNote}</div>`:'');
-    $$('[data-rm]').forEach(b=>b.onclick=()=>{ const [n,id]=b.dataset.rm.split('|'); state=state.filter(a=>!(String(a.saturday_number)===n&&a.employee_id===id)); renderEditor(); });
-    $$('[data-add]').forEach(s=>s.onchange=()=>{ const n=+s.dataset.add, id=s.value; if(!id)return; const e=emps.find(x=>x.id===id); state.push({saturday_number:n,saturday_date:sats[n-1],employee_id:id,employee_name:e.name}); renderEditor(); });
+  async function load(){
+    const [emps,rules,saved,hist,recent]=await Promise.all([
+      getAll('employees',b=>b.eq('is_simulation',S.sim).order('name')),
+      T('store_rules').select('*').eq('id',1).maybeSingle().then(r=>r.data||{}),
+      getAll('saturday_rotation',b=>b.eq('year',year).eq('month',month).order('saturday_number')),
+      buildHistory(),
+      getAll('saturday_rotation',b=>b.order('saturday_date',{ascending:false}).limit(12))]);
+    const active=emps.filter(e=>e.status==='ativa');
+    const empName=Object.fromEntries(emps.map(e=>[e.id,e.name]));
+    const sats=Engine.saturdaysOfMonth(year,month).slice(0,rules.saturday_open_count||2).map(Engine.fmt);
+    const meta=Engine.saturdayRotation(active,rules,year,month,hist);
+    const targets=meta.counts||[rules.saturday_first_count??3, rules.saturday_second_count??2];
+    let state=saved.map(r=>({saturday_number:r.saturday_number, saturday_date:r.saturday_date||sats[r.saturday_number-1], employee_id:r.employee_id, employee_name:r.employee_name||empName[r.employee_id]}));
+    const invNote=meta.inverted?`<div class="reason" style="border-left-color:var(--purple)">🔁 Inversão automática: <b>${esc(meta.commName)}</b> perto do 2º sábado → reforço no 2º sábado (mais gente lá).</div>`:'';
+    const passed = sats.length && sats[sats.length-1] < todayISO;
+
+    function renderEditor(){
+      const cards=sats.map((d,idx)=>{
+        const n=idx+1, tgt=targets[idx]||0;
+        const assigned=state.filter(a=>a.saturday_number===n);
+        const avail=active.filter(e=>!assigned.some(a=>a.employee_id===e.id));
+        const ok=assigned.length===tgt;
+        return `<div class="panel" style="margin-bottom:12px"><div class="ph">
+          <h3>${n}º sábado · ${d.split('-').reverse().join('/')}</h3>
+          <span class="pill ${ok?'ativa':'ferias'}">${assigned.length}/${tgt} pessoas</span></div>
+          <div class="pb">
+            ${assigned.map(a=>`<span class="pill ativa" style="margin:0 8px 8px 0;display:inline-flex;align-items:center;gap:7px;font-size:13px">${esc(a.employee_name)} ${isGestor()?`<button class="x" style="font-size:15px;line-height:1;padding:0" data-rm="${n}|${a.employee_id}" title="remover">×</button>`:''}</span>`).join('')||'<span class="muted">Ninguém escalado ainda.</span>'}
+            ${isGestor()?`<div style="margin-top:10px;max-width:300px"><select data-add="${n}"><option value="">+ adicionar funcionária…</option>${avail.map(e=>`<option value="${e.id}">${esc(e.name)}</option>`).join('')}</select></div>`:''}
+          </div></div>`;
+      }).join('');
+      $('#satEditor').innerHTML=cards+(invNote?`<div class="section">${invNote}</div>`:'');
+      $$('[data-rm]').forEach(b=>b.onclick=()=>{ const [n,id]=b.dataset.rm.split('|'); state=state.filter(a=>!(String(a.saturday_number)===n&&a.employee_id===id)); renderEditor(); });
+      $$('[data-add]').forEach(s=>s.onchange=()=>{ const n=+s.dataset.add, id=s.value; if(!id)return; const e=emps.find(x=>x.id===id); state.push({saturday_number:n,saturday_date:sats[n-1],employee_id:id,employee_name:e.name}); renderEditor(); });
+    }
+
+    $('#view').innerHTML=`
+    <div class="toolbar">
+      <button class="btn sec sm" id="satPrev">←</button>
+      <b style="min-width:150px;text-align:center">${MONTHS[month-1]} ${year}</b>
+      <button class="btn sec sm" id="satNext">→</button>
+      <button class="btn" id="genSat" ${isGestor()?'':'disabled'}>⚡ Gerar sugestão</button>
+      <button class="btn sec" id="saveSat" ${isGestor()?'':'disabled'}>💾 Salvar rodízio</button>
+      <div class="spacer"></div><span class="muted">${rules.saturday_start||'14:00'}–${rules.saturday_end||'17:00'}</span>
+    </div>
+    ${passed?box('warn','Estes sábados <b>já passaram</b>. Você pode registrar quem trabalhou (alimenta o histórico) ou ir para um mês futuro no <b>→</b>.'):box('info','O sistema sugere e <b>equilibra pelo histórico</b>. Ajuste na mão: remova no × e adicione pela lista — útil quando alguém pede para trocar um sábado. Depois <b>Salvar rodízio</b>.')}
+    <div id="satEditor"></div>
+    <div class="section panel"><div class="ph"><h3>Histórico de sábados</h3></div><div class="pb" style="padding:0">
+      <table><thead><tr><th>Data</th><th>Sábado</th><th>Funcionária</th></tr></thead>
+      <tbody>${recent.map(r=>`<tr><td>${r.saturday_date||'—'}</td><td>${r.saturday_number}º</td><td><b>${esc(r.employee_name||empName[r.employee_id]||'')}</b></td></tr>`).join('')||'<tr><td colspan=3 class="muted" style="padding:16px">Sem histórico ainda.</td></tr>'}
+      </tbody></table></div></div>`;
+    renderEditor();
+    $('#satPrev').onclick=()=>{ month--; if(month<1){month=12;year--;} load(); };
+    $('#satNext').onclick=()=>{ month++; if(month>12){month=1;year++;} load(); };
+    $('#genSat')?.addEventListener('click',()=>{ if(!gate())return; state=meta.assignments.map(a=>({...a})); renderEditor(); toast('Sugestão gerada — ajuste se precisar e salve.'); });
+    $('#saveSat')?.addEventListener('click',async()=>{ if(!gate())return;
+      if(!state.length){ toast('Nada para salvar. Gere a sugestão ou adicione funcionárias.'); return; }
+      await T('saturday_rotation').delete().eq('year',year).eq('month',month);
+      const payload=state.map(a=>({month,year,saturday_number:a.saturday_number,saturday_date:a.saturday_date,employee_id:a.employee_id,employee_name:a.employee_name,worked:true,status:'aprovado',reason:'Rodízio'}));
+      const res=await T('saturday_rotation').insert(payload); if(res.error){toast(res.error.message);return;}
+      toast('Rodízio salvo! O histórico vai equilibrar os próximos meses.'); load(); });
   }
-
-  $('#view').innerHTML=`
-  <div class="toolbar">
-    <button class="btn" id="genSat" ${isGestor()?'':'disabled'}>⚡ Gerar sugestão</button>
-    <button class="btn sec" id="saveSat" ${isGestor()?'':'disabled'}>💾 Salvar rodízio</button>
-    <div class="spacer"></div><span class="muted">${MONTHS[month-1]} ${year} · ${rules.saturday_start||'14:00'}–${rules.saturday_end||'17:00'}</span>
-  </div>
-  ${box('info','O sistema sugere e <b>equilibra pelo histórico</b> (quem trabalhou menos sábados entra primeiro). Você pode <b>ajustar na mão</b>: remova no × e adicione pela lista — útil quando alguém pede para trocar um sábado. Depois clique em <b>Salvar rodízio</b>.')}
-  <div id="satEditor"></div>
-  <div class="section panel"><div class="ph"><h3>Histórico de sábados</h3></div><div class="pb" style="padding:0">
-    <table><thead><tr><th>Data</th><th>Sábado</th><th>Funcionária</th></tr></thead>
-    <tbody>${recent.map(r=>`<tr><td>${r.saturday_date||'—'}</td><td>${r.saturday_number}º</td><td><b>${esc(r.employee_name||empName[r.employee_id]||'')}</b></td></tr>`).join('')||'<tr><td colspan=3 class="muted" style="padding:16px">Sem histórico ainda.</td></tr>'}
-    </tbody></table></div></div>`;
-  renderEditor();
-  $('#genSat')?.addEventListener('click',()=>{ if(!gate())return; state=meta.assignments.map(a=>({...a})); renderEditor(); toast('Sugestão gerada — ajuste se precisar e salve.'); });
-  $('#saveSat')?.addEventListener('click',async()=>{ if(!gate())return;
-    if(!state.length){ toast('Nada para salvar. Gere a sugestão ou adicione funcionárias.'); return; }
-    await T('saturday_rotation').delete().eq('year',year).eq('month',month);
-    const payload=state.map(a=>({month,year,saturday_number:a.saturday_number,saturday_date:a.saturday_date,employee_id:a.employee_id,employee_name:a.employee_name,worked:true,status:'aprovado',reason:'Rodízio'}));
-    const res=await T('saturday_rotation').insert(payload); if(res.error){toast(res.error.message);return;}
-    toast('Rodízio salvo! O histórico vai equilibrar os próximos meses.'); route(); });
+  load();
 };
 
 // ---------- CALENDÁRIO ----------
