@@ -27,6 +27,17 @@ function box(kind,msg){ return `<div class="alert ${kind}"><span>${kind==='err'?
 const T=(name)=>sb.from('esc_'+name);
 async function getAll(name, q){ let b=T(name).select('*'); if(q) b=q(b); const {data,error}=await b; if(error){console.warn(name,error.message);} return data||[]; }
 
+// Lembrete: quando o banco de horas foi atualizado pela última vez (via planilha)
+async function bankFreshnessBanner(){
+  const {data}=await T('time_bank_imports').select('imported_at,file_name').eq('source','planilha').order('imported_at',{ascending:false}).limit(1).maybeSingle();
+  if(!data) return box('warn','<b>Banco de horas ainda não foi importado por planilha.</b> Antes de planejar folgas, importe a planilha (coluna <b>Total</b>) do TiqueTaque em <b>TiqueTaque → Banco de horas</b>.');
+  const dt=new Date(data.imported_at);
+  const days=Math.floor((Date.now()-dt.getTime())/86400000);
+  const quando=dt.toLocaleDateString('pt-BR')+' às '+dt.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+  if(days>=8) return box('warn',`<b>Banco de horas atualizado há ${days} dias</b> (${quando}). Antes de decidir folgas, vale reimportar a planilha (Total) do TiqueTaque.`);
+  return box('ok',`<b>Banco de horas atualizado em ${quando}</b> ${days>0?`(há ${days} dia${days>1?'s':''})`:'(hoje)'} — dado fresco para planejar.`);
+}
+
 // ---------- Auth ----------
 async function doLogin(){
   const email=$('#liEmail').value.trim(), pass=$('#liPass').value;
@@ -130,7 +141,9 @@ ROUTES.dashboard=async function(){
   if(onVac.length>=1) alerts+=box('warn',`<b>Equipe reduzida:</b> ${onVac.length} em férias. ${cap.note}`);
   if(highBank.length) alerts+=box('warn',`<b>Banco de horas alto:</b> ${highBank.map(e=>e.name+' ('+fmtH(e.time_bank_balance)+')').join(', ')} acima de ${fmtH(rules.max_time_bank||20)}.`);
   if(!alerts) alerts=box('ok','Tudo sob controle: cobertura adequada e banco dentro do limite.');
+  const fresh=await bankFreshnessBanner();
   $('#view').innerHTML=`
+  ${fresh}
   <div class="cards">
     <div class="card"><h3>Funcionárias ativas</h3><div class="kpi">${active.length}<small> / ${emps.length}</small></div></div>
     <div class="card"><h3>Em férias</h3><div class="kpi">${onVac.length}</div></div>
@@ -270,7 +283,7 @@ ROUTES.tiquetaque=async function(){
       <div id="ttOut" class="section"></div>
     </div></div>
     <div class="panel"><div class="ph"><h3>📊 Banco de horas (planilha)</h3></div><div class="pb">
-      <p class="muted" style="margin-top:0">No TiqueTaque, em Banco de horas, clique em <b>Exportar</b> e importe aqui. O sistema usa a coluna <b>Total</b> (saldo real disponível); se não houver, usa Saldo. Aceita formatos como <i>11h07min</i> ou <i>11,12</i>.</p>
+      <p class="muted" style="margin-top:0">No TiqueTaque, em Banco de horas, clique em <b>Exportar</b> e importe aqui. O sistema usa a coluna <b>Total</b> (saldo real disponível); se não houver, usa Saldo. Aceita formatos como <i>11h07min</i> ou <i>11,12</i>.<br><b>Cada importação substitui</b> o banco de horas pelo valor atual da planilha — <u>não soma</u> com o relatório anterior (o Total já é o acumulado).</p>
       <div class="field"><label>Arquivo (.xlsx/.csv)</label><input id="imp_file" type="file" accept=".xlsx,.xls,.csv" ${isGestor()?'':'disabled'}/></div>
       <div id="impPreview"></div>
     </div></div>
@@ -370,7 +383,9 @@ ROUTES.folgas=async function(){
     T('store_rules').select('*').eq('id',1).maybeSingle().then(r=>r.data||{}),
     getAll('vacation_periods'),getAll('dayoff_requests'),getAll('blocked_dates')]);
   const refusals=reqs.filter(r=>r.request_type==='recusa_folga');
+  const fresh=await bankFreshnessBanner();
   $('#view').innerHTML=`
+  ${fresh}
   <div class="toolbar"><button class="btn" id="gen" ${isGestor()?'':'disabled'}>⚡ Gerar sugestões (14 dias)</button>
     <button class="btn sec" id="regen">↻ Recalcular</button><div class="spacer"></div><span class="muted" id="capInfo"></span></div>
   <div id="folgaOut"><p class="muted">O sistema sugere — você aprova. Clique em “Gerar sugestões”.</p></div>`;
