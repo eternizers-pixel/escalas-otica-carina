@@ -151,8 +151,8 @@ function route(){
 window.addEventListener('hashchange',route);
 
 // ---------- HOME ----------
-function cardsFor(keys){
-  return `<div class="home-grid">${keys.map(k=>{const n=NAV.find(x=>x[0]===k); return n?`<div class="hcard" data-go="${k}"><div class="ic ${n[2]}">${n[1]}</div><h3>${esc(n[3])}</h3><p>${esc(n[4])}</p></div>`:'';}).join('')}</div>`;
+function cardsFor(keys,cls=''){
+  return `<div class="home-grid ${cls}">${keys.map(k=>{const n=NAV.find(x=>x[0]===k); return n?`<div class="hcard" data-go="${k}"><div class="ic ${n[2]}">${n[1]}</div><h3>${esc(n[3])}</h3><p>${esc(n[4])}</p></div>`:'';}).join('')}</div>`;
 }
 function renderHome(){
   $('#backBtn').classList.add('hidden'); $('#pageTitle').textContent='';
@@ -161,7 +161,7 @@ function renderHome(){
     <div class="logo"><span class="em">👓</span> Ótica Carina</div>
     <div class="tag">Sistema de Escalas &amp; Banco de Horas</div>
   </div>
-  ${cardsFor(HOME_KEYS)}`;
+  ${cardsFor(HOME_KEYS,'cols3')}`;
   $$('[data-go]').forEach(el=>el.onclick=()=>location.hash='#'+el.dataset.go);
 }
 ROUTES.config=function(){
