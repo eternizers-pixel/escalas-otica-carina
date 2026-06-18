@@ -100,35 +100,61 @@ window.Engine = (function () {
   }
 
   // ---- Rodízio de Sábados ----
-  // 2 primeiros sábados; quem trabalha no 1º não trabalha no 2º; equilibra histórico.
+  // 1º sábado costuma ter MAIS gente (pós-pagamento, mais movimento): padrão 3.
+  // 2º sábado: padrão 2. Quem trabalha no 1º não trabalha no 2º (revezamento).
+  // Exceção: se uma data comemorativa cai perto do 2º sábado, inverte (3 no 2º, 2 no 1º).
   function saturdayRotation(employees, rules, year, month, history) {
     const sats = saturdaysOfMonth(year, month).slice(0, rules.saturday_open_count||2);
     const eligible = employees.filter(e => e.status==='ativa');
     const logs=[]; const assignments=[];
+    const hhmm=`${rules.saturday_start||'14:00'}–${rules.saturday_end||'17:00'}`;
     if (eligible.length===0){
       logs.push({type:'rodizio', message:'Nenhuma funcionária ativa para o rodízio de sábados.'});
       return { saturdays: sats.map(fmt), assignments, logs };
     }
-    // ordena por menos sábados no histórico (mais "devendo" trabalha primeiro)
+    let firstCount = rules.saturday_first_count ?? 3;
+    let secondCount = rules.saturday_second_count ?? 2;
+
+    // exceção: comemorativa perto do 2º sábado -> inverte o reforço
+    let inverted=false, commName=null;
+    if (sats.length>=2){
+      const sat2=sats[1];
+      for (const c of commemorativeDates(year)){
+        if (Math.abs(Math.round((parse(c.date)-sat2)/86400000))<=3){ inverted=true; commName=c.name; break; }
+      }
+      if (inverted){ const t=firstCount; firstCount=secondCount; secondCount=t; }
+    }
+    const counts=[firstCount, secondCount];
+
+    // ordena por menos sábados no histórico (quem deve mais trabalha primeiro)
     const ranked = [...eligible].sort((a,b)=>{
       const ha=(history[a.id]?.saturdays)||0, hb=(history[b.id]?.saturdays)||0;
       if(ha!==hb) return ha-hb;
       return (b.manual_priority||0)-(a.manual_priority||0);
     });
+
+    const usedFirst=new Set();
     sats.forEach((satDate, idx)=>{
-      // escala a próxima na fila que não foi escalada no sábado anterior deste mês
-      const prev = idx>0 ? assignments[idx-1]?.employee_id : null;
-      const pick = ranked.find(e => e.id!==prev && !assignments.some(a=>a.employee_id===e.id))
-                 || ranked.find(e => e.id!==prev) || ranked[0];
-      assignments.push({
-        saturday_number: idx+1, saturday_date: fmt(satDate),
-        employee_id: pick.id, employee_name: pick.name
+      const need=counts[idx]||0;
+      // sem sobreposição: no 2º sábado, evita quem já trabalhou no 1º
+      let avail = ranked.filter(e => idx===0 ? true : !usedFirst.has(e.id));
+      let pick = avail.slice(0, need);
+      if (pick.length<need){ // se faltar gente sem repetir, completa com os demais
+        const extra = ranked.filter(e=>!pick.includes(e)).slice(0, need-pick.length);
+        pick = pick.concat(extra);
+      }
+      pick.forEach(e=>{
+        if (idx===0) usedFirst.add(e.id);
+        assignments.push({ saturday_number: idx+1, saturday_date: fmt(satDate), employee_id:e.id, employee_name:e.name });
       });
-      const others = ranked.filter(e=>e.id!==pick.id).map(e=>e.name).join(', ');
-      logs.push({type:'rodizio', employee_id:pick.id, employee_name:pick.name,
-        message:`${pick.name} foi escalada no ${idx+1}º sábado (${DOW[6]} ${fmt(satDate)}, ${rules.saturday_start||'14:00'}–${rules.saturday_end||'17:00'}) por ter menos sábados no histórico. Fora do rodízio neste sábado: ${others||'—'}.`});
+      const nomes = pick.map(e=>e.name).join(', ') || '—';
+      let nota = '';
+      if (idx===0) nota = inverted ? ` (Reduzido para ${need}: o reforço foi para o 2º sábado por causa de ${commName}.)` : ' (1º sábado costuma ter mais movimento — pós-pagamento.)';
+      else nota = inverted ? ` (Reforço para ${need} por causa de ${commName} perto deste sábado.)` : '';
+      logs.push({type:'rodizio',
+        message:`${idx+1}º sábado (${fmt(satDate)}, ${hhmm}): ${need} funcionária(s) — ${nomes}.${nota}`});
     });
-    return { saturdays: sats.map(fmt), assignments, logs };
+    return { saturdays: sats.map(fmt), assignments, logs, counts, inverted, commName };
   }
 
   // ---- Motor de Sugestão de Folgas ----

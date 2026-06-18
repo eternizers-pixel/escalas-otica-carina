@@ -264,6 +264,10 @@ ROUTES.regras=async function(){
       <div class="grid2">
         <div class="field"><label>Sábados abertos / mês</label><input id="r_satn" type="number" value="${r.saturday_open_count||2}"/></div>
         <div class="field"><label>Horário do sábado</label><div style="display:flex;gap:6px"><input id="r_sats" type="time" value="${r.saturday_start||'14:00'}"/><input id="r_sate" type="time" value="${r.saturday_end||'17:00'}"/></div></div></div>
+      <div class="grid2">
+        <div class="field"><label>Pessoas no 1º sábado</label><input id="r_sat1" type="number" value="${r.saturday_first_count??3}"/></div>
+        <div class="field"><label>Pessoas no 2º sábado</label><input id="r_sat2" type="number" value="${r.saturday_second_count??2}"/></div></div>
+      <div class="reason">1º sábado costuma ter mais movimento (pós-pagamento) → mais gente. Se uma data comemorativa cair perto do 2º sábado, o reforço <b>inverte automaticamente</b>.</div>
       <div class="field"><label>Escala 5x2 (futura)</label>
         <select id="r_5x2"><option value="false" ${!r.scale_5x2_enabled?'selected':''}>Desativada (modelo atual)</option><option value="true" ${r.scale_5x2_enabled?'selected':''}>Ativada</option></select>
         <div class="reason">Quando ativada: domingo fixo de folga + 1 dia rotativo, com rodízio justo. Arquitetura já preparada.</div></div>
@@ -293,6 +297,7 @@ ROUTES.regras=async function(){
       min_per_shift:+$('#r_min').value,max_time_bank:+$('#r_maxbank').value,min_time_bank_for_dayoff:+$('#r_minbank').value,
       min_dayoff_hours:+$('#r_dmin').value,max_dayoff_hours:+$('#r_dmax').value,
       saturday_open_count:+$('#r_satn').value,saturday_start:$('#r_sats').value,saturday_end:$('#r_sate').value,
+      saturday_first_count:+$('#r_sat1').value||3,saturday_second_count:+$('#r_sat2').value||2,
       scale_5x2_enabled:$('#r_5x2').value==='true',updated_at:new Date().toISOString()};
     const res=await T('store_rules').upsert(payload); if(res.error){toast('Erro: '+res.error.message);return;}
     toast('Regras salvas.'); });
@@ -463,7 +468,8 @@ ROUTES.sabados=async function(){
     <tbody>${rot.map(r=>`<tr><td>${r.saturday_date||'—'}</td><td>${r.saturday_number}º</td><td><b>${esc(r.employee_name||'')}</b></td><td><span class="pill ativa">${r.status}</span></td></tr>`).join('')||'<tr><td colspan=4 class="muted" style="padding:16px">Sem histórico.</td></tr>'}
     </tbody></table></div></div>`;
   $('#genSat')?.addEventListener('click',async()=>{
-    const out=Engine.saturdayRotation(emps,rules,year,month,{});
+    const history=await buildHistory();
+    const out=Engine.saturdayRotation(emps,rules,year,month,history);
     const rows=out.assignments.map(a=>`<tr><td><b>${a.saturday_number}º sábado</b></td><td>${a.saturday_date}</td><td>${esc(a.employee_name)}</td></tr>`).join('');
     const logs=out.logs.map(l=>`<div class="reason" style="border-left-color:var(--purple)">🔁 ${esc(l.message)}</div>`).join('');
     $('#satOut').innerHTML=`<div class="panel"><div class="ph"><h3>Escala dos sábados — ${MONTHS[month-1]} ${year}</h3>${isGestor()?`<button class="btn sm" id="saveSat">Salvar rodízio</button>`:''}</div>
