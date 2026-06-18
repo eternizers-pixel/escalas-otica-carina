@@ -259,19 +259,15 @@ window.Engine = (function () {
         // compensar em pedaços, nunca o dia inteiro
         const want = rules.early_leave_hours ?? 3;
         hours = Math.max(1, Math.min(want, cap.maxHours));
-        // 4 combinações: entrar/sair × manhã/tarde — pela preferência da funcionária
-        const pref = chosen.dayoff_pref || 'qualquer';
-        switch (pref){
-          case 'manha_entrar': shift='manha'; type='entrada_tarde'; break;
-          case 'manha_sair':   shift='manha'; type='saida_antecipada'; break;
-          case 'tarde_entrar': shift='tarde'; type='entrada_tarde'; break;
-          case 'tarde_sair':   shift='tarde'; type='saida_antecipada'; break;
-          case 'manha':        shift='manha'; type='entrada_tarde'; break; // legado
-          case 'tarde':        shift='tarde'; type='saida_antecipada'; break; // legado
-          default: // sem preferência: alterna entre sair cedo à tarde e entrar tarde de manhã
-            if (suggestions.length % 2 === 0){ shift='tarde'; type='saida_antecipada'; }
-            else { shift='manha'; type='entrada_tarde'; }
-        }
+        // preferências (pode ter várias): entrar/sair × manhã/tarde — alterna entre as aceitas
+        const ALL=['tarde_sair','manha_entrar','tarde_entrar','manha_sair'];
+        let allowed=String(chosen.dayoff_pref||'').split(',').map(s=>s.trim()).filter(c=>ALL.includes(c));
+        if(!allowed.length) allowed=ALL; // nenhuma marcada => qualquer
+        const code=allowed[suggestions.length % allowed.length];
+        if(code==='manha_entrar'){ shift='manha'; type='entrada_tarde'; }
+        else if(code==='manha_sair'){ shift='manha'; type='saida_antecipada'; }
+        else if(code==='tarde_entrar'){ shift='tarde'; type='entrada_tarde'; }
+        else { shift='tarde'; type='saida_antecipada'; } // tarde_sair
       } else {
         // modo completo (capacidade decide o tamanho)
         if (cap.maxHours>=7){ type='integral'; hours=Math.min(8,cap.maxHours); shift='dia_inteiro'; }

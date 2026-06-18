@@ -126,6 +126,7 @@ const NAV=[
   ['regras','🏪','p','Regras da loja','Horários, turnos e limites'],
   ['relatorios','📈','g','Relatórios','Resumo e índice de justiça'],
   ['simulacao','🧪','r','Simulação','Teste cenários sem risco'],
+  ['relsemana','📋','t','Relatório da semana','Texto pronto para o grupo'],
 ];
 const HOME_KEYS=['dashboard','folgas','escala','sabados','calendario','config'];
 const CONFIG_KEYS=['funcionarias','ferias','pedidos','tiquetaque','regras','relatorios','simulacao'];
@@ -160,7 +161,10 @@ function renderHome(){
   <div class="hero">
     <div class="logo"><span class="em">👓</span> Ótica Carina</div>
     <div class="tag">Sistema de Escalas &amp; Banco de Horas</div>
-    <div style="margin-top:12px"><a href="#tiquetaque" style="color:var(--brand);font-weight:600;font-size:14px">🔄 Sincronizar banco de horas (TiqueTaque)</a></div>
+    <div style="margin-top:12px;display:flex;gap:20px;justify-content:center;flex-wrap:wrap">
+      <a href="#tiquetaque" style="color:var(--brand);font-weight:600;font-size:14px">🔄 Sincronizar banco de horas (TiqueTaque)</a>
+      <a href="#relsemana" style="color:var(--brand);font-weight:600;font-size:14px">📋 Relatório da semana (grupo)</a>
+    </div>
   </div>
   ${cardsFor(HOME_KEYS,'cols3')}`;
   $$('[data-go]').forEach(el=>el.onclick=()=>location.hash='#'+el.dataset.go);
@@ -239,12 +243,11 @@ function empModal(e){
       <div class="field"><label>Status</label><select id="f_status">${['ativa','ferias','licenca','afastada','desligada'].map(s=>`<option ${e.status===s?'selected':''}>${s}</option>`).join('')}</select></div></div>
     <div class="field"><label>Atendimento na ótica</label><select id="f_expert"><option value="false" ${!e.is_expert?'selected':''}>Sabe menos (precisa de apoio)</option><option value="true" ${e.is_expert?'selected':''}>⭐ Especialista (bem treinada)</option></select>
       <div class="reason">No rodízio de sábado, cada dia precisa de pelo menos 1 especialista junto com 1 que sabe menos.</div></div>
-    <div class="field"><label>Preferência ao compensar folga</label><select id="f_dpref">
-      <option value="qualquer" ${(!e.dayoff_pref||e.dayoff_pref==='qualquer')?'selected':''}>Tanto faz (o sistema alterna)</option>
-      <option value="manha_entrar" ${e.dayoff_pref==='manha_entrar'?'selected':''}>Entrar mais tarde (manhã)</option>
-      <option value="manha_sair" ${e.dayoff_pref==='manha_sair'?'selected':''}>Sair mais cedo (manhã)</option>
-      <option value="tarde_entrar" ${e.dayoff_pref==='tarde_entrar'?'selected':''}>Entrar mais tarde (tarde)</option>
-      <option value="tarde_sair" ${e.dayoff_pref==='tarde_sair'?'selected':''}>Sair mais cedo (tarde)</option></select></div>
+    <div class="field"><label>Preferências ao compensar folga (marque uma ou mais)</label>
+      <div style="display:flex;flex-direction:column;gap:7px">
+        ${[['manha_entrar','Entrar mais tarde (manhã)'],['manha_sair','Sair mais cedo (manhã)'],['tarde_entrar','Entrar mais tarde (tarde)'],['tarde_sair','Sair mais cedo (tarde)']].map(([v,l])=>`<label style="display:flex;align-items:center;gap:8px;font-weight:500;font-size:13.5px;margin:0;color:var(--ink)"><input type="checkbox" class="f_dpref" value="${v}" style="width:auto;margin:0" ${String(e.dayoff_pref||'').split(',').includes(v)?'checked':''}/> ${l}</label>`).join('')}
+      </div>
+      <div class="reason">Se não marcar nenhuma, o sistema alterna entre todas as opções.</div></div>
     <div class="grid3">
       <div class="field"><label>Carga semanal (h)</label><input id="f_wh" type="number" value="${e.weekly_hours||44}"/></div>
       <div class="field"><label>Banco de horas (h)</label><input id="f_bank" type="number" step="0.5" value="${e.time_bank_balance||0}"/></div>
@@ -257,7 +260,7 @@ function empModal(e){
     const name=$('#f_name').value.trim(); if(!name){toast('Informe o nome.');return false;}
     const payload={name,cargo:$('#f_cargo').value.trim(),status:$('#f_status').value,weekly_hours:+$('#f_wh').value||44,
       time_bank_balance:+$('#f_bank').value||0,manual_priority:+$('#f_prio').value||0,preferences:$('#f_pref').value.trim(),
-      restrictions:$('#f_restr').value.trim(),notes:$('#f_notes').value.trim(),is_expert:$('#f_expert').value==='true',dayoff_pref:$('#f_dpref').value,is_simulation:S.sim,updated_at:new Date().toISOString()};
+      restrictions:$('#f_restr').value.trim(),notes:$('#f_notes').value.trim(),is_expert:$('#f_expert').value==='true',dayoff_pref:$$('.f_dpref').filter(c=>c.checked).map(c=>c.value).join(','),is_simulation:S.sim,updated_at:new Date().toISOString()};
     const r = e.id ? await T('employees').update(payload).eq('id',e.id) : await T('employees').insert(payload);
     if(r.error){toast('Erro: '+r.error.message);return false;}
     toast('Salvo.'); route(); return true;
@@ -548,6 +551,59 @@ function folgaModal(it,emps,rules){
   const upd=()=>{ const prev={type:$('#ff_type').value,shift:$('#ff_shift').value,hours:+$('#ff_hours').value||3}; $('#ff_preview').textContent='Vai aparecer no calendário como: '+folgaTimeLabel(prev,rules); };
   ['ff_type','ff_shift','ff_hours'].forEach(id=>$('#'+id)?.addEventListener('change',upd)); upd();
 }
+
+// ---------- RELATÓRIO DA SEMANA (texto p/ o grupo) ----------
+function weekReportText(monday, emps, items, rot, vacs, rules){
+  const days=[...Array(7)].map((_,i)=>{ const d=new Date(monday); d.setDate(d.getDate()+i); return Engine.fmt(d); });
+  const start=days[0], end=days[6];
+  const br=(ds)=>ds.split('-').reverse().slice(0,2).join('/');
+  const dshort=['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+  const inWeek=(ds)=>ds&&ds>=start&&ds<=end;
+  const ss=(rules.saturday_start||'14:00').slice(0,5), se=(rules.saturday_end||'17:00').slice(0,5);
+  let out=`*Escala da semana — ${br(start)} a ${br(end)}*\n`;
+  const active=emps.filter(e=>e.status!=='desligada').sort((a,b)=>a.name.localeCompare(b.name));
+  for(const e of active){
+    const lines=[];
+    items.filter(it=>it.employee_id===e.id && inWeek(it.date)).sort((a,b)=>a.date<b.date?-1:1)
+      .forEach(it=>{ const dow=Engine.parse(it.date).getDay(); lines.push(`${dshort[dow]} ${br(it.date)} — ${folgaTimeLabel(it,rules)}`); });
+    rot.filter(r=>r.employee_id===e.id && inWeek(r.saturday_date))
+      .forEach(r=>lines.push(`Sáb ${br(r.saturday_date)} — Trabalha ${ss}–${se}`));
+    const vac=vacs.find(v=>v.employee_id===e.id && v.start_date<=end && v.end_date>=start);
+    if(vac) lines.push(`Férias (${br(vac.start_date)} a ${br(vac.end_date)})`);
+    out+=`\n*${(e.name.split(' ')[0]||e.name).toUpperCase()}*\n`;
+    out+= lines.length ? lines.map(l=>'• '+l).join('\n') : '• Horário normal a semana toda';
+    out+='\n';
+  }
+  return out.trim();
+}
+ROUTES.relsemana=async function(){
+  const today=new Date(); const dow=(today.getDay()+6)%7; // 0=segunda
+  let monday=new Date(today.getFullYear(),today.getMonth(),today.getDate()-dow);
+  async function draw(){
+    const start=Engine.fmt(monday); const end=Engine.fmt(new Date(monday.getFullYear(),monday.getMonth(),monday.getDate()+6));
+    const [emps,rules,items,rot,vacs]=await Promise.all([
+      getAll('employees',b=>b.eq('is_simulation',S.sim).order('name')),
+      T('store_rules').select('*').eq('id',1).maybeSingle().then(r=>r.data||{}),
+      getAll('schedule_items',b=>b.gte('date',start).lte('date',end)),
+      getAll('saturday_rotation',b=>b.gte('saturday_date',start).lte('saturday_date',end)),
+      getAll('vacation_periods')]);
+    const text=weekReportText(monday,emps,items,rot,vacs,rules);
+    const br=(ds)=>ds.split('-').reverse().slice(0,2).join('/');
+    $('#view').innerHTML=`
+    <div class="toolbar">
+      <button class="btn sec sm" id="wkPrev">←</button>
+      <b style="min-width:190px;text-align:center">Semana ${br(start)} a ${br(end)}</b>
+      <button class="btn sec sm" id="wkNext">→</button>
+      <div class="spacer"></div><button class="btn" id="wkCopy">📋 Copiar relatório</button>
+    </div>
+    ${box('info','Texto pronto para colar no grupo da empresa. Use ← → para trocar de semana. Aparecem só as alterações (folgas, sábados, férias) — dias normais não entram.')}
+    <div class="panel"><div class="pb"><pre id="wkText" style="white-space:pre-wrap;font-family:inherit;font-size:14px;margin:0;line-height:1.5">${esc(text)}</pre></div></div>`;
+    $('#wkPrev').onclick=()=>{ monday=new Date(monday.getFullYear(),monday.getMonth(),monday.getDate()-7); draw(); };
+    $('#wkNext').onclick=()=>{ monday=new Date(monday.getFullYear(),monday.getMonth(),monday.getDate()+7); draw(); };
+    $('#wkCopy').onclick=async()=>{ try{ await navigator.clipboard.writeText(text); toast('Relatório copiado! É só colar no grupo.'); }catch(_){ const r=document.createRange(); r.selectNode($('#wkText')); getSelection().removeAllRanges(); getSelection().addRange(r); toast('Texto selecionado — aperte Ctrl+C.'); } };
+  }
+  draw();
+};
 
 // ---------- SÁBADOS (editável + navegação de mês) ----------
 ROUTES.sabados=async function(){
