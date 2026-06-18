@@ -18,6 +18,8 @@ function gate(){ if(!isGestor()){ toast('Apenas o gestor pode alterar dados.'); 
 const todayStr=()=>new Date().toISOString().slice(0,10);
 const MONTHS=['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
 const SHIFT_LABEL={manha:'Manhã',tarde:'Tarde',sabado_tarde:'Sábado tarde'};
+// formata horas decimais -> "2h10min" / "6h" / "-0h59min"
+function fmtH(v){ v=+v||0; const neg=v<0; let m=Math.round(Math.abs(v)*60); const h=Math.floor(m/60); m=m%60; return (neg?'-':'')+h+'h'+(m?String(m).padStart(2,'0')+'min':''); }
 const TYPE_LABEL={integral:'Folga integral',meio_turno:'Meio turno',entrada_tarde:'Entrada mais tarde',saida_antecipada:'Saída antecipada'};
 function box(kind,msg){ return `<div class="alert ${kind}"><span>${kind==='err'?'⚠️':kind==='ok'?'✅':kind==='warn'?'🔔':'ℹ️'}</span><div>${msg}</div></div>`; }
 
@@ -126,13 +128,13 @@ ROUTES.dashboard=async function(){
   let alerts='';
   if(cap.availableForShift<=cap.minPerShift) alerts+=box('err',`<b>Cobertura mínima em risco:</b> ${cap.availableForShift} ativa(s) para mínimo de ${cap.minPerShift} por turno.`);
   if(onVac.length>=1) alerts+=box('warn',`<b>Equipe reduzida:</b> ${onVac.length} em férias. ${cap.note}`);
-  if(highBank.length) alerts+=box('warn',`<b>Banco de horas alto:</b> ${highBank.map(e=>e.name+' ('+e.time_bank_balance+'h)').join(', ')} acima de ${rules.max_time_bank||20}h.`);
+  if(highBank.length) alerts+=box('warn',`<b>Banco de horas alto:</b> ${highBank.map(e=>e.name+' ('+fmtH(e.time_bank_balance)+')').join(', ')} acima de ${fmtH(rules.max_time_bank||20)}.`);
   if(!alerts) alerts=box('ok','Tudo sob controle: cobertura adequada e banco dentro do limite.');
   $('#view').innerHTML=`
   <div class="cards">
     <div class="card"><h3>Funcionárias ativas</h3><div class="kpi">${active.length}<small> / ${emps.length}</small></div></div>
     <div class="card"><h3>Em férias</h3><div class="kpi">${onVac.length}</div></div>
-    <div class="card"><h3>Banco de horas total</h3><div class="kpi">${totalBank.toFixed(0)}<small>h</small></div></div>
+    <div class="card"><h3>Banco de horas total</h3><div class="kpi">${fmtH(totalBank)}</div></div>
     <div class="card"><h3>Capacidade operacional</h3><div class="kpi" style="font-size:17px;text-transform:capitalize">${cap.level.replace('_',' ')}</div><div class="reason">${cap.note}</div></div>
   </div>
   <div class="section">${alerts}</div>
@@ -145,7 +147,7 @@ ROUTES.dashboard=async function(){
     <table><thead><tr><th>Funcionária</th><th>Cargo</th><th>Banco</th><th>Status</th></tr></thead><tbody>
     ${emps.sort((a,b)=>(b.time_bank_balance||0)-(a.time_bank_balance||0)).map(e=>`<tr>
       <td><b>${esc(e.name)}</b></td><td class="muted">${esc(e.cargo||'—')}</td>
-      <td><b>${(+e.time_bank_balance||0).toFixed(0)}h</b></td><td><span class="pill ${e.status}">${e.status}</span></td></tr>`).join('')
+      <td><b>${fmtH(e.time_bank_balance)}</b></td><td><span class="pill ${e.status}">${e.status}</span></td></tr>`).join('')
       ||'<tr><td colspan=4 class="muted" style="padding:18px">Nenhuma funcionária. Sincronize o TiqueTaque ou cadastre manualmente.</td></tr>'}
     </tbody></table></div></div>`;
 };
@@ -161,7 +163,7 @@ ROUTES.funcionarias=async function(){
     <tbody>${emps.map(e=>`<tr>
       <td><b>${esc(e.name)}</b><br><span class="muted" style="font-size:11.5px">${esc(e.preferences||'')}</span></td>
       <td>${esc(e.cargo||'—')}</td><td><span class="pill ${e.status}">${e.status}</span></td>
-      <td>${e.weekly_hours||44}h</td><td><b>${(+e.time_bank_balance||0).toFixed(0)}h</b></td><td>${e.manual_priority||0}</td>
+      <td>${e.weekly_hours||44}h</td><td><b>${fmtH(e.time_bank_balance)}</b></td><td>${e.manual_priority||0}</td>
       <td class="row-actions"><button class="btn ghost sm" data-edit="${e.id}">Editar</button>
         ${isGestor()?`<button class="btn ghost sm" style="color:var(--red)" data-del="${e.id}">Excluir</button>`:''}</td></tr>`).join('')
       ||'<tr><td colspan=7 class="muted" style="padding:18px">Nenhuma funcionária. Clique em “Nova funcionária” ou sincronize o TiqueTaque.</td></tr>'}
@@ -322,7 +324,7 @@ ROUTES.tiquetaque=async function(){
     const emps=await getAll('employees',b=>b.eq('is_simulation',false));
     const names=emps.map(e=>e.name.toLowerCase());
     $('#impPreview').innerHTML=`<div class="section"><table><thead><tr><th>Funcionária</th><th>Saldo</th></tr></thead>
-      <tbody>${parsed.map(p=>`<tr><td>${names.includes(p.name.toLowerCase())?'✅':'➕'} ${esc(p.name)}</td><td>${p.balance}h</td></tr>`).join('')}</tbody></table>
+      <tbody>${parsed.map(p=>`<tr><td>${names.includes(p.name.toLowerCase())?'✅':'➕'} ${esc(p.name)}</td><td>${fmtH(p.balance)}</td></tr>`).join('')}</tbody></table>
       <button class="btn" id="confirmImp" style="margin-top:10px">Confirmar importação (${parsed.length})</button></div>`;
     $('#confirmImp').onclick=async()=>{ if(!gate())return;
       const imp=await T('time_bank_imports').insert({source:'planilha',file_name:f.name,period_start:null,period_end:null,row_count:parsed.length,imported_by:S.user.id}).select().single();
@@ -493,7 +495,7 @@ ROUTES.relatorios=async function(){
   </div>
   <div class="section panel"><div class="ph"><h3>Resumo por funcionária — ${MONTHS[month-1]} ${year}</h3></div><div class="pb" style="padding:0">
     <table><thead><tr><th>Funcionária</th><th>Banco atual</th><th>Folgas</th><th>Sábados</th><th>Faltas</th><th>Recusas</th></tr></thead>
-    <tbody>${perEmp.map(p=>`<tr><td><b>${esc(p.e.name)}</b></td><td>${(+p.e.time_bank_balance||0).toFixed(0)}h</td><td>${p.folgas}</td><td>${p.sabados}</td><td>${p.faltas}</td><td>${p.recusas}</td></tr>`).join('')||'<tr><td colspan=6 class="muted" style="padding:16px">Sem dados.</td></tr>'}
+    <tbody>${perEmp.map(p=>`<tr><td><b>${esc(p.e.name)}</b></td><td>${fmtH(p.e.time_bank_balance)}</td><td>${p.folgas}</td><td>${p.sabados}</td><td>${p.faltas}</td><td>${p.recusas}</td></tr>`).join('')||'<tr><td colspan=6 class="muted" style="padding:16px">Sem dados.</td></tr>'}
     </tbody></table></div></div>`;
 };
 
