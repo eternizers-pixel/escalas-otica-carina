@@ -104,7 +104,7 @@ window.Engine = (function () {
   // tempo sem folgar, cobertura mínima, férias, pedidos e recusas.
   function suggestDayOffs(opts) {
     const { employees, rules, vacations, requests=[], refusals=[], history={},
-            blockedDates=[], year, month, horizonDays=14, startDate } = opts;
+            blockedDates=[], horizonDays=14, startDate } = opts;
     const cap = operationalCapacity(employees, rules);
     const logs=[]; const suggestions=[];
     const minBank = rules.min_time_bank_for_dayoff ?? 6;
@@ -112,14 +112,10 @@ window.Engine = (function () {
     const active  = employees.filter(e=>e.status==='ativa');
     const onVac = (e, dStr) => vacations.some(v => v.employee_id===e.id && dStr>=v.start_date && dStr<=v.end_date);
     const blocked = (dStr) => blockedDates.some(b=>b.date===dStr);
+    const DIAS = ['domingo','segunda-feira','terça-feira','quarta-feira','quinta-feira','sexta-feira','sábado'];
+    const fmtHoras = (v)=>{ v=+v||0; const neg=v<0; let m=Math.round(Math.abs(v)*60); const h=Math.floor(m/60); m=m%60; return (neg?'-':'')+h+'h'+(m?String(m).padStart(2,'0')+'min':''); };
+    const todayISO = fmt(new Date());
 
-    // candidatas elegíveis: banco >= mínimo e não em férias/afastadas
-    let pool = active.filter(e => (e.time_bank_balance||0) >= minBank);
-    if (pool.length===0){
-      logs.push({type:'bloqueio', message:`Nenhuma funcionária com banco de horas acima do mínimo de ${minBank}h para sugerir folga.`});
-    }
-
-    // ranking de prioridade: + banco, + tempo sem folgar, + prioridade manual
     const scoreOf = (e)=>{
       const h=history[e.id]||{};
       const bank=e.time_bank_balance||0;
@@ -128,58 +124,74 @@ window.Engine = (function () {
       return bank*1.4 + since*0.8 + (e.manual_priority||0)*5 - recentPenalty;
     };
 
+    // equipe abaixo do mínimo: nem gera (exige aprovação manual)
+    if (cap.maxHours===0){
+      logs.push({type:'bloqueio', message:cap.note+' Geração de folgas suspensa até a equipe voltar ao mínimo.'});
+      return { suggestions, logs, capacity:cap };
+    }
+    // elegíveis: banco acima do mínimo configurado
+    let pool = active.filter(e => (e.time_bank_balance||0) >= minBank);
+    if (pool.length===0){
+      logs.push({type:'bloqueio', message:`Ninguém tem banco de horas acima de ${fmtHoras(minBank)} agora — não há horas a compensar com folga. (Esse mínimo é ajustável em Regras da loja.)`});
+      return { suggestions, logs, capacity:cap };
+    }
+
     const start = startDate ? parse(startDate) : new Date();
-    const used = new Set(); // 1 sugestão por funcionária por geração
-    for (let i=0;i<horizonDays;i++){
+    const used = new Set(); // no máximo 1 folga por pessoa nesta geração
+    for (let i=0;i<=horizonDays;i++){
       const d=new Date(start); d.setDate(d.getDate()+i);
       const dStr=fmt(d); const dow=d.getDay();
-      if (dow===0) continue;                       // loja fechada domingo
-      if (blocked(dStr)){ continue; }              // dia bloqueado p/ folga
-      // cobertura disponível neste dia
-      const availToday = active.filter(e=>!onVac(e,dStr) && !used.has(e.id));
-      // candidatas do dia
+      if (dStr<=todayISO) continue;                 // não sugere hoje nem dias que já passaram
+      if (dow===0) continue;                        // domingo: loja fechada
+      if (dow===6) continue;                        // sábado: controlado pelo Rodízio de sábados
+      if (blocked(dStr)) continue;                  // dia bloqueado para folga
+
+      // disponíveis de fato nesse dia (ativas e não de férias)
+      const availDay = active.filter(e=>!onVac(e,dStr));
       const cands = pool
         .filter(e=>!used.has(e.id) && !onVac(e,dStr))
         .filter(e=>!refusals.some(r=>r.employee_id===e.id && r.date===dStr))
         .sort((a,b)=>scoreOf(b)-scoreOf(a));
-      if (cap.maxHours===0){
-        if (i===0) logs.push({type:'bloqueio', message:cap.note+' Geração automática suspensa até regularizar a equipe.'});
-        break;
+      if (cands.length===0) continue;
+
+      // liberar 1 folga nesse dia deixa quantos na loja?
+      if (availDay.length - 1 < minPer){
+        logs.push({type:'bloqueio',
+          message:`${DIAS[dow]} (${dStr}): não dá para liberar folga — só ${availDay.length} pessoa(s) disponível(is) e o mínimo da loja é ${minPer}.`});
+        continue;
       }
+
+      // maior prioridade que não esbarre na regra das sextas
+      let chosen=null;
       for (const e of cands){
-        // se liberar esta pessoa, mantém cobertura mínima?
-        const remaining = availToday.filter(x=>x.id!==e.id).length;
-        if (remaining < minPer){
-          logs.push({type:'bloqueio', employee_id:e.id, employee_name:e.name,
-            message:`Folga de ${e.name} em ${DOW[dow]} (${dStr}) evitada: a loja ficaria com ${remaining} pessoa(s), abaixo do mínimo de ${minPer}.`});
-          continue;
-        }
-        // turno e tamanho da folga conforme capacidade
-        let type, hours, shift;
-        if (cap.maxHours>=7){ type='integral'; hours=Math.min(8,cap.maxHours); shift='tarde'; }
-        else if (cap.maxHours>=4){ type='meio_turno'; hours=4; shift='tarde'; }
-        else { type='saida_antecipada'; hours=cap.maxHours; shift='tarde'; }
-        // evita sexta repetida
         const h=history[e.id]||{};
         if (dow===5 && (h.fridaysOff||0)>=2){
           logs.push({type:'bloqueio', employee_id:e.id, employee_name:e.name,
-            message:`Folga de sexta evitada para ${e.name}: já teve ${h.fridaysOff} sextas de folga neste mês.`});
+            message:`${e.name} não recebe esta sexta: já folgou 2 sextas no mês — passando a vez para manter o equilíbrio.`});
           continue;
         }
-        const since=(h.lastDayOffDays==null?'há bastante tempo':`há ${h.lastDayOffDays} dias`);
-        const reason=`${e.name} recebeu sugestão de folga ${DOW[dow]} à ${shift==='tarde'?'tarde':'manhã'} `+
-          `porque possui ${e.time_bank_balance}h de banco, não folga ${since} e a loja mantém a cobertura mínima de ${minPer} pessoas no período.`;
-        suggestions.push({ employee_id:e.id, employee_name:e.name, date:dStr, shift, type, hours, reason,
-          score:Math.round(scoreOf(e)) });
-        logs.push({type:'sugestao', employee_id:e.id, employee_name:e.name, message:reason});
-        used.add(e.id);
-        break; // uma sugestão por dia, segue para o próximo dia
+        chosen=e; break;
       }
+      if (!chosen) continue;
+
+      const remaining = availDay.length - 1;
+      let type, hours, shift;
+      if (cap.maxHours>=7){ type='integral'; hours=Math.min(8,cap.maxHours); shift='dia_inteiro'; }
+      else if (cap.maxHours>=4){ type='meio_turno'; hours=4; shift='tarde'; }
+      else { type='saida_antecipada'; hours=cap.maxHours; shift='tarde'; }
+      const quando = type==='integral' ? 'o dia inteiro' : (shift==='tarde' ? 'à tarde' : 'de manhã');
+      const h=history[chosen.id]||{};
+      const since=(h.lastDayOffDays==null?'há bastante tempo':`há ${h.lastDayOffDays} dias`);
+      const reason=`${chosen.name} pode folgar ${DIAS[dow]} (${dStr}), ${quando} — tem ${fmtHoras(chosen.time_bank_balance)} de banco de horas, não folga ${since}, e a loja ainda fica com ${remaining} pessoas no dia (mínimo ${minPer}).`;
+      suggestions.push({ employee_id:chosen.id, employee_name:chosen.name, date:dStr, shift, type, hours, reason, score:Math.round(scoreOf(chosen)) });
+      logs.push({type:'sugestao', employee_id:chosen.id, employee_name:chosen.name, message:reason});
+      used.add(chosen.id);
+      if (used.size>=pool.length) break;            // todas as elegíveis já têm uma folga
     }
-    // pedidos especiais pendentes viram destaque
+
     requests.filter(r=>r.status==='pendente' && r.request_type==='pedido_folga').forEach(r=>{
       logs.push({type:'sugestao', employee_id:r.employee_id, employee_name:r.employee_name,
-        message:`Pedido de folga de ${r.employee_name} em ${r.date||'data a definir'} aguarda aprovação do gestor.`});
+        message:`Pedido de folga de ${r.employee_name} em ${r.date||'data a definir'} aguarda sua aprovação.`});
     });
     return { suggestions, logs, capacity:cap };
   }

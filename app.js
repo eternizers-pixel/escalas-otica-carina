@@ -17,7 +17,7 @@ function toast(msg){const t=$('#toast');t.textContent=msg;t.classList.add('show'
 function gate(){ if(!isGestor()){ toast('Apenas o gestor pode alterar dados.'); return false;} return true; }
 const todayStr=()=>new Date().toISOString().slice(0,10);
 const MONTHS=['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
-const SHIFT_LABEL={manha:'Manhã',tarde:'Tarde',sabado_tarde:'Sábado tarde'};
+const SHIFT_LABEL={manha:'Manhã',tarde:'Tarde',sabado_tarde:'Sábado tarde',dia_inteiro:'Dia inteiro'};
 // formata horas decimais -> "2h10min" / "6h" / "-0h59min"
 function fmtH(v){ v=+v||0; const neg=v<0; let m=Math.round(Math.abs(v)*60); const h=Math.floor(m/60); m=m%60; return (neg?'-':'')+h+'h'+(m?String(m).padStart(2,'0')+'min':''); }
 const TYPE_LABEL={integral:'Folga integral',meio_turno:'Meio turno',entrada_tarde:'Entrada mais tarde',saida_antecipada:'Saída antecipada'};
