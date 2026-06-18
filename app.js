@@ -260,7 +260,7 @@ ROUTES.tiquetaque=async function(){
   const imports=await getAll('time_bank_imports',b=>b.order('imported_at',{ascending:false}).limit(10));
   const firstDay=new Date(); firstDay.setDate(1);
   $('#view').innerHTML=`
-  ${box('info','<b>Integração TiqueTaque (API oficial).</b> A sincronização busca os <b>nomes das funcionárias</b> e o <b>banco de horas</b> direto da sua conta TiqueTaque, com segurança (o token fica guardado no servidor, nunca no navegador).')}
+  ${box('info','<b>Sincronização automática (API):</b> traz nomes, cargos e o <b>saldo consolidado do último mês fechado</b> — o número confiável que a API do TiqueTaque entrega. O <b>Total ao vivo</b> (saldo + parcial do mês corrente) não é exposto pela API; para ele, use <b>Exportar</b> no TiqueTaque e importe a planilha aqui (o sistema lê a coluna <b>Total</b>).')}
   <div class="grid2">
     <div class="panel"><div class="ph"><h3>🔄 Sincronizar agora</h3></div><div class="pb">
       <div class="grid2"><div class="field"><label>Período de</label><input id="tt_from" type="date" value="${firstDay.toISOString().slice(0,10)}"/></div>
@@ -269,7 +269,7 @@ ROUTES.tiquetaque=async function(){
       <div id="ttOut" class="section"></div>
     </div></div>
     <div class="panel"><div class="ph"><h3>Importar planilha (alternativa)</h3></div><div class="pb">
-      <p class="muted" style="margin-top:0">Caso prefira, importe um Excel/CSV exportado do TiqueTaque. Colunas: nome, saldo, horas_positivas, horas_negativas, faltas, atrasos, saidas_antecipadas, batidas_faltantes.</p>
+      <p class="muted" style="margin-top:0">Exporte o banco de horas no TiqueTaque (botão Exportar) e importe aqui. O sistema usa a coluna <b>Total</b> (saldo real); se não houver, usa Saldo. Aceita formatos como <i>11h07min</i> ou <i>11,12</i>.</p>
       <div class="field"><label>Arquivo (.xlsx/.csv)</label><input id="imp_file" type="file" accept=".xlsx,.xls,.csv" ${isGestor()?'':'disabled'}/></div>
       <div id="impPreview"></div>
     </div></div>
@@ -305,12 +305,19 @@ ROUTES.tiquetaque=async function(){
     const buf=await f.arrayBuffer(); const wb=XLSX.read(buf,{type:'array'});
     const rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:''});
     const norm=(k)=>k.toString().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z]/g,'');
+    // aceita "11h07min", "11h07", "11:07", "-00h59min", "11,12", "11.12", "11"
+    const parseHoras=(v)=>{ if(v==null||v==='')return null; let s=v.toString().trim();
+      const m=s.replace(',','.').match(/^(-?)\s*(\d+)\s*[h:]\s*(\d{1,2})/i);
+      if(m){const sign=m[1]==='-'?-1:1; return sign*(parseInt(m[2])+parseInt(m[3])/60);}
+      const n=parseFloat(s.replace(',','.')); return isFinite(n)?n:null; };
     parsed=rows.map(r=>{const o={};for(const k in r)o[norm(k)]=r[k];
+      // prioriza a coluna TOTAL (saldo real disponível); senão usa Saldo/Banco
+      const bal = parseHoras(o.total) ?? parseHoras(o.saldo ?? o.bancodehoras ?? o.banco) ?? 0;
       return {name:(o.nome||o.funcionaria||o.colaborador||'').toString().trim(),
-        balance:+`${o.saldo||o.bancodehoras||o.banco||0}`.toString().replace(',','.')||0,
-        positive:+`${o.horaspositivas||o.positivas||0}`.toString().replace(',','.')||0,
-        negative:+`${o.horasnegativas||o.negativas||0}`.toString().replace(',','.')||0,
-        absences:+o.faltas||0,lates:+o.atrasos||0,early:+o.saidasantecipadas||o.saidas||0,missing:+o.batidasfaltantes||o.batidas||0};
+        balance: Math.round(bal*100)/100,
+        positive:parseHoras(o.parcialmes ?? o.parcial ?? o.horaspositivas ?? o.positivas)||0,
+        negative:parseHoras(o.horasnegativas ?? o.negativas)||0,
+        absences:+o.faltas||0,lates:+o.atrasos||0,early:+o.saidasantecipadas||+o.saidas||0,missing:+o.batidasfaltantes||+o.batidas||0};
     }).filter(r=>r.name);
     const emps=await getAll('employees',b=>b.eq('is_simulation',false));
     const names=emps.map(e=>e.name.toLowerCase());
