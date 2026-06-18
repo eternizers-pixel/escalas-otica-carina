@@ -473,20 +473,28 @@ ROUTES.folgas=async function(){
   const fresh=await bankFreshnessBanner();
   $('#view').innerHTML=`
   ${fresh}
-  <div class="toolbar"><button class="btn" id="gen" ${isGestor()?'':'disabled'}>⚡ Gerar sugestões (14 dias)</button>
-    <button class="btn sec" id="regen">↻ Recalcular</button><div class="spacer"></div><span class="muted" id="capInfo"></span></div>
-  <div id="folgaOut"><p class="muted">O sistema sugere — você aprova. Clique em “Gerar sugestões”.</p></div>`;
+  <div class="toolbar"><button class="btn sec" id="regen">↻ Recalcular</button><div class="spacer"></div><span class="muted" id="capInfo"></span></div>
+  <div id="folgaOut"><p class="muted">Carregando sugestões da semana…</p></div>`;
   async function run(){
-    const out=Engine.suggestDayOffs({employees:emps,rules,vacations:vacs,requests:reqs,refusals,blockedDates:blk,year,month,horizonDays:14,startDate:todayStr(),history});
-    $('#capInfo').textContent=`Capacidade: ${out.capacity.level.replace('_',' ')} · folga máx ${out.capacity.maxHours}h`;
-    const sugRows=out.suggestions.map((s,i)=>`<tr><td><b>${esc(s.employee_name)}</b></td><td>${Engine.DOW[Engine.parse(s.date).getDay()]} ${s.date}</td><td>${SHIFT_LABEL[s.shift]||s.shift}</td><td>${TYPE_LABEL[s.type]}</td><td>${s.hours}h</td>
-      <td class="row-actions" id="act${i}">${isGestor()?`<button class="btn sm" data-ap="${i}">Aprovar</button><button class="btn sec sm" data-rf="${i}">Recusar</button>`:'<span class="muted">—</span>'}</td></tr>
-      <tr><td colspan="6"><div class="reason">${esc(s.reason)}</div></td></tr>`).join('');
+    const out=Engine.suggestDayOffs({employees:emps,rules,vacations:vacs,requests:reqs,refusals,blockedDates:blk,year,month,horizonDays:7,startDate:todayStr(),history});
+    $('#capInfo').textContent=`Próximos 7 dias · capacidade ${out.capacity.level.replace('_',' ')}`;
+    const sugCards=out.suggestions.map((s,i)=>{
+      const dia=Engine.DOW[Engine.parse(s.date).getDay()]; const dataBR=s.date.split('-').reverse().slice(0,2).join('/');
+      return `<div class="card" style="margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
+          <div style="min-width:0">
+            <div style="font-weight:700;font-size:15px">${esc(s.employee_name)}</div>
+            <div class="muted" style="font-size:13px;margin-top:2px">${dia} ${dataBR} · ${TYPE_LABEL[s.type]||s.type} (${SHIFT_LABEL[s.shift]||s.shift}) · ${s.hours}h</div>
+          </div>
+          <div class="row-actions" id="act${i}">${isGestor()?`<button class="btn sm" data-ap="${i}">Aprovar</button><button class="btn sec sm" data-rf="${i}">Recusar</button>`:'<span class="muted">—</span>'}</div>
+        </div>
+        <div class="reason" style="margin-top:8px">${esc(s.reason)}</div></div>`;
+    }).join('');
     const logRows=out.logs.map(l=>`<div class="reason" style="border-left-color:${l.type==='bloqueio'?'var(--red)':l.type==='rodizio'?'var(--purple)':'var(--brand)'}">${l.type==='bloqueio'?'🚫':l.type==='rodizio'?'🔁':'✅'} ${esc(l.message)}</div>`).join('');
-    $('#folgaOut').innerHTML=`${out.suggestions.length?'':box('warn','Nenhuma folga sugerida — verifique banco mínimo, cobertura ou capacidade (veja o log).')}
-      <div class="panel"><div class="ph"><h3>Sugestões de folga</h3><span class="muted">${out.suggestions.length} sugestão(ões)</span></div>
-        <div class="pb" style="padding:0"><table><thead><tr><th>Funcionária</th><th>Dia</th><th>Turno</th><th>Tipo</th><th>Horas</th><th>Ação</th></tr></thead><tbody>${sugRows||'<tr><td colspan=6 class="muted" style="padding:16px">Sem sugestões.</td></tr>'}</tbody></table></div></div>
-      <div class="section panel"><div class="ph"><h3>🧠 Log de decisão</h3><span class="muted">por que cada decisão foi tomada</span></div><div class="pb">${logRows||'<span class="muted">Sem registros.</span>'}</div></div>`;
+    $('#folgaOut').innerHTML=`${out.suggestions.length?'':box('warn','Nenhuma folga sugerida nesta semana — veja o motivo no log abaixo.')}
+      <div class="panel"><div class="ph"><h3>Sugestões da semana</h3><span class="muted">${out.suggestions.length} sugestão(ões)</span></div>
+        <div class="pb">${sugCards||'<span class="muted">Sem sugestões.</span>'}</div></div>
+      <div class="section panel"><div class="ph"><h3>🧠 Log de decisão</h3></div><div class="pb">${logRows||'<span class="muted">Sem registros.</span>'}</div></div>`;
     $$('[data-ap]').forEach(b=>b.onclick=async()=>{ if(!gate())return; const i=+b.dataset.ap; b.disabled=true;
       await saveApproval(out.suggestions[i],year,month);
       $('#act'+i).innerHTML='<span class="pill ativa">✓ Aprovado</span>'; toast('Folga aprovada — veja em Folgas aprovadas.'); });
@@ -500,7 +508,7 @@ ROUTES.folgas=async function(){
     await T('schedule_items').insert({schedule_id:sched.id,employee_id:s.employee_id,employee_name:s.employee_name,date:s.date,shift:s.shift,type:s.type,hours:s.hours,status:'aprovado',reason:s.reason});
     await T('decision_logs').insert({schedule_id:sched.id,employee_id:s.employee_id,employee_name:s.employee_name,decision_type:'sugestao',message:s.reason,is_simulation:S.sim});
   }
-  $('#gen')?.addEventListener('click',run); $('#regen').onclick=run;
+  $('#regen').onclick=run; run();
 };
 
 // ---------- FOLGAS APROVADAS (ver / editar / lançar) ----------
