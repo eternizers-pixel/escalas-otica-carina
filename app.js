@@ -20,6 +20,23 @@ const MONTHS=['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Ago
 const SHIFT_LABEL={manha:'Manhã',tarde:'Tarde',sabado_tarde:'Sábado tarde',dia_inteiro:'Dia inteiro'};
 // formata horas decimais -> "2h10min" / "6h" / "-0h59min"
 function fmtH(v){ v=+v||0; const neg=v<0; let m=Math.round(Math.abs(v)*60); const h=Math.floor(m/60); m=m%60; return (neg?'-':'')+h+'h'+(m?String(m).padStart(2,'0')+'min':''); }
+// soma/subtrai horas a um horário "HH:MM"
+function addHM(t,deltaH){ const [hh,mm]=(t||'00:00').split(':').map(Number); let m=hh*60+mm+Math.round((+deltaH||0)*60); m=((m%1440)+1440)%1440; return String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0'); }
+// rótulo de horário da folga conforme tipo/período e horários da loja
+function folgaTimeLabel(it,r){
+  r=r||{}; const h=+it.hours||0;
+  const cM=r.close_morning||'12:00', oM=r.open_morning||'09:00', cT=r.close_afternoon||'18:00', oT=r.open_afternoon||'14:00';
+  if(it.type==='saida_antecipada') return 'Saída '+addHM(it.shift==='manha'?cM:cT, -h);
+  if(it.type==='entrada_tarde')    return 'Entrada '+addHM(it.shift==='manha'?oM:oT, h);
+  if(it.type==='integral')         return 'Folga o dia todo';
+  if(it.type==='meio_turno')       return 'Meio turno '+(it.shift==='manha'?'manhã':'tarde');
+  return TYPE_LABEL[it.type]||'Folga';
+}
+async function getOrCreateSchedule(year,month){
+  let s=(await T('schedules').select('*').eq('is_simulation',S.sim).eq('year',year).eq('month',month).order('created_at',{ascending:false}).limit(1).maybeSingle()).data;
+  if(!s) s=(await T('schedules').insert({year,month,status:'aprovada',is_simulation:S.sim,created_by:S.user.id}).select().single()).data;
+  return s;
+}
 const TYPE_LABEL={integral:'Folga integral',meio_turno:'Meio turno',entrada_tarde:'Entrada mais tarde',saida_antecipada:'Saída antecipada'};
 function box(kind,msg){ return `<div class="alert ${kind}"><span>${kind==='err'?'⚠️':kind==='ok'?'✅':kind==='warn'?'🔔':'ℹ️'}</span><div>${msg}</div></div>`; }
 
@@ -99,6 +116,7 @@ const NAV=[
   ['dashboard','📊','b','Dashboard','Visão geral, alertas e resumo do mês'],
   ['funcionarias','👥','g','Funcionárias','Cadastro, cargos e banco de horas'],
   ['folgas','🌴','t','Motor de folgas','Sugestões inteligentes e justas'],
+  ['escala','📋','g','Folgas aprovadas','Ver, editar e lançar folgas'],
   ['sabados','📅','p','Rodízio de sábados','2 primeiros sábados, equilibrado'],
   ['calendario','🗓️','b','Calendário','Visão mensal de folgas e férias'],
   ['ferias','✈️','a','Férias','Períodos e impacto na escala'],
@@ -449,16 +467,19 @@ ROUTES.folgas=async function(){
     const out=Engine.suggestDayOffs({employees:emps,rules,vacations:vacs,requests:reqs,refusals,blockedDates:blk,year,month,horizonDays:14,startDate:todayStr(),history});
     $('#capInfo').textContent=`Capacidade: ${out.capacity.level.replace('_',' ')} · folga máx ${out.capacity.maxHours}h`;
     const sugRows=out.suggestions.map((s,i)=>`<tr><td><b>${esc(s.employee_name)}</b></td><td>${Engine.DOW[Engine.parse(s.date).getDay()]} ${s.date}</td><td>${SHIFT_LABEL[s.shift]||s.shift}</td><td>${TYPE_LABEL[s.type]}</td><td>${s.hours}h</td>
-      <td class="row-actions">${isGestor()?`<button class="btn sm" data-ap="${i}">Aprovar</button><button class="btn sec sm" data-rf="${i}">Recusar</button>`:'<span class="muted">—</span>'}</td></tr>
+      <td class="row-actions" id="act${i}">${isGestor()?`<button class="btn sm" data-ap="${i}">Aprovar</button><button class="btn sec sm" data-rf="${i}">Recusar</button>`:'<span class="muted">—</span>'}</td></tr>
       <tr><td colspan="6"><div class="reason">${esc(s.reason)}</div></td></tr>`).join('');
     const logRows=out.logs.map(l=>`<div class="reason" style="border-left-color:${l.type==='bloqueio'?'var(--red)':l.type==='rodizio'?'var(--purple)':'var(--brand)'}">${l.type==='bloqueio'?'🚫':l.type==='rodizio'?'🔁':'✅'} ${esc(l.message)}</div>`).join('');
     $('#folgaOut').innerHTML=`${out.suggestions.length?'':box('warn','Nenhuma folga sugerida — verifique banco mínimo, cobertura ou capacidade (veja o log).')}
       <div class="panel"><div class="ph"><h3>Sugestões de folga</h3><span class="muted">${out.suggestions.length} sugestão(ões)</span></div>
         <div class="pb" style="padding:0"><table><thead><tr><th>Funcionária</th><th>Dia</th><th>Turno</th><th>Tipo</th><th>Horas</th><th>Ação</th></tr></thead><tbody>${sugRows||'<tr><td colspan=6 class="muted" style="padding:16px">Sem sugestões.</td></tr>'}</tbody></table></div></div>
       <div class="section panel"><div class="ph"><h3>🧠 Log de decisão</h3><span class="muted">por que cada decisão foi tomada</span></div><div class="pb">${logRows||'<span class="muted">Sem registros.</span>'}</div></div>`;
-    $$('[data-ap]').forEach(b=>b.onclick=async()=>{ if(!gate())return; await saveApproval(out.suggestions[+b.dataset.ap],year,month); toast('Folga aprovada e registrada.'); });
-    $$('[data-rf]').forEach(b=>b.onclick=async()=>{ if(!gate())return; const s=out.suggestions[+b.dataset.rf]; const motivo=prompt('Motivo da recusa:','')||'';
-      await T('dayoff_requests').insert({employee_id:s.employee_id,employee_name:s.employee_name,date:s.date,shift:s.shift,type:s.type,request_type:'recusa_folga',reason:motivo,status:'recusado'}); toast('Recusa registrada. Recalcule.'); });
+    $$('[data-ap]').forEach(b=>b.onclick=async()=>{ if(!gate())return; const i=+b.dataset.ap; b.disabled=true;
+      await saveApproval(out.suggestions[i],year,month);
+      $('#act'+i).innerHTML='<span class="pill ativa">✓ Aprovado</span>'; toast('Folga aprovada — veja em Folgas aprovadas.'); });
+    $$('[data-rf]').forEach(b=>b.onclick=async()=>{ if(!gate())return; const i=+b.dataset.rf; const s=out.suggestions[i]; const motivo=prompt('Motivo da recusa:','')||'';
+      await T('dayoff_requests').insert({employee_id:s.employee_id,employee_name:s.employee_name,date:s.date,shift:s.shift,type:s.type,request_type:'recusa_folga',reason:motivo,status:'recusado'});
+      $('#act'+i).innerHTML='<span class="pill afastada">✗ Recusado</span>'; toast('Recusa registrada. Recalcule para nova sugestão.'); });
   }
   async function saveApproval(s,y,m){
     let sched=(await T('schedules').select('*').eq('is_simulation',S.sim).eq('year',y).eq('month',m).order('created_at',{ascending:false}).limit(1).maybeSingle()).data;
@@ -468,6 +489,58 @@ ROUTES.folgas=async function(){
   }
   $('#gen')?.addEventListener('click',run); $('#regen').onclick=run;
 };
+
+// ---------- FOLGAS APROVADAS (ver / editar / lançar) ----------
+ROUTES.escala=async function(){
+  const ini=todayStr().slice(0,8)+'01';
+  const [emps,rules,items]=await Promise.all([
+    getAll('employees',b=>b.eq('is_simulation',S.sim).order('name')),
+    T('store_rules').select('*').eq('id',1).maybeSingle().then(r=>r.data||{}),
+    getAll('schedule_items',b=>b.gte('date',ini).order('date'))]);
+  const map=Object.fromEntries(emps.map(e=>[e.id,e.name]));
+  $('#view').innerHTML=`
+  <div class="toolbar"><button class="btn" id="addFolga" ${isGestor()?'':'disabled'}>+ Lançar folga</button>
+    <div class="spacer"></div><span class="muted">${items.length} folga(s) a partir deste mês</span></div>
+  ${box('info','Todas as folgas aprovadas. <b>Editar</b> troca o dia/horário, <b>Remover</b> apaga — útil quando a funcionária pede um dia diferente do que o sistema sugeriu. Você também pode <b>lançar</b> uma folga do zero.')}
+  <div class="panel"><div class="pb" style="padding:0"><table>
+    <thead><tr><th>Data</th><th>Funcionária</th><th>Compensação</th><th>Status</th><th></th></tr></thead>
+    <tbody>${items.map(it=>`<tr>
+      <td><b>${(it.date||'').split('-').reverse().join('/')}</b><br><span class="muted" style="font-size:11.5px">${it.date?Engine.DOW[Engine.parse(it.date).getDay()]:''}</span></td>
+      <td><b>${esc(it.employee_name||map[it.employee_id]||'')}</b></td>
+      <td><b>${folgaTimeLabel(it,rules)}</b> <span class="muted">(${TYPE_LABEL[it.type]||it.type}${it.hours?' · '+it.hours+'h':''})</span></td>
+      <td><span class="pill ${it.status==='aprovado'?'ativa':it.status==='recusado'?'afastada':'ferias'}">${it.status==='aprovado'?'Aprovado':it.status}</span></td>
+      <td class="row-actions">${isGestor()?`<button class="btn ghost sm" data-edf="${it.id}">Editar</button><button class="btn ghost sm" style="color:var(--red)" data-delf="${it.id}">Remover</button>`:''}</td>
+    </tr>`).join('')||'<tr><td colspan=5 class="muted" style="padding:18px">Nenhuma folga registrada. Aprove no Motor de folgas ou clique em “Lançar folga”.</td></tr>'}
+    </tbody></table></div></div>`;
+  $('#addFolga')?.addEventListener('click',()=>folgaModal(null,emps,rules));
+  $$('[data-edf]').forEach(b=>b.onclick=()=>folgaModal(items.find(x=>x.id===b.dataset.edf),emps,rules));
+  $$('[data-delf]').forEach(b=>b.onclick=async()=>{ if(!gate())return; if(!confirm('Remover esta folga?'))return; await T('schedule_items').delete().eq('id',b.dataset.delf); toast('Folga removida.'); route(); });
+};
+function folgaModal(it,emps,rules){
+  it=it||{};
+  openModal(it.id?'Editar folga':'Lançar folga',`
+    <div class="field"><label>Funcionária</label><select id="ff_emp">${emps.map(e=>`<option value="${e.id}" ${it.employee_id===e.id?'selected':''}>${esc(e.name)}</option>`).join('')}</select></div>
+    <div class="grid2">
+      <div class="field"><label>Data</label><input id="ff_date" type="date" value="${it.date||todayStr()}"/></div>
+      <div class="field"><label>Horas</label><input id="ff_hours" type="number" step="0.5" value="${it.hours||3}"/></div></div>
+    <div class="grid2">
+      <div class="field"><label>Período</label><select id="ff_shift"><option value="tarde" ${(it.shift==='tarde'||!it.shift)?'selected':''}>Tarde</option><option value="manha" ${it.shift==='manha'?'selected':''}>Manhã</option></select></div>
+      <div class="field"><label>Ação</label><select id="ff_type"><option value="saida_antecipada" ${it.type!=='entrada_tarde'?'selected':''}>Sair mais cedo</option><option value="entrada_tarde" ${it.type==='entrada_tarde'?'selected':''}>Entrar mais tarde</option></select></div></div>
+    <div class="reason" id="ff_preview"></div>
+  `,async()=>{
+    if(!gate())return false;
+    const emp=emps.find(e=>e.id===$('#ff_emp').value);
+    const date=$('#ff_date').value; if(!date){toast('Informe a data.');return false;}
+    const d=Engine.parse(date);
+    const sched=await getOrCreateSchedule(d.getFullYear(), d.getMonth()+1);
+    const payload={schedule_id:sched.id, employee_id:emp.id, employee_name:emp.name, date, shift:$('#ff_shift').value, type:$('#ff_type').value, hours:+$('#ff_hours').value||3, status:'aprovado', reason:'Lançada/editada manualmente'};
+    const r = it.id ? await T('schedule_items').update(payload).eq('id',it.id) : await T('schedule_items').insert(payload);
+    if(r.error){toast(r.error.message);return false;}
+    toast('Folga salva.'); route(); return true;
+  });
+  const upd=()=>{ const prev={type:$('#ff_type').value,shift:$('#ff_shift').value,hours:+$('#ff_hours').value||3}; $('#ff_preview').textContent='Vai aparecer no calendário como: '+folgaTimeLabel(prev,rules); };
+  ['ff_type','ff_shift','ff_hours'].forEach(id=>$('#'+id)?.addEventListener('change',upd)); upd();
+}
 
 // ---------- SÁBADOS (editável + navegação de mês) ----------
 ROUTES.sabados=async function(){
@@ -549,19 +622,24 @@ ROUTES.calendario=async function(){
   const now=new Date(); let year=now.getFullYear(), month=now.getMonth()+1;
   async function draw(){
     const first=new Date(year,month-1,1), startDow=first.getDay(), dim=Engine.daysInMonth(year,month);
-    const [items,vacs,rules,blk]=await Promise.all([
-      getAll('schedule_items',b=>b.gte('date',`${year}-${String(month).padStart(2,'0')}-01`).lte('date',`${year}-${String(month).padStart(2,'0')}-${dim}`)),
-      getAll('vacation_periods'),T('store_rules').select('*').eq('id',1).maybeSingle().then(r=>r.data||{}),getAll('blocked_dates')]);
+    const mm=String(month).padStart(2,'0');
+    const [items,vacs,rules,blk,emps,rot]=await Promise.all([
+      getAll('schedule_items',b=>b.gte('date',`${year}-${mm}-01`).lte('date',`${year}-${mm}-${dim}`)),
+      getAll('vacation_periods'),T('store_rules').select('*').eq('id',1).maybeSingle().then(r=>r.data||{}),getAll('blocked_dates'),
+      getAll('employees',b=>b.eq('is_simulation',S.sim)),
+      getAll('saturday_rotation',b=>b.eq('year',year).eq('month',month))]);
+    const nm=Object.fromEntries(emps.map(e=>[e.id,e.name]));
     const sats=Engine.saturdaysOfMonth(year,month).slice(0,rules.saturday_open_count||2).map(Engine.fmt);
     let cells='';
     for(let i=0;i<startDow;i++) cells+=`<div class="day out"></div>`;
     for(let d=1;d<=dim;d++){
-      const ds=`${year}-${String(month).padStart(2,'0')}-${String(d).padStart(2,'0')}`; const dow=new Date(year,month-1,d).getDay();
+      const ds=`${year}-${mm}-${String(d).padStart(2,'0')}`; const dow=new Date(year,month-1,d).getDay();
       let ev='';
-      items.filter(x=>x.date===ds).forEach(x=>ev+=`<span class="ev ${x.status==='aprovado'?'folga':'sug'}">${x.status==='aprovado'?'✓':'•'} ${esc((x.employee_name||'').split(' ')[0])}</span>`);
-      vacs.filter(v=>ds>=v.start_date&&ds<=v.end_date).forEach(()=>ev+=`<span class="ev fer">férias</span>`);
-      if(sats.includes(ds)) ev+=`<span class="ev sab">sábado</span>`;
-      if(blk.some(b=>b.date===ds)) ev+=`<span class="ev blk">bloqueio</span>`;
+      items.filter(x=>x.date===ds).forEach(x=>{ const t=folgaTimeLabel(x,rules); ev+=`<span class="ev folga" title="${esc(x.employee_name||'')} — ${esc(t)}">${esc(x.employee_name||'')} — ${esc(t)}</span>`; });
+      vacs.filter(v=>ds>=v.start_date&&ds<=v.end_date).forEach(v=>ev+=`<span class="ev fer">${esc(nm[v.employee_id]||'')} — Férias</span>`);
+      rot.filter(r=>r.saturday_date===ds).forEach(r=>ev+=`<span class="ev sab">${esc(r.employee_name||nm[r.employee_id]||'')} — Sábado ${rules.saturday_start||'14:00'}</span>`);
+      if(sats.includes(ds) && !rot.some(r=>r.saturday_date===ds)) ev+=`<span class="ev sab">Sábado aberto (definir)</span>`;
+      if(blk.some(b=>b.date===ds)) ev+=`<span class="ev blk">${esc((blk.find(b=>b.date===ds)||{}).reason||'Bloqueado')}</span>`;
       cells+=`<div class="day ${dow===6?'sat':''}"><span class="dn">${d}</span>${ev}</div>`;
     }
     $('#view').innerHTML=`
