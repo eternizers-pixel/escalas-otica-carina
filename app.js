@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v14 (adjacência entre semanas + dashboard todas as folgas)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v15 (banco escalonado + função essencial + justiça histórica)
 // ============================================================
 (function(){
 "use strict";
@@ -75,13 +75,14 @@ async function buildHistory(refISO){
   const rot=await getAll('saturday_rotation');
   const ref=refISO ? new Date(refISO+'T00:00:00') : new Date();
   const h={};
-  const get=(id)=> h[id]||(h[id]={dayoffs:0,fridaysOff:0,mondaysOff:0,saturdays:0,lastDayOffDays:null});
+  const get=(id)=> h[id]||(h[id]={dayoffs:0,fridaysOff:0,mondaysOff:0,saturdays:0,integral:0,meioTurno:0,lastDayOffDays:null});
   for(const it of items){ if(!it.employee_id||!it.date) continue;
     const d=new Date(it.date+'T00:00:00'); const dow=d.getDay();
     const days=Math.floor((ref-d)/86400000);
     if(days<=0) continue; // só folgas ANTES da semana de referência contam para a justiça/recência
     const r=get(it.employee_id); r.dayoffs++;
     if(dow===5) r.fridaysOff++; if(dow===1) r.mondaysOff++;
+    if(it.type==='integral') r.integral++; if(it.type==='meio_turno') r.meioTurno++; // folgas "boas" para a justiça histórica
     if(r.lastDayOffDays==null||days<r.lastDayOffDays) r.lastDayOffDays=days;
   }
   for(const s of rot){ if(s.employee_id && s.worked!==false) get(s.employee_id).saturdays++; }
@@ -201,12 +202,15 @@ ROUTES.dashboard=async function(){
   const active=emps.filter(e=>e.status==='ativa');
   const onVac=emps.filter(e=>e.status==='ferias');
   const cap=Engine.operationalCapacity(emps,rules);
-  const highBank=emps.filter(e=>(e.time_bank_balance||0)>=(rules.max_time_bank||20));
+  const tCrit=rules.bank_alert_critico??20, tMax=rules.bank_alert_maxima??16, tAlta=rules.bank_alert_alta??12;
+  const critBank=emps.filter(e=>(e.time_bank_balance||0)>=tCrit);   // crítico
+  const altaBank=emps.filter(e=>(e.time_bank_balance||0)>=tAlta && (e.time_bank_balance||0)<tCrit); // alta/máxima
   const totalBank=emps.reduce((s,e)=>s+(+e.time_bank_balance||0),0);
   let alerts='';
   if(cap.availableForShift<=cap.minPerShift) alerts+=box('err',`<b>Cobertura mínima em risco:</b> ${cap.availableForShift} ativa(s) para mínimo de ${cap.minPerShift} por turno.`);
   if(onVac.length>=1) alerts+=box('warn',`<b>Equipe reduzida:</b> ${onVac.length} funcionária(s) em férias.`);
-  if(highBank.length) alerts+=box('warn',`<b>Banco de horas alto:</b> ${highBank.map(e=>e.name+' ('+fmtH(e.time_bank_balance)+')').join(', ')} acima de ${fmtH(rules.max_time_bank||20)}.`);
+  if(critBank.length) alerts+=box('err',`<b>Banco de horas CRÍTICO (≥ ${fmtH(tCrit)}):</b> ${critBank.map(e=>e.name+' ('+fmtH(e.time_bank_balance)+')').join(', ')}. Prioridade máxima para compensar com folga.`);
+  if(altaBank.length) alerts+=box('warn',`<b>Banco de horas alto (≥ ${fmtH(tAlta)}):</b> ${altaBank.map(e=>e.name+' ('+fmtH(e.time_bank_balance)+')').join(', ')}. Priorize folgas para estas.`);
   if(!alerts) alerts=box('ok','Tudo sob controle: cobertura adequada e banco dentro do limite.');
   // banco previsto: desconta TODAS as folgas aprovadas a partir de hoje (qualquer semana já planejada)
   const dscheds=await getAll('schedules',b=>b.eq('is_simulation',S.sim));
@@ -333,6 +337,16 @@ ROUTES.regras=async function(){
         <div class="field"><label>Tipo de folga liberada</label><select id="r_mode"><option value="saida_antecipada" ${(r.dayoff_mode||'saida_antecipada')==='saida_antecipada'?'selected':''}>Só sair mais cedo (recomendado)</option><option value="completa" ${r.dayoff_mode==='completa'?'selected':''}>Permitir folga integral / meio turno</option></select></div>
         <div class="field"><label>Horas de saída antecipada</label><input id="r_early" type="number" value="${r.early_leave_hours??3}"/></div></div>
       <div class="reason">No modo recomendado, o sistema só sugere <b>sair mais cedo</b> (manhã ou tarde) — nunca o dia inteiro — evitando o incentivo de "acumular horas para ganhar o dia".</div>
+      <div class="field" style="margin-top:10px"><label>Alertas de banco de horas alto (h) — prioridade escalonada</label>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <span class="muted" style="font-size:12px">Atenção</span><input id="r_bk1" type="number" style="width:64px" value="${r.bank_alert_atencao??8}"/>
+          <span class="muted" style="font-size:12px">Alta</span><input id="r_bk2" type="number" style="width:64px" value="${r.bank_alert_alta??12}"/>
+          <span class="muted" style="font-size:12px">Máxima</span><input id="r_bk3" type="number" style="width:64px" value="${r.bank_alert_maxima??16}"/>
+          <span class="muted" style="font-size:12px">Crítico</span><input id="r_bk4" type="number" style="width:64px" value="${r.bank_alert_critico??20}"/></div>
+        <div class="reason">Quanto mais alto o banco, maior a prioridade da funcionária para compensar com folga. Acima do crítico, vira alerta no painel.</div></div>
+      <div class="field"><label>Função essencial</label>
+        <select id="r_expert"><option value="true" ${r.require_expert!==false?'selected':''}>Sempre manter ao menos 1 das mais experientes na loja</option><option value="false" ${r.require_expert===false?'selected':''}>Não exigir</option></select>
+        <div class="reason">Quando ativado, o motor nunca libera folga que deixe a loja sem nenhuma das funcionárias com mais conhecimento no dia.</div></div>
     </div></div>
   </div>
   <div class="section grid2">
@@ -378,6 +392,8 @@ ROUTES.regras=async function(){
       open_time:$('#r_om').value,close_time:$('#r_ca').value,
       min_per_shift:+$('#r_min').value,max_time_bank:+$('#r_maxbank').value,min_time_bank_for_dayoff:+$('#r_minbank').value,
       max_dayoffs_per_day:Math.max(1,+$('#r_maxday').value||2),
+      bank_alert_atencao:+$('#r_bk1').value||8, bank_alert_alta:+$('#r_bk2').value||12, bank_alert_maxima:+$('#r_bk3').value||16, bank_alert_critico:+$('#r_bk4').value||20,
+      require_expert:$('#r_expert').value!=='false',
       min_dayoff_hours:+$('#r_dmin').value,max_dayoff_hours:+$('#r_dmax').value,
       dayoff_mode:$('#r_mode').value,early_leave_hours:+$('#r_early').value||3,
       saturday_open_count:+$('#r_satn').value,saturday_start:$('#r_sats').value,saturday_end:$('#r_sate').value,

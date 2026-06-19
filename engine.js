@@ -86,14 +86,17 @@ window.Engine = (function () {
     const vals = active.map(e=>{
       const h = history[e.id]||{};
       return { id:e.id, name:e.name, dayoffs:h.dayoffs||0, saturdays:h.saturdays||0,
+               fridaysOff:h.fridaysOff||0, integral:h.integral||0,
                lastDayOffDays:(h.lastDayOffDays==null?60:h.lastDayOffDays), bank:e.time_bank_balance||0 };
     });
     const spread = (arr)=>{ if(!arr.length) return 0; const mx=Math.max(...arr),mn=Math.min(...arr); return mx-mn; };
     const dSpread = spread(vals.map(v=>v.dayoffs));
     const sSpread = spread(vals.map(v=>v.saturdays));
+    const fSpread = spread(vals.map(v=>v.fridaysOff));   // dispersão de sextas folgadas
+    const iSpread = spread(vals.map(v=>v.integral));      // dispersão de folgas de dia inteiro
     const bSpread = spread(vals.map(v=>v.bank));
-    // pontuação: começa 100, penaliza dispersões
-    let score = 100 - dSpread*7 - sSpread*9 - Math.min(40, bSpread*1.5);
+    // pontuação: começa 100, penaliza dispersões (inclui folgas "boas": sextas e dia inteiro)
+    let score = 100 - dSpread*7 - sSpread*9 - fSpread*6 - iSpread*6 - Math.min(40, bSpread*1.5);
     score = Math.max(0, Math.round(score));
     let status, reason;
     if (score>=85){ status='justo'; reason='Folgas, sábados e banco de horas estão bem equilibrados.'; }
@@ -103,6 +106,7 @@ window.Engine = (function () {
     // motivos detalhados
     if (dSpread>=3) reason += ` Diferença de ${dSpread} folgas entre quem mais e menos folgou.`;
     if (sSpread>=2) reason += ` Diferença de ${sSpread} sábados trabalhados.`;
+    if (fSpread>=2) reason += ` Diferença de ${fSpread} sextas folgadas.`;
     return { status, score, reason, rows:vals.sort((a,b)=>b.bank-a.bank) };
   }
 
@@ -184,19 +188,27 @@ window.Engine = (function () {
     const minPer  = rules.min_per_shift || 4;
     const maxPerDay = Math.max(1, rules.max_dayoffs_per_day ?? 2); // teto de folgas no mesmo dia
     const active  = employees.filter(e=>e.status==='ativa');
+    const expertIds = new Set(active.filter(e=>e.is_expert).map(e=>e.id)); // funções essenciais (mais experientes)
+    const requireExpert = rules.require_expert!==false; // sempre manter ao menos 1 especialista presente no dia
     const onVac = (e, dStr) => vacations.some(v => v.employee_id===e.id && dStr>=v.start_date && dStr<=v.end_date);
     const blocked = (dStr) => blockedDates.some(b=>b.date===dStr);
     const DIAS = ['domingo','segunda-feira','terça-feira','quarta-feira','quinta-feira','sexta-feira','sábado'];
     const fmtHoras = (v)=>{ v=+v||0; const neg=v<0; let m=Math.round(Math.abs(v)*60); const h=Math.floor(m/60); m=m%60; return (neg?'-':'')+h+'h'+(m?String(m).padStart(2,'0')+'min':''); };
     const todayISO = fmt(new Date());
 
+    // limiares de banco alto (configuráveis em Regras): atenção / alta / máxima / crítico
+    const tAt=rules.bank_alert_atencao??8, tAlta=rules.bank_alert_alta??12, tMax=rules.bank_alert_maxima??16, tCrit=rules.bank_alert_critico??20;
+    const bankUrgency=(bank)=> bank>=tCrit?60 : bank>=tMax?40 : bank>=tAlta?25 : bank>=tAt?12 : 0;
     const scoreOf = (e)=>{
       const h=history[e.id]||{};
       const bank=e.time_bank_balance||0;
       const since=(h.lastDayOffDays==null?45:h.lastDayOffDays);
-      const recentPenalty=(h.lastDayOffDays!=null && h.lastDayOffDays<7)?20:0;
-      // justiça: + banco, + tempo sem folgar, + prioridade; − quem já folgou mais, − quem folgou há pouco
-      return bank*1.4 + since*0.8 + (e.manual_priority||0)*5 - recentPenalty - (h.dayoffs||0)*4;
+      const recentPenalty=(h.lastDayOffDays!=null && h.lastDayOffDays<7)?15:0;
+      // justiça histórica: penaliza quem já teve mais folgas "boas" (sexta/segunda/dia inteiro) e mais folgas no total
+      const boas=(h.fridaysOff||0)*3 + (h.mondaysOff||0)*2 + (h.integral||0)*3;
+      // pesos: banco (alto) + urgência de banco alto (alto, escalonado) + tempo sem folgar (alto)
+      //        + prioridade manual (médio) − folgas no total − folgas boas − folgou há pouco
+      return bank*1.4 + bankUrgency(bank) + since*0.9 + (e.manual_priority||0)*5 - (h.dayoffs||0)*4 - boas - recentPenalty;
     };
 
     // equipe abaixo do mínimo: nem gera (exige aprovação manual)
@@ -274,8 +286,11 @@ window.Engine = (function () {
       const availDay = active.filter(e=>!onVac(e,dStr) && !integralToday.includes(e.id));
       if (availDay.length < minPer){ logs.push({type:'bloqueio', message:`${DIAS[dow]} (${dStr}): só ${availDay.length} pessoa(s) disponível(is) e o mínimo da loja é ${minPer}.`}); continue; }
       const absent={}; existToday.forEach(it=>slotsOf(it).forEach(sl=>{ absent[sl]=(absent[sl]||0)+1; }));
+      // função essencial: especialistas disponíveis no dia e quantos já estão de folga (das aprovadas)
+      const expertsAvail = availDay.filter(e=>expertIds.has(e.id)).length;
+      const expertOff = existToday.filter(it=>expertIds.has(it.employee_id)).length;
       // o teto de folgas por dia JÁ CONTA as folgas aprovadas neste dia (não oferece mais que o limite)
-      openDays.push({dStr,dow,availDay,absent,doneToday:new Set(existToday.map(it=>it.employee_id)),count:existToday.length});
+      openDays.push({dStr,dow,availDay,absent,doneToday:new Set(existToday.map(it=>it.employee_id)),count:existToday.length,expertsAvail,expertOff});
     }
 
     // round-robin: cada rodada coloca no MÁX 1 folga por dia → espalha pela semana.
@@ -307,7 +322,11 @@ window.Engine = (function () {
           if (day.count>=1 || day.availDay.length-1 < minPer) continue;
           const costFull = cap.maxHours>=7?Math.min(8,cap.maxHours): cap.maxHours>=4?4:cap.maxHours;
           let chosen=null;
-          for (const e of cands){ const h=history[e.id]||{}; if(day.dow===5 && (h.fridaysOff||0)>=2) continue; if((bankLeft[e.id]||0) < costFull) continue; chosen=e; break; }
+          for (const e of cands){ const h=history[e.id]||{};
+            if(day.dow===5 && (h.fridaysOff||0)>=2) continue;
+            if((bankLeft[e.id]||0) < costFull) continue;
+            if(requireExpert && expertIds.has(e.id) && (day.expertsAvail-day.expertOff-1) < 1) continue; // manteria a loja sem especialista
+            chosen=e; break; }
           if(!chosen) continue;
           const round=genCount[chosen.id]||0;
           let type,hours2,shift;
@@ -322,7 +341,7 @@ window.Engine = (function () {
           const reason=`${chosen.name} pode ${acao} — tem ${fmtHoras(chosen.time_bank_balance)} de banco de horas, ${since}, e a loja ainda fica com ${day.availDay.length-1} pessoas no dia (mínimo ${minPer}).`;
           suggestions.push({ employee_id:chosen.id, employee_name:chosen.name, date:day.dStr, shift, type, hours:hours2, reason, tags:tagsFor(chosen,day.dow,round), score:Math.round(scoreOf(chosen)) });
           logs.push({type:'sugestao', employee_id:chosen.id, employee_name:chosen.name, message:reason});
-          genCount[chosen.id]=round+1; bankLeft[chosen.id]=(bankLeft[chosen.id]||0)-hours2; (assignedDates[chosen.id]=assignedDates[chosen.id]||[]).push(day.dStr); day.count++; placed=true;
+          genCount[chosen.id]=round+1; bankLeft[chosen.id]=(bankLeft[chosen.id]||0)-hours2; (assignedDates[chosen.id]=assignedDates[chosen.id]||[]).push(day.dStr); if(expertIds.has(chosen.id)) day.expertOff++; day.count++; placed=true;
           continue;
         }
 
@@ -334,6 +353,10 @@ window.Engine = (function () {
           }
           if ((bankLeft[e.id]||0) < hours){
             if (genCount[e.id]>0) logs.push({type:'bloqueio', employee_id:e.id, employee_name:e.name, message:`${e.name} não recebe outra folga: o banco (${fmtHoras(bankLeft[e.id]||0)}) não cobre mais ${fmtHoras(hours)}.`});
+            continue;
+          }
+          if (requireExpert && expertIds.has(e.id) && (day.expertsAvail-day.expertOff-1) < 1){
+            logs.push({type:'bloqueio', employee_id:e.id, employee_name:e.name, message:`${e.name} (mais experiente) não folga ${DIAS[day.dow]} (${day.dStr}): deixaria a loja sem ninguém com mais conhecimento no dia.`});
             continue;
           }
           let allowed=String(e.dayoff_pref||'').split(',').map(s=>s.trim()).filter(c=>ALL.includes(c));
@@ -351,7 +374,7 @@ window.Engine = (function () {
           const reason=`${e.name} pode ${acao} — tem ${fmtHoras(e.time_bank_balance)} de banco de horas, ${since}. Nesse horário a loja segue com ${day.availDay.length-day.absent[slot]} pessoa(s) (mínimo ${minPer}).`;
           suggestions.push({ employee_id:e.id, employee_name:e.name, date:day.dStr, shift, type, hours, reason, tags:tagsFor(e,day.dow,round), score:Math.round(scoreOf(e)) });
           logs.push({type:'sugestao', employee_id:e.id, employee_name:e.name, message:reason});
-          genCount[e.id]=round+1; bankLeft[e.id]=(bankLeft[e.id]||0)-hours; (assignedDates[e.id]=assignedDates[e.id]||[]).push(day.dStr); day.doneToday.add(e.id); day.count++; placed=true;
+          genCount[e.id]=round+1; bankLeft[e.id]=(bankLeft[e.id]||0)-hours; (assignedDates[e.id]=assignedDates[e.id]||[]).push(day.dStr); if(expertIds.has(e.id)) day.expertOff++; day.doneToday.add(e.id); day.count++; placed=true;
           break; // só 1 por dia por rodada → espalha pela semana
         }
       }
