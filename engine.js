@@ -221,10 +221,11 @@ window.Engine = (function () {
     active.forEach(e=>{ bankLeft[e.id] = (e.time_bank_balance||0); });
     for (const it of existing){
       if (!it || !it.employee_id || !it.date) continue;
-      if (it.date < startStr || it.date > horizonEndStr) continue;
+      // adjacência: TODAS as folgas aprovadas contam (inclusive de outras semanas) — evita sexta + segunda seguinte
+      (assignedDates[it.employee_id]=assignedDates[it.employee_id]||[]).push(it.date);
+      if (it.date < startStr || it.date > horizonEndStr) continue; // genCount/banco só da semana planejada
       genCount[it.employee_id] = (genCount[it.employee_id]||0) + 1;
       bankLeft[it.employee_id] = (bankLeft[it.employee_id]||0) - (+it.hours||0); // desconta horas já comprometidas
-      (assignedDates[it.employee_id]=assignedDates[it.employee_id]||[]).push(it.date);
     }
     // distância (em dias) do dia até a folga mais próxima que a pessoa já tem na semana — usado para espalhar
     const dayNum=ds=>Math.floor(parse(ds).getTime()/86400000);

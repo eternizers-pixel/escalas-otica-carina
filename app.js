@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v13 (justiça por semana + espalhar folgas)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v14 (adjacência entre semanas + dashboard todas as folgas)
 // ============================================================
 (function(){
 "use strict";
@@ -208,16 +208,12 @@ ROUTES.dashboard=async function(){
   if(onVac.length>=1) alerts+=box('warn',`<b>Equipe reduzida:</b> ${onVac.length} funcionária(s) em férias.`);
   if(highBank.length) alerts+=box('warn',`<b>Banco de horas alto:</b> ${highBank.map(e=>e.name+' ('+fmtH(e.time_bank_balance)+')').join(', ')} acima de ${fmtH(rules.max_time_bank||20)}.`);
   if(!alerts) alerts=box('ok','Tudo sob controle: cobertura adequada e banco dentro do limite.');
-  // banco previsto: desconta as folgas aprovadas da semana de planejamento
-  const SYSTEM_START='2026-06-22';
-  const baseW = todayStr() < SYSTEM_START ? SYSTEM_START : todayStr();
-  const bw=Engine.parse(baseW); const wdW=bw.getDay(); bw.setDate(bw.getDate()+(wdW===0?1:1-wdW));
-  const weekStart=Engine.fmt(bw); const we=Engine.parse(weekStart); we.setDate(we.getDate()+6); const weekEnd=Engine.fmt(we);
-  const brW=ds=>ds.split('-').reverse().slice(0,2).join('/');
+  // banco previsto: desconta TODAS as folgas aprovadas a partir de hoje (qualquer semana já planejada)
   const dscheds=await getAll('schedules',b=>b.eq('is_simulation',S.sim));
   const dschedIds=new Set(dscheds.map(s=>s.id));
-  const wkItems=(await getAll('schedule_items',b=>b.eq('status','aprovado').gte('date',weekStart).lte('date',weekEnd))).filter(it=>dschedIds.has(it.schedule_id));
-  const folgaH={}; wkItems.forEach(it=>{ folgaH[it.employee_id]=(folgaH[it.employee_id]||0)+(+it.hours||0); });
+  const wkItems=(await getAll('schedule_items',b=>b.eq('status','aprovado').gte('date',todayStr()))).filter(it=>dschedIds.has(it.schedule_id));
+  const folgaH={}; const folgaDates={};
+  wkItems.forEach(it=>{ folgaH[it.employee_id]=(folgaH[it.employee_id]||0)+(+it.hours||0); (folgaDates[it.employee_id]=folgaDates[it.employee_id]||[]).push(it.date); });
   const totalFolga=Object.values(folgaH).reduce((s,h)=>s+h,0);
   const totalPrev=totalBank-totalFolga;
   const fresh=await bankFreshnessBanner();
@@ -230,8 +226,8 @@ ROUTES.dashboard=async function(){
   </div>
   <div class="cards section">
     <div class="card"><h3>Banco real (importado)</h3><div class="kpi">${fmtH(totalBank)}</div></div>
-    <div class="card"><h3>Folga prevista (semana ${brW(weekStart)}–${brW(weekEnd)})</h3><div class="kpi" style="color:var(--amber)">−${fmtH(totalFolga)}</div></div>
-    <div class="card"><h3>Banco previsto (fim da semana)</h3><div class="kpi" style="color:var(--green)">${fmtH(totalPrev)}</div></div>
+    <div class="card"><h3>Folga prevista (todas aprovadas)</h3><div class="kpi" style="color:var(--amber)">−${fmtH(totalFolga)}</div></div>
+    <div class="card"><h3>Banco previsto (após as folgas)</h3><div class="kpi" style="color:var(--green)">${fmtH(totalPrev)}</div></div>
   </div>
   <div class="section">${alerts}</div>
   <div class="toolbar">
@@ -239,7 +235,7 @@ ROUTES.dashboard=async function(){
     <button class="btn sec" onclick="location.hash='#tiquetaque'">🔄 Sincronizar TiqueTaque</button>
     <div class="spacer"></div><span class="muted">${MONTHS[month-1]} de ${year}</span>
   </div>
-  <div class="panel"><div class="ph"><h3>Banco de horas por funcionária</h3><span class="muted">real → folga da semana → previsto</span></div><div class="pb" style="padding:0">
+  <div class="panel"><div class="ph"><h3>Banco de horas por funcionária</h3><span class="muted">real → folgas aprovadas → previsto</span></div><div class="pb" style="padding:0">
     <table><thead><tr><th>Funcionária</th><th>Cargo</th><th>Banco real</th><th>Folga prevista</th><th>Banco previsto</th><th>Status</th></tr></thead><tbody>
     ${emps.sort((a,b)=>(b.time_bank_balance||0)-(a.time_bank_balance||0)).map(e=>{ const fh=folgaH[e.id]||0; const prev=(+e.time_bank_balance||0)-fh; return `<tr>
       <td><b>${esc(e.name)}</b></td><td class="muted">${esc(e.cargo||'—')}</td>
