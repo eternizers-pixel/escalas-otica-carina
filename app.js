@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v7 (meio turno auto, salvar regras topo, sábados por mês)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v8 (aprovar todos no motor)
 // ============================================================
 (function(){
 "use strict";
@@ -533,13 +533,20 @@ ROUTES.folgas=async function(){
     }).join('');
     const logRows=out.logs.map(l=>`<div class="reason" style="font-size:12.5px;border-left-color:${l.type==='bloqueio'?'var(--red)':l.type==='rodizio'?'var(--purple)':'var(--brand)'}">${l.type==='bloqueio'?'🚫':l.type==='rodizio'?'🔁':'✅'} ${esc(l.message)}</div>`).join('');
     $('#folgaOut').innerHTML=`${out.suggestions.length?'':box('warn','Nenhuma folga sugerida nesta semana — veja o porquê no log de decisão abaixo.')}
-      <div class="panel"><div class="ph"><h3>Sugestões da semana</h3><span class="muted">${out.suggestions.length} folga(s)</span></div>
+      <div class="panel"><div class="ph"><h3>Sugestões da semana</h3>
+        <div style="display:flex;align-items:center;gap:10px"><span class="muted">${out.suggestions.length} folga(s)</span>
+        ${(isGestor()&&out.suggestions.length)?`<button class="btn sm" id="apAll">✓ Aprovar todos</button>`:''}</div></div>
         <div class="pb">${dayBlocks||'<span class="muted">Sem sugestões nesta semana.</span>'}</div></div>
       <details class="panel section" style="margin-top:10px"><summary style="cursor:pointer;padding:13px 16px;font-weight:700">🧠 Log de decisão <span class="muted" style="font-weight:500">— toque para ver o porquê</span></summary>
         <div class="pb" style="padding-top:4px">${logRows||'<span class="muted">Sem registros.</span>'}</div></details>`;
     $$('[data-ap]').forEach(b=>b.onclick=async()=>{ if(!gate())return; const i=+b.dataset.ap; b.disabled=true;
       await saveApproval(out.suggestions[i],year,month);
       $('#act'+i).innerHTML='<span class="pill ativa">✓ Aprovado</span>'; toast('Folga aprovada — veja em Folgas aprovadas.'); });
+    $('#apAll')?.addEventListener('click',async()=>{ if(!gate())return; if(!out.suggestions.length)return;
+      if(!confirm(`Aprovar todas as ${out.suggestions.length} folgas sugeridas desta semana?`))return;
+      const btn=$('#apAll'); btn.disabled=true; btn.textContent='Aprovando…';
+      for(const s of out.suggestions){ await saveApproval(s,year,month); }
+      toast('Todas as folgas foram aprovadas! Veja em Folgas aprovadas.'); route(); });
     $$('[data-rf]').forEach(b=>b.onclick=async()=>{ if(!gate())return; const i=+b.dataset.rf; const s=out.suggestions[i]; const motivo=prompt('Motivo da recusa:','')||'';
       await T('dayoff_requests').insert({employee_id:s.employee_id,employee_name:s.employee_name,date:s.date,shift:s.shift,type:s.type,request_type:'recusa_folga',reason:motivo,status:'recusado'});
       $('#act'+i).innerHTML='<span class="pill afastada">✗ Recusado</span>'; toast('Recusa registrada. Recalcule para nova sugestão.'); });
