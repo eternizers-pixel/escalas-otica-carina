@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 840 840">
+  <rect width="840" height="840" rx="190" fill="#3D6DF5"/>
+  <g fill="#EEF2FE">
+    <!-- argolas/abas superiores -->
+    <rect x="227" y="170" width="46" height="82" rx="23"/>
+    <rect x="340" y="170" width="46" height="82" rx="23"/>
+    <rect x="454" y="170" width="46" height="82" rx="23"/>
+    <rect x="567" y="170" width="46" height="82" rx="23"/>
+    <!-- silhueta do calendário (cabeçalho + moldura) -->
+    <rect x="150" y="215" width="540" height="470" rx="62"/>
+  </g>
+  <!-- corpo azul (deixa cabeçalho branco em cima e moldura branca em volta) -->
+  <rect x="192" y="300" width="456" height="342" rx="34" fill="#3D6DF5"/>
+  <!-- células -->
+  <g fill="#EEF2FE">
+    <rect x="224" y="340" width="116" height="116" rx="24"/>
+    <rect x="362" y="340" width="116" height="116" rx="24"/>
+    <rect x="224" y="478" width="116" height="116" rx="24"/>
+    <rect x="362" y="478" width="116" height="116" rx="24"/>
+    <rect x="500" y="478" width="116" height="116" rx="24"/>
+  </g>
+  <!-- célula superior direita: apenas contorno -->
+  <rect x="508" y="348" width="100" height="100" rx="22" fill="#3D6DF5" stroke="#EEF2FE" stroke-width="18"/>
+</svg>
