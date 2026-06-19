@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v3 (ciclo justo + tags)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v4 (cards em grid + tags coloridas)
 // ============================================================
 (function(){
 "use strict";
@@ -496,22 +496,30 @@ ROUTES.folgas=async function(){
     // agrupa as sugestões por dia
     const byDay={};
     out.suggestions.forEach((s,i)=>{ (byDay[s.date]=byDay[s.date]||[]).push({...s,_i:i}); });
+    // cor da tag por categoria: banco=azul, tempo sem folgar=verde, sexta=roxo, prioridade=âmbar, demais=cinza
+    const tagColor=(t)=>{const s=t.toLowerCase();
+      if(s.includes('banco')) return 'background:var(--brand-soft);color:var(--brand-d)';
+      if(s.includes('sem folgar')||s.includes('histórico')) return 'background:var(--green-soft);color:var(--green)';
+      if(s.includes('sexta')) return 'background:var(--purple-soft);color:var(--purple)';
+      if(s.includes('prioridade')) return 'background:var(--amber-soft);color:var(--amber)';
+      return 'background:#eef0f4;color:#5b6577';};
     const dayBlocks=Object.keys(byDay).sort().map(date=>{
       const dia=Engine.DOW[Engine.parse(date).getDay()]; const dataBR=date.split('-').reverse().slice(0,2).join('/');
       const cards=byDay[date].map(s=>{
         const i=s._i;
-        return `<div class="card" style="margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
-          <div style="min-width:0">
-            <div style="font-weight:700;font-size:16px">${esc(s.employee_name)}</div>
-            <div style="font-size:15px;font-weight:600;margin-top:2px">${TYPE_LABEL[s.type]||s.type} <span class="muted" style="font-weight:500">(${SHIFT_LABEL[s.shift]||s.shift}) · ${s.hours}h</span></div>
-            ${(s.tags&&s.tags.length)?`<div style="margin-top:7px;display:flex;gap:5px;flex-wrap:wrap">${s.tags.map(t=>`<span style="font-size:11px;font-weight:600;background:var(--brand-soft);color:var(--brand-d);padding:2px 9px;border-radius:20px">${esc(t)}</span>`).join('')}</div>`:''}
+        const hm=(folgaTimeLabel(s,rules).match(/(\d{2}):(\d{2})/)||[])[0]; const hora=hm?' · '+hm.replace(':','h'):'';
+        return `<div class="card" style="margin:0;display:flex;flex-direction:column;gap:9px">
+          <div>
+            <div style="font-weight:700;font-size:15px">${esc(s.employee_name)}</div>
+            <div style="font-size:14px;font-weight:600;margin-top:3px">${TYPE_LABEL[s.type]||s.type} <span class="muted" style="font-weight:500">(${SHIFT_LABEL[s.shift]||s.shift}) · ${s.hours}h${hora}</span></div>
           </div>
-          <div class="row-actions" id="act${i}">${isGestor()?`<button class="btn sm" data-ap="${i}">Aprovar</button><button class="btn sec sm" data-rf="${i}">Recusar</button>`:'<span class="muted">—</span>'}</div>
+          ${(s.tags&&s.tags.length)?`<div style="display:flex;gap:5px;flex-wrap:wrap">${s.tags.map(t=>`<span style="font-size:11px;font-weight:600;${tagColor(t)};padding:2px 9px;border-radius:20px">${esc(t)}</span>`).join('')}</div>`:''}
+          <div class="row-actions" id="act${i}" style="margin-top:auto;padding-top:2px">${isGestor()?`<button class="btn sm" data-ap="${i}">Aprovar</button><button class="btn sec sm" data-rf="${i}">Recusar</button>`:'<span class="muted">—</span>'}</div>
         </div>`;
       }).join('');
       return `<div style="margin-bottom:16px">
         <div style="font-weight:800;font-size:17px;padding:8px 14px;background:var(--brand-soft);color:var(--brand-d);border-radius:10px;margin-bottom:10px;text-transform:capitalize">${dia} · ${dataBR}</div>
-        ${cards}</div>`;
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:10px">${cards}</div></div>`;
     }).join('');
     const logRows=out.logs.map(l=>`<div class="reason" style="font-size:12.5px;border-left-color:${l.type==='bloqueio'?'var(--red)':l.type==='rodizio'?'var(--purple)':'var(--brand)'}">${l.type==='bloqueio'?'🚫':l.type==='rodizio'?'🔁':'✅'} ${esc(l.message)}</div>`).join('');
     $('#folgaOut').innerHTML=`${out.suggestions.length?'':box('warn','Nenhuma folga sugerida nesta semana — veja o porquê no log de decisão abaixo.')}
