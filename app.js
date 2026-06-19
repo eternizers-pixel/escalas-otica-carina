@@ -49,7 +49,8 @@ async function bankFreshnessBanner(){
   const {data}=await T('time_bank_imports').select('imported_at,file_name').eq('source','planilha').order('imported_at',{ascending:false}).limit(1).maybeSingle();
   if(!data) return box('warn','<b>Banco de horas ainda não foi importado por planilha.</b> Antes de planejar folgas, importe a planilha (coluna <b>Total</b>) do TiqueTaque em <b>TiqueTaque → Banco de horas</b>.');
   const dt=new Date(data.imported_at);
-  const days=Math.floor((Date.now()-dt.getTime())/86400000);
+  const startOfDay=d=>{const x=new Date(d);x.setHours(0,0,0,0);return x.getTime();};
+  const days=Math.round((startOfDay(Date.now())-startOfDay(dt))/86400000);
   const quando=dt.toLocaleDateString('pt-BR')+' às '+dt.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
   if(days>=8) return box('warn',`<b>Banco de horas atualizado há ${days} dias</b> (${quando}). Antes de decidir folgas, vale reimportar a planilha (Total) do TiqueTaque.`);
   return box('ok',`<b>Banco de horas atualizado em ${quando}</b> ${days>0?`(há ${days} dia${days>1?'s':''})`:'(hoje)'} — dado fresco para planejar.`);
