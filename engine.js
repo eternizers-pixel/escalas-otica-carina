@@ -293,8 +293,10 @@ window.Engine = (function () {
             !existing.some(it=>it.employee_id===e.id && it.date===day.dStr))
           .sort((a,b)=>{
             const ga=genCount[a.id]||0, gb=genCount[b.id]||0; if(ga!==gb) return ga-gb;       // 1) menos folgas na semana primeiro
-            const la=history[a.id]?.lastDayOffDays??9999, lb=history[b.id]?.lastDayOffDays??9999; if(la!==lb) return lb-la; // 2) há mais tempo sem folgar primeiro
-            const da=minDist(a.id,day.dStr), db=minDist(b.id,day.dStr); if(da!==db) return db-da; // 3) mais longe da própria folga (evita dias seguidos/colados)
+            const da=minDist(a.id,day.dStr), db=minDist(b.id,day.dStr);
+            const adA=da<=1?1:0, adB=db<=1?1:0; if(adA!==adB) return adA-adB;                  // 2) evita dia colado à própria folga (deixa por último)
+            const la=history[a.id]?.lastDayOffDays??9999, lb=history[b.id]?.lastDayOffDays??9999; if(la!==lb) return lb-la; // 3) há mais tempo sem folgar primeiro
+            if(da!==db) return db-da;                                                          // 4) mais longe da própria folga (espalha)
             if (isFri){ const fa=(history[a.id]?.fridaysOff)||0, fb=(history[b.id]?.fridaysOff)||0; if(fa!==fb) return fa-fb; }
             return scoreOf(b)-scoreOf(a);
           });
