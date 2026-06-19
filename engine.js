@@ -239,145 +239,110 @@ window.Engine = (function () {
       if (round>0) t.push('2ª da semana (todas já tiveram)');
       return t.slice(0,3);
     };
+    const mode = rules.dayoff_mode || 'saida_antecipada';
+    const maxPerWeek = Math.max(1, rules.max_dayoffs_per_week ?? 1); // teto de folgas por pessoa na semana
+    const want = rules.early_leave_hours ?? 3;
+    const hours = Math.max(1, Math.min(want, cap.maxHours));          // custo (h) de cada folga parcial
+    const ALL=['tarde_sair','manha_entrar','tarde_entrar','manha_sair'];
+    const SLOT={tarde_sair:'tarde_fim', manha_entrar:'manha_ini', tarde_entrar:'tarde_ini', manha_sair:'manha_fim'};
+    const MAP={ tarde_sair:{shift:'tarde',type:'saida_antecipada'}, manha_entrar:{shift:'manha',type:'entrada_tarde'},
+                tarde_entrar:{shift:'tarde',type:'entrada_tarde'}, manha_sair:{shift:'manha',type:'saida_antecipada'} };
+    const slotsOf=(it)=>{
+      if(it.type==='entrada_tarde') return it.shift==='manha'?['manha_ini']:['tarde_ini'];
+      if(it.type==='saida_antecipada') return it.shift==='manha'?['manha_fim']:['tarde_fim'];
+      if(it.type==='meio_turno') return it.shift==='manha'?['manha_ini','manha_fim']:['tarde_ini','tarde_fim'];
+      return [];
+    };
+    const leadDays = rules.high_traffic_lead_days ?? 7;
+
+    // monta os dias úteis abertos da janela já com a cobertura das folgas JÁ aprovadas
+    const openDays=[];
     for (let i=0;i<=horizonDays;i++){
       const d=new Date(start); d.setDate(d.getDate()+i);
       const dStr=fmt(d); const dow=d.getDay();
-      if (dStr<todayISO) continue;                  // dias que já passaram (hoje é permitido)
-      if (dow===0) continue;                        // domingo: loja fechada
-      if (dow===6) continue;                        // sábado: controlado pelo Rodízio de sábados
-      if (blocked(dStr)) continue;                  // dia bloqueado para folga
-
-      // folgas JÁ aprovadas neste dia (lançadas pelo gestor) — entram na conta de cobertura
+      if (dStr<todayISO || dow===0 || dow===6 || blocked(dStr)) continue;
+      const comm = (rules.block_commemorative!==false) ? commemorativeBlock(dStr, leadDays) : null;
+      if (comm){ logs.push({type:'bloqueio', message:`${DIAS[dow]} (${dStr}): sem folga — semana de ${comm} (alto movimento). As folgas ficam para depois da data.`}); continue; }
       const existToday = existing.filter(it=>it.date===dStr);
       const integralToday = existToday.filter(it=>it.type==='integral' || it.shift==='dia_inteiro').map(it=>it.employee_id);
-      // disponíveis de fato nesse dia (ativas, não de férias e que não estão de folga integral)
       const availDay = active.filter(e=>!onVac(e,dStr) && !integralToday.includes(e.id));
-      const isFri = dow===5;
-      // candidatas: quem tem MENOS folgas na semana primeiro (ciclo justo), depois sexta, depois justiça (banco/tempo sem folgar)
-      const cands = pool
-        .filter(e=>!onVac(e,dStr))
-        .filter(e=>!refusals.some(r=>r.employee_id===e.id && r.date===dStr))
-        .filter(e=>!existing.some(it=>it.employee_id===e.id && it.date===dStr))  // não duplica folga já aprovada no mesmo dia
-        .sort((a,b)=>{
-          const ga=genCount[a.id]||0, gb=genCount[b.id]||0; if(ga!==gb) return ga-gb;
-          if (isFri){ const fa=(history[a.id]?.fridaysOff)||0, fb=(history[b.id]?.fridaysOff)||0; if(fa!==fb) return fa-fb; }
-          return scoreOf(b)-scoreOf(a);
-        });
-      if (cands.length===0) continue;
+      if (availDay.length < minPer){ logs.push({type:'bloqueio', message:`${DIAS[dow]} (${dStr}): só ${availDay.length} pessoa(s) disponível(is) e o mínimo da loja é ${minPer}.`}); continue; }
+      const absent={}; existToday.forEach(it=>slotsOf(it).forEach(sl=>{ absent[sl]=(absent[sl]||0)+1; }));
+      openDays.push({dStr,dow,availDay,absent,doneToday:new Set(),count:0});
+    }
 
-      // alto movimento: datas comemorativas e a semana que as antecede
-      const leadDays = rules.high_traffic_lead_days ?? 7;
-      const comm = (rules.block_commemorative!==false) ? commemorativeBlock(dStr, leadDays) : null;
-      if (comm){
-        logs.push({type:'bloqueio', message:`${DIAS[dow]} (${dStr}): sem folga — semana de ${comm} (alto movimento). As folgas ficam para depois da data.`});
-        continue;
-      }
+    // round-robin: cada rodada coloca no MÁX 1 folga por dia → espalha pela semana.
+    // Teto de maxPerWeek por pessoa, respeitando banco de horas, cobertura e folgas já aprovadas.
+    let placed=true, guard=0;
+    while (placed && guard++ < 300){
+      placed=false;
+      for (const day of openDays){
+        if (day.count >= maxPerDay) continue;
+        const isFri = day.dow===5;
+        const cands = pool.filter(e=>
+            (genCount[e.id]||0) < maxPerWeek &&
+            !day.doneToday.has(e.id) &&
+            !onVac(e,day.dStr) &&
+            !refusals.some(r=>r.employee_id===e.id && r.date===day.dStr) &&
+            !existing.some(it=>it.employee_id===e.id && it.date===day.dStr))
+          .sort((a,b)=>{
+            const ga=genCount[a.id]||0, gb=genCount[b.id]||0; if(ga!==gb) return ga-gb;
+            if (isFri){ const fa=(history[a.id]?.fridaysOff)||0, fb=(history[b.id]?.fridaysOff)||0; if(fa!==fb) return fa-fb; }
+            return scoreOf(b)-scoreOf(a);
+          });
 
-      // precisa ter pelo menos o mínimo disponível no dia
-      if (availDay.length < minPer){
-        logs.push({type:'bloqueio',
-          message:`${DIAS[dow]} (${dStr}): só ${availDay.length} pessoa(s) disponível(is) e o mínimo da loja é ${minPer}.`});
-        continue;
-      }
-
-      const mode = rules.dayoff_mode || 'saida_antecipada';
-
-      // ---- MODO COMPLETO (dia inteiro / meio turno): no máximo 1 por dia ----
-      if (mode !== 'saida_antecipada'){
-        if (availDay.length - 1 < minPer){
-          logs.push({type:'bloqueio', message:`${DIAS[dow]} (${dStr}): liberar 1 folga deixaria a loja abaixo do mínimo (${minPer}).`});
+        if (mode !== 'saida_antecipada'){
+          // MODO COMPLETO (integral / meio turno): no máximo 1 por dia
+          if (day.count>=1 || day.availDay.length-1 < minPer) continue;
+          const costFull = cap.maxHours>=7?Math.min(8,cap.maxHours): cap.maxHours>=4?4:cap.maxHours;
+          let chosen=null;
+          for (const e of cands){ const h=history[e.id]||{}; if(day.dow===5 && (h.fridaysOff||0)>=2) continue; if((bankLeft[e.id]||0) < costFull) continue; chosen=e; break; }
+          if(!chosen) continue;
+          const round=genCount[chosen.id]||0;
+          let type,hours2,shift;
+          if (cap.maxHours>=7){ type='integral'; hours2=Math.min(8,cap.maxHours); shift='dia_inteiro'; }
+          else if (cap.maxHours>=4){ type='meio_turno'; hours2=4; shift='tarde'; }
+          else { type='saida_antecipada'; hours2=cap.maxHours; shift='tarde'; }
+          const acao = type==='integral'?`folgar ${DIAS[day.dow]} (${day.dStr}) o dia inteiro`
+                     : type==='meio_turno'?`folgar meio turno (${shift==='tarde'?'tarde':'manhã'}) de ${DIAS[day.dow]} (${day.dStr})`
+                     : `sair ${hours2}h mais cedo à tarde de ${DIAS[day.dow]} (${day.dStr})`;
+          const h=history[chosen.id]||{}; const ld=h.lastDayOffDays;
+          const since=(ld==null?'não folga há bastante tempo':ld===0?'folgou por último hoje':ld===1?'última folga foi ontem':`não folga há ${ld} dias`);
+          const reason=`${chosen.name} pode ${acao} — tem ${fmtHoras(chosen.time_bank_balance)} de banco de horas, ${since}, e a loja ainda fica com ${day.availDay.length-1} pessoas no dia (mínimo ${minPer}).`;
+          suggestions.push({ employee_id:chosen.id, employee_name:chosen.name, date:day.dStr, shift, type, hours:hours2, reason, tags:tagsFor(chosen,day.dow,round), score:Math.round(scoreOf(chosen)) });
+          logs.push({type:'sugestao', employee_id:chosen.id, employee_name:chosen.name, message:reason});
+          genCount[chosen.id]=round+1; bankLeft[chosen.id]=(bankLeft[chosen.id]||0)-hours2; day.count++; placed=true;
           continue;
         }
-        const costFull = cap.maxHours>=7?Math.min(8,cap.maxHours): cap.maxHours>=4?4:cap.maxHours;
-        let chosen=null;
+
+        // MODO PARCIAL: coloca 1 pessoa neste dia (nesta rodada)
         for (const e of cands){
-          const h=history[e.id]||{};
-          if (dow===5 && (h.fridaysOff||0)>=2){
-            logs.push({type:'bloqueio', employee_id:e.id, employee_name:e.name, message:`${e.name} não recebe esta sexta: já folgou 2 sextas no mês.`}); continue;
+          const hh=history[e.id]||{};
+          if (day.dow===5 && (hh.fridaysOff||0)>=2){
+            logs.push({type:'bloqueio', employee_id:e.id, employee_name:e.name, message:`${e.name} não recebe esta sexta: já folgou 2 sextas no mês — passando a vez para manter o equilíbrio.`}); continue;
           }
-          if ((bankLeft[e.id]||0) < costFull) continue; // banco insuficiente para folga integral/meio turno
-          chosen=e; break;
+          if ((bankLeft[e.id]||0) < hours){
+            if (genCount[e.id]>0) logs.push({type:'bloqueio', employee_id:e.id, employee_name:e.name, message:`${e.name} não recebe outra folga: o banco (${fmtHoras(bankLeft[e.id]||0)}) não cobre mais ${fmtHoras(hours)}.`});
+            continue;
+          }
+          let allowed=String(e.dayoff_pref||'').split(',').map(s=>s.trim()).filter(c=>ALL.includes(c));
+          if(!allowed.length) allowed=ALL.slice();
+          let bestCode=null, bestLoad=Infinity;
+          for (const code of allowed){ const load=day.absent[SLOT[code]]||0; if (day.availDay.length-(load+1) >= minPer && load < bestLoad){ bestCode=code; bestLoad=load; } }
+          if(!bestCode) continue;
+          const slot=SLOT[bestCode]; day.absent[slot]=(day.absent[slot]||0)+1;
+          const {shift,type}=MAP[bestCode];
+          const round=genCount[e.id]||0;
+          const periodoTxt = shift==='manha' ? 'de manhã' : 'à tarde';
+          const acao = type==='entrada_tarde' ? `entrar ${hours}h mais tarde ${periodoTxt} de ${DIAS[day.dow]} (${day.dStr})` : `sair ${hours}h mais cedo ${periodoTxt} de ${DIAS[day.dow]} (${day.dStr})`;
+          const ld=hh.lastDayOffDays;
+          const since=(ld==null?'não folga há bastante tempo':ld===0?'folgou por último hoje':ld===1?'última folga foi ontem':`não folga há ${ld} dias`);
+          const reason=`${e.name} pode ${acao} — tem ${fmtHoras(e.time_bank_balance)} de banco de horas, ${since}. Nesse horário a loja segue com ${day.availDay.length-day.absent[slot]} pessoa(s) (mínimo ${minPer}).`;
+          suggestions.push({ employee_id:e.id, employee_name:e.name, date:day.dStr, shift, type, hours, reason, tags:tagsFor(e,day.dow,round), score:Math.round(scoreOf(e)) });
+          logs.push({type:'sugestao', employee_id:e.id, employee_name:e.name, message:reason});
+          genCount[e.id]=round+1; bankLeft[e.id]=(bankLeft[e.id]||0)-hours; day.doneToday.add(e.id); day.count++; placed=true;
+          break; // só 1 por dia por rodada → espalha pela semana
         }
-        if(!chosen) continue;
-        const round=genCount[chosen.id]||0;
-        let type,hours,shift;
-        if (cap.maxHours>=7){ type='integral'; hours=Math.min(8,cap.maxHours); shift='dia_inteiro'; }
-        else if (cap.maxHours>=4){ type='meio_turno'; hours=4; shift='tarde'; }
-        else { type='saida_antecipada'; hours=cap.maxHours; shift='tarde'; }
-        const acao = type==='integral'?`folgar ${DIAS[dow]} (${dStr}) o dia inteiro`
-                   : type==='meio_turno'?`folgar meio turno (${shift==='tarde'?'tarde':'manhã'}) de ${DIAS[dow]} (${dStr})`
-                   : `sair ${hours}h mais cedo à tarde de ${DIAS[dow]} (${dStr})`;
-        const h=history[chosen.id]||{}; const ld=h.lastDayOffDays;
-        const since=(ld==null?'não folga há bastante tempo':ld===0?'folgou por último hoje':ld===1?'última folga foi ontem':`não folga há ${ld} dias`);
-        const reason=`${chosen.name} pode ${acao} — tem ${fmtHoras(chosen.time_bank_balance)} de banco de horas, ${since}, e a loja ainda fica com ${availDay.length-1} pessoas no dia (mínimo ${minPer}).`;
-        suggestions.push({ employee_id:chosen.id, employee_name:chosen.name, date:dStr, shift, type, hours, reason, tags:tagsFor(chosen,dow,round), score:Math.round(scoreOf(chosen)) });
-        logs.push({type:'sugestao', employee_id:chosen.id, employee_name:chosen.name, message:reason});
-        genCount[chosen.id]=round+1; bankLeft[chosen.id]=(bankLeft[chosen.id]||0)-hours;
-        continue;
-      }
-
-      // ---- MODO PARCIAL (entrar mais tarde / sair mais cedo) ----
-      // Pode liberar VÁRIAS pessoas no mesmo dia: cada folga ocupa um "horário"
-      // (início/fim de manhã/tarde). Duas pessoas só folgam juntas se forem horários
-      // diferentes — assim a loja nunca fica abaixo do mínimo em nenhum momento.
-      const want = rules.early_leave_hours ?? 3;
-      const hours = Math.max(1, Math.min(want, cap.maxHours));
-      const ALL=['tarde_sair','manha_entrar','tarde_entrar','manha_sair'];
-      const SLOT={tarde_sair:'tarde_fim', manha_entrar:'manha_ini', tarde_entrar:'tarde_ini', manha_sair:'manha_fim'};
-      const MAP={
-        tarde_sair:{shift:'tarde',type:'saida_antecipada'},
-        manha_entrar:{shift:'manha',type:'entrada_tarde'},
-        tarde_entrar:{shift:'tarde',type:'entrada_tarde'},
-        manha_sair:{shift:'manha',type:'saida_antecipada'},
-      };
-      const absent={}; // quantas pessoas ausentes em cada horário do dia
-      // já considera as folgas aprovadas neste dia: parcial ocupa 1 horário, meio turno ocupa os 2 do turno
-      const slotsOf=(it)=>{
-        if(it.type==='entrada_tarde') return it.shift==='manha'?['manha_ini']:['tarde_ini'];
-        if(it.type==='saida_antecipada') return it.shift==='manha'?['manha_fim']:['tarde_fim'];
-        if(it.type==='meio_turno') return it.shift==='manha'?['manha_ini','manha_fim']:['tarde_ini','tarde_fim'];
-        return [];
-      };
-      existToday.forEach(it=>{ slotsOf(it).forEach(sl=>{ absent[sl]=(absent[sl]||0)+1; }); });
-      const doneToday=new Set(); // ninguém folga 2x no mesmo dia
-      let dayCount=0;  // quantas folgas já liberadas neste dia
-      for (const e of cands){
-        if (dayCount>=maxPerDay) break;   // teto de folgas no mesmo dia (Regras da loja)
-        if (doneToday.has(e.id)) continue;
-        const hh=history[e.id]||{};
-        if (dow===5 && (hh.fridaysOff||0)>=2){
-          logs.push({type:'bloqueio', employee_id:e.id, employee_name:e.name,
-            message:`${e.name} não recebe esta sexta: já folgou 2 sextas no mês — passando a vez para manter o equilíbrio.`});
-          continue;
-        }
-        // banco de horas: só folga se ainda tiver horas suficientes para compensar
-        if ((bankLeft[e.id]||0) < hours){
-          if (genCount[e.id]>0) logs.push({type:'bloqueio', employee_id:e.id, employee_name:e.name,
-            message:`${e.name} não recebe outra folga nesta semana: o banco de horas (${fmtHoras(bankLeft[e.id]||0)} restante) não cobre mais ${fmtHoras(hours)}.`});
-          continue;
-        }
-        let allowed=String(e.dayoff_pref||'').split(',').map(s=>s.trim()).filter(c=>ALL.includes(c));
-        if(!allowed.length) allowed=ALL.slice();
-        // escolhe, entre os horários que a pessoa aceita, um que ainda mantenha o mínimo (o menos cheio)
-        let bestCode=null, bestLoad=Infinity;
-        for (const code of allowed){
-          const load=absent[SLOT[code]]||0;
-          if (availDay.length - (load+1) >= minPer && load < bestLoad){ bestCode=code; bestLoad=load; }
-        }
-        if(!bestCode) continue; // qualquer horário desta pessoa deixaria a loja abaixo do mínimo nesse dia
-        const slot=SLOT[bestCode]; absent[slot]=(absent[slot]||0)+1;
-        const {shift,type}=MAP[bestCode];
-        const round=genCount[e.id]||0;
-        const periodoTxt = shift==='manha' ? 'de manhã' : 'à tarde';
-        const acao = type==='entrada_tarde'
-          ? `entrar ${hours}h mais tarde ${periodoTxt} de ${DIAS[dow]} (${dStr})`
-          : `sair ${hours}h mais cedo ${periodoTxt} de ${DIAS[dow]} (${dStr})`;
-        const ld=hh.lastDayOffDays;
-        const since=(ld==null?'não folga há bastante tempo':ld===0?'folgou por último hoje':ld===1?'última folga foi ontem':`não folga há ${ld} dias`);
-        const reason=`${e.name} pode ${acao} — tem ${fmtHoras(e.time_bank_balance)} de banco de horas, ${since}. Nesse horário a loja segue com ${availDay.length-absent[slot]} pessoa(s) (mínimo ${minPer}).`;
-        suggestions.push({ employee_id:e.id, employee_name:e.name, date:dStr, shift, type, hours, reason, tags:tagsFor(e,dow,round), score:Math.round(scoreOf(e)) });
-        logs.push({type:'sugestao', employee_id:e.id, employee_name:e.name, message:reason});
-        genCount[e.id]=round+1; bankLeft[e.id]=(bankLeft[e.id]||0)-hours; doneToday.add(e.id); dayCount++;
       }
     }
 
