@@ -482,8 +482,11 @@ ROUTES.folgas=async function(){
   <div class="toolbar"><button class="btn sec" id="regen">↻ Recalcular</button><div class="spacer"></div><span class="muted" id="capInfo"></span></div>
   <div id="folgaOut"><p class="muted">Carregando sugestões da semana…</p></div>`;
   async function run(){
-    const out=Engine.suggestDayOffs({employees:emps,rules,vacations:vacs,requests:reqs,refusals,blockedDates:blk,year,month,horizonDays:7,startDate:todayStr(),history,existing});
-    $('#capInfo').textContent=`Próximos 7 dias · capacidade ${out.capacity.level.replace('_',' ')}`;
+    // data de início pra valer do sistema: enquanto hoje for antes de 22/06/2026, começa lá; depois segue o dia atual
+    const SYSTEM_START='2026-06-22';
+    const startD = todayStr() < SYSTEM_START ? SYSTEM_START : todayStr();
+    const out=Engine.suggestDayOffs({employees:emps,rules,vacations:vacs,requests:reqs,refusals,blockedDates:blk,year,month,horizonDays:7,startDate:startD,history,existing});
+    $('#capInfo').textContent=`Semana a partir de ${startD.split('-').reverse().join('/')} · capacidade ${out.capacity.level.replace('_',' ')}`;
     const sugCards=out.suggestions.map((s,i)=>{
       const dia=Engine.DOW[Engine.parse(s.date).getDay()]; const dataBR=s.date.split('-').reverse().slice(0,2).join('/');
       return `<div class="card" style="margin-bottom:12px">
