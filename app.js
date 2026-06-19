@@ -164,7 +164,7 @@ function renderHome(){
   $('#backBtn').classList.add('hidden'); $('#pageTitle').textContent='';
   $('#view').innerHTML=`
   <div class="hero">
-    <div class="logo"><span class="em">👓</span> Ótica Carina</div>
+    <img src="logo.png" class="home-logo" alt="Ótica Carina" />
     <div class="tag">Sistema de Escalas &amp; Banco de Horas</div>
     <div style="margin-top:12px;display:flex;gap:20px;justify-content:center;flex-wrap:wrap">
       <a href="#tiquetaque" style="color:var(--brand);font-weight:600;font-size:14px">🔄 Sincronizar banco de horas (TiqueTaque)</a>
