@@ -223,9 +223,10 @@ window.Engine = (function () {
       if (!it || !it.employee_id || !it.date) continue;
       // adjacência: TODAS as folgas aprovadas contam (inclusive de outras semanas) — evita sexta + segunda seguinte
       (assignedDates[it.employee_id]=assignedDates[it.employee_id]||[]).push(it.date);
-      if (it.date < startStr || it.date > horizonEndStr) continue; // genCount/banco só da semana planejada
+      // banco: TODA folga aprovada futura reduz o banco disponível (mesmo de outra semana) — o sistema se adequa
+      bankLeft[it.employee_id] = (bankLeft[it.employee_id]||0) - (+it.hours||0);
+      if (it.date < startStr || it.date > horizonEndStr) continue; // genCount (teto por semana) só da semana planejada
       genCount[it.employee_id] = (genCount[it.employee_id]||0) + 1;
-      bankLeft[it.employee_id] = (bankLeft[it.employee_id]||0) - (+it.hours||0); // desconta horas já comprometidas
     }
     // distância (em dias) do dia até a folga mais próxima que a pessoa já tem na semana — usado para espalhar
     const dayNum=ds=>Math.floor(parse(ds).getTime()/86400000);
@@ -293,11 +294,11 @@ window.Engine = (function () {
             !existing.some(it=>it.employee_id===e.id && it.date===day.dStr))
           .sort((a,b)=>{
             const ga=genCount[a.id]||0, gb=genCount[b.id]||0; if(ga!==gb) return ga-gb;       // 1) menos folgas na semana primeiro
+            if (isFri){ const fa=(history[a.id]?.fridaysOff)||0, fb=(history[b.id]?.fridaysOff)||0; if(fa!==fb) return fa-fb; } // 2) revezamento de sexta: quem pegou menos sextas primeiro
             const da=minDist(a.id,day.dStr), db=minDist(b.id,day.dStr);
-            const adA=da<=1?1:0, adB=db<=1?1:0; if(adA!==adB) return adA-adB;                  // 2) evita dia colado à própria folga (deixa por último)
-            const la=history[a.id]?.lastDayOffDays??9999, lb=history[b.id]?.lastDayOffDays??9999; if(la!==lb) return lb-la; // 3) há mais tempo sem folgar primeiro
-            if(da!==db) return db-da;                                                          // 4) mais longe da própria folga (espalha)
-            if (isFri){ const fa=(history[a.id]?.fridaysOff)||0, fb=(history[b.id]?.fridaysOff)||0; if(fa!==fb) return fa-fb; }
+            const adA=da<=1?1:0, adB=db<=1?1:0; if(adA!==adB) return adA-adB;                  // 3) evita dia colado à própria folga (deixa por último)
+            const la=history[a.id]?.lastDayOffDays??9999, lb=history[b.id]?.lastDayOffDays??9999; if(la!==lb) return lb-la; // 4) há mais tempo sem folgar primeiro
+            if(da!==db) return db-da;                                                          // 5) mais longe da própria folga (espalha)
             return scoreOf(b)-scoreOf(a);
           });
 
