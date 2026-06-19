@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v6 (pedidos na home 3+4, editar folga)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v7 (meio turno auto, salvar regras topo, sábados por mês)
 // ============================================================
 (function(){
 "use strict";
@@ -283,6 +283,7 @@ ROUTES.regras=async function(){
   const commRows=comm.map(c=>{ const d=new Date(c.date+'T00:00:00'); const ini=new Date(d); ini.setDate(ini.getDate()-lead);
     return `<tr><td><b>${esc(c.name)}</b></td><td>${c.date.split('-').reverse().join('/')}</td><td class="muted">${ini.toLocaleDateString('pt-BR')} → ${d.toLocaleDateString('pt-BR')}</td></tr>`; }).join('');
   $('#view').innerHTML=`
+  <div class="toolbar"><span class="muted">Altere qualquer bloco e salve.</span><div class="spacer"></div><button class="btn" id="saveRules" ${isGestor()?'':'disabled'}>💾 Salvar regras da loja</button></div>
   <div class="grid2">
     <div class="panel"><div class="ph"><h3>Horário de funcionamento</h3></div><div class="pb">
       <p class="muted" style="margin-top:0">A loja fecha no intervalo do almoço — por isso há horários separados de manhã e de tarde.</p>
@@ -320,7 +321,13 @@ ROUTES.regras=async function(){
       <div class="field"><label>Escala 5x2 (futura)</label>
         <select id="r_5x2"><option value="false" ${!r.scale_5x2_enabled?'selected':''}>Desativada (modelo atual)</option><option value="true" ${r.scale_5x2_enabled?'selected':''}>Ativada</option></select>
         <div class="reason">Quando ativada: domingo fixo de folga + 1 dia rotativo, com rodízio justo. Arquitetura já preparada.</div></div>
-      <button class="btn" id="saveRules" ${isGestor()?'':'disabled'}>Salvar regras</button>
+      <div class="field"><label>Quais sábados abrem (padrão da loja)</label>
+        <select id="r_satmode">
+          <option value="dois_primeiros" ${(r.saturday_open_mode||'dois_primeiros')==='dois_primeiros'?'selected':''}>Os dois primeiros</option>
+          <option value="primeiro_ultimo" ${r.saturday_open_mode==='primeiro_ultimo'?'selected':''}>O primeiro e o último</option>
+          <option value="todos" ${r.saturday_open_mode==='todos'?'selected':''}>Todos os sábados</option>
+        </select>
+        <div class="reason">É o padrão. Cada mês pode ter um modo diferente — ajuste em <b>Rodízio de sábados</b>.</div></div>
     </div></div>
     <div class="panel"><div class="ph"><h3>Dias bloqueados / datas especiais</h3><button class="btn sm" id="addBlk" ${isGestor()?'':'disabled'}>+ Adicionar</button></div>
       <div class="pb" style="padding:0"><table><thead><tr><th>Data</th><th>Tipo</th><th>Motivo</th><th></th></tr></thead>
@@ -349,6 +356,7 @@ ROUTES.regras=async function(){
       dayoff_mode:$('#r_mode').value,early_leave_hours:+$('#r_early').value||3,
       saturday_open_count:+$('#r_satn').value,saturday_start:$('#r_sats').value,saturday_end:$('#r_sate').value,
       saturday_first_count:+$('#r_sat1').value||3,saturday_second_count:+$('#r_sat2').value||2,
+      saturday_open_mode:$('#r_satmode').value||'dois_primeiros',
       scale_5x2_enabled:$('#r_5x2').value==='true',updated_at:new Date().toISOString()};
     const res=await T('store_rules').upsert(payload); if(res.error){toast('Erro: '+res.error.message);return;}
     toast('Regras salvas.'); });
@@ -578,14 +586,31 @@ ROUTES.escala=async function(){
 };
 function folgaModal(it,emps,rules){
   it=it||{};
+  const toMin=s=>{const[h,m]=String(s||'').split(':').map(Number);return (h||0)*60+(m||0);};
+  const diffH=(a,b)=>Math.max(0,(toMin(b)-toMin(a))/60);
+  const mh=diffH(rules.open_morning||'09:00', rules.close_morning||'12:00');   // horas da manhã
+  const ah=diffH(rules.open_afternoon||'14:00', rules.close_afternoon||'18:00'); // horas da tarde
+  const fmtHrs=h=>{const m=Math.round(h*60);const H=Math.floor(m/60),M=m%60;return H+'h'+(M?String(M).padStart(2,'0'):'');};
+  const oM=(rules.open_morning||'09:00').slice(0,5), cM=(rules.close_morning||'12:00').slice(0,5);
+  const oA=(rules.open_afternoon||'14:00').slice(0,5), cA=(rules.close_afternoon||'18:00').slice(0,5);
+  // ação inicial a partir do registro existente
+  let act0='saida_antecipada';
+  if(it.type==='entrada_tarde') act0='entrada_tarde';
+  else if(it.type==='meio_turno') act0 = it.shift==='manha'?'meio_turno_manha':'meio_turno_tarde';
+  else if(it.type==='integral') act0='integral';
   openModal(it.id?'Editar folga':'Lançar folga',`
     <div class="field"><label>Funcionária</label><select id="ff_emp">${emps.map(e=>`<option value="${e.id}" ${it.employee_id===e.id?'selected':''}>${esc(e.name)}</option>`).join('')}</select></div>
     <div class="grid2">
       <div class="field"><label>Data</label><input id="ff_date" type="date" value="${it.date||todayStr()}"/></div>
-      <div class="field"><label>Horas</label><input id="ff_hours" type="number" step="0.5" value="${it.hours||3}"/></div></div>
-    <div class="grid2">
-      <div class="field"><label>Período</label><select id="ff_shift"><option value="tarde" ${(it.shift==='tarde'||!it.shift)?'selected':''}>Tarde</option><option value="manha" ${it.shift==='manha'?'selected':''}>Manhã</option></select></div>
-      <div class="field"><label>Ação</label><select id="ff_type"><option value="saida_antecipada" ${(it.type==='saida_antecipada'||!it.type)?'selected':''}>Sair mais cedo</option><option value="entrada_tarde" ${it.type==='entrada_tarde'?'selected':''}>Entrar mais tarde</option><option value="meio_turno" ${it.type==='meio_turno'?'selected':''}>Meio turno (4h)</option><option value="integral" ${it.type==='integral'?'selected':''}>Folga integral (dia todo)</option></select></div></div>
+      <div class="field"><label>Ação</label><select id="ff_type">
+        <option value="saida_antecipada" ${act0==='saida_antecipada'?'selected':''}>Sair mais cedo</option>
+        <option value="entrada_tarde" ${act0==='entrada_tarde'?'selected':''}>Entrar mais tarde</option>
+        <option value="meio_turno_manha" ${act0==='meio_turno_manha'?'selected':''}>Meio turno (manhã)</option>
+        <option value="meio_turno_tarde" ${act0==='meio_turno_tarde'?'selected':''}>Meio turno (tarde)</option>
+        <option value="integral" ${act0==='integral'?'selected':''}>Folga integral (dia todo)</option></select></div></div>
+    <div class="grid2" id="ff_partial">
+      <div class="field"><label>Período</label><select id="ff_shift"><option value="tarde" ${it.shift!=='manha'?'selected':''}>Tarde</option><option value="manha" ${it.shift==='manha'?'selected':''}>Manhã</option></select></div>
+      <div class="field"><label>Horas</label><input id="ff_hours" type="number" step="0.5" min="1" value="${it.hours||1}"/></div></div>
     <div class="reason" id="ff_preview"></div>
   `,async()=>{
     if(!gate())return false;
@@ -593,15 +618,26 @@ function folgaModal(it,emps,rules){
     const date=$('#ff_date').value; if(!date){toast('Informe a data.');return false;}
     const d=Engine.parse(date);
     const sched=await getOrCreateSchedule(d.getFullYear(), d.getMonth()+1);
-    let shift=$('#ff_shift').value, type=$('#ff_type').value, hours=+$('#ff_hours').value||3;
-    if(type==='integral'){ shift='dia_inteiro'; hours=hours>=7?hours:8; }
-    else if(type==='meio_turno'){ hours=4; }
-    const payload={schedule_id:sched.id, employee_id:emp.id, employee_name:emp.name, date, shift, type, hours, status:'aprovado', reason:'Lançada manualmente pelo gestor'};
+    const act=$('#ff_type').value; let type,shift,hours;
+    if(act==='saida_antecipada'||act==='entrada_tarde'){ type=act; shift=$('#ff_shift').value; hours=+$('#ff_hours').value||1; }
+    else if(act==='meio_turno_manha'){ type='meio_turno'; shift='manha'; hours=mh; }
+    else if(act==='meio_turno_tarde'){ type='meio_turno'; shift='tarde'; hours=ah; }
+    else { type='integral'; shift='dia_inteiro'; hours=mh+ah; }
+    const payload={schedule_id:sched.id, employee_id:emp.id, employee_name:emp.name, date, shift, type, hours:Math.round(hours*100)/100, status:'aprovado', reason:'Lançada manualmente pelo gestor'};
     const r = it.id ? await T('schedule_items').update(payload).eq('id',it.id) : await T('schedule_items').insert(payload);
     if(r.error){toast(r.error.message);return false;}
     toast('Folga salva.'); route(); return true;
   });
-  const upd=()=>{ const prev={type:$('#ff_type').value,shift:$('#ff_shift').value,hours:+$('#ff_hours').value||3}; $('#ff_preview').textContent='Vai aparecer no calendário como: '+folgaTimeLabel(prev,rules); };
+  const upd=()=>{
+    const act=$('#ff_type').value;
+    $('#ff_partial').style.display=(act==='saida_antecipada'||act==='entrada_tarde')?'':'none';
+    let txt;
+    if(act==='meio_turno_manha') txt=`Meio turno manhã · ${fmtHrs(mh)} (das ${oM} às ${cM})`;
+    else if(act==='meio_turno_tarde') txt=`Meio turno tarde · ${fmtHrs(ah)} (das ${oA} às ${cA})`;
+    else if(act==='integral') txt=`Folga o dia todo · ${fmtHrs(mh+ah)}`;
+    else { const prev={type:act,shift:$('#ff_shift').value,hours:+$('#ff_hours').value||1}; txt=folgaTimeLabel(prev,rules)+' · '+prev.hours+'h'; }
+    $('#ff_preview').textContent='Vai aparecer como: '+txt;
+  };
   ['ff_type','ff_shift','ff_hours'].forEach(id=>$('#'+id)?.addEventListener('change',upd)); upd();
 }
 
@@ -667,17 +703,20 @@ ROUTES.sabados=async function(){
   if(s0.length && Engine.fmt(s0[s0.length-1]) < todayISO){ month++; if(month>12){month=1;year++;} }
 
   async function load(){
-    const [emps,rules,saved,hist,recent]=await Promise.all([
+    const [emps,rules,saved,hist,recent,mset]=await Promise.all([
       getAll('employees',b=>b.eq('is_simulation',S.sim).order('name')),
       T('store_rules').select('*').eq('id',1).maybeSingle().then(r=>r.data||{}),
       getAll('saturday_rotation',b=>b.eq('year',year).eq('month',month).order('saturday_number')),
       buildHistory(),
-      getAll('saturday_rotation',b=>b.order('saturday_date',{ascending:false}).limit(120))]);
+      getAll('saturday_rotation',b=>b.order('saturday_date',{ascending:false}).limit(120)),
+      T('month_settings').select('*').eq('year',year).eq('month',month).maybeSingle().then(r=>r.data||null)]);
     const active=emps.filter(e=>e.status==='ativa');
     const empName=Object.fromEntries(emps.map(e=>[e.id,e.name]));
     const expert=new Set(emps.filter(e=>e.is_expert).map(e=>e.id));
-    const sats=Engine.saturdaysOfMonth(year,month).slice(0,rules.saturday_open_count||2).map(Engine.fmt);
-    const meta=Engine.saturdayRotation(active,rules,year,month,hist);
+    const monthMode=(mset&&mset.sat_mode)||rules.saturday_open_mode||'dois_primeiros';
+    const erules={...rules, saturday_open_mode:monthMode};
+    const sats=Engine.openSaturdays(year,month,monthMode).map(Engine.fmt);
+    const meta=Engine.saturdayRotation(active,erules,year,month,hist);
     const targets=meta.counts||[rules.saturday_first_count??3, rules.saturday_second_count??2];
     let state=saved.map(r=>({saturday_number:r.saturday_number, saturday_date:r.saturday_date||sats[r.saturday_number-1], employee_id:r.employee_id, employee_name:r.employee_name||empName[r.employee_id]}));
     const invNote=meta.inverted?`<div class="reason" style="border-left-color:var(--purple)">🔁 Inversão automática: <b>${esc(meta.commName)}</b> perto do 2º sábado → reforço no 2º sábado (mais gente lá).</div>`:'';
@@ -742,6 +781,12 @@ ROUTES.sabados=async function(){
       <button class="btn sec" id="saveSat" ${isGestor()?'':'disabled'}>💾 Salvar rodízio</button>
       <div class="spacer"></div><span class="muted">${rules.saturday_start||'14:00'}–${rules.saturday_end||'17:00'}</span>
     </div>
+    <div class="toolbar"><span class="muted">Sábados que abrem neste mês:</span>
+      <select id="satMode" ${isGestor()?'':'disabled'}>
+        <option value="dois_primeiros" ${monthMode==='dois_primeiros'?'selected':''}>Os dois primeiros</option>
+        <option value="primeiro_ultimo" ${monthMode==='primeiro_ultimo'?'selected':''}>O primeiro e o último</option>
+        <option value="todos" ${monthMode==='todos'?'selected':''}>Todos</option></select>
+      <span class="muted">${sats.length} sábado(s): ${sats.map(d=>d.split('-').reverse().slice(0,2).join('/')).join(', ')||'—'}</span></div>
     ${passed?box('warn','Estes sábados <b>já passaram</b>. Você pode registrar quem trabalhou (alimenta o histórico) ou ir para um mês futuro no <b>→</b>.'):box('info','O sistema sugere e <b>equilibra pelo histórico</b>. Ajuste na mão: remova no × e adicione pela lista — útil quando alguém pede para trocar um sábado. Depois <b>Salvar rodízio</b>.')}
     <div id="satEditor"></div>
     <div class="section panel"><div class="ph"><h3>Histórico de sábados</h3><span class="muted">por mês</span></div>
@@ -749,6 +794,9 @@ ROUTES.sabados=async function(){
     renderEditor();
     $('#satPrev').onclick=()=>{ month--; if(month<1){month=12;year--;} load(); };
     $('#satNext').onclick=()=>{ month++; if(month>12){month=1;year++;} load(); };
+    $('#satMode')?.addEventListener('change',async(e)=>{ if(!gate())return; const mode=e.target.value;
+      const res=await T('month_settings').upsert({year,month,sat_mode:mode},{onConflict:'year,month'}); if(res.error){toast(res.error.message);return;}
+      toast('Modo de sábados deste mês atualizado.'); load(); });
     $('#genSat')?.addEventListener('click',()=>{ if(!gate())return; state=meta.assignments.map(a=>({...a})); renderEditor(); toast('Sugestão gerada — ajuste se precisar e salve.'); });
     $('#saveSat')?.addEventListener('click',async()=>{ if(!gate())return;
       if(!state.length){ toast('Nada para salvar. Gere a sugestão ou adicione funcionárias.'); return; }
@@ -771,8 +819,10 @@ ROUTES.calendario=async function(){
       getAll('vacation_periods'),T('store_rules').select('*').eq('id',1).maybeSingle().then(r=>r.data||{}),getAll('blocked_dates'),
       getAll('employees',b=>b.eq('is_simulation',S.sim)),
       getAll('saturday_rotation',b=>b.eq('year',year).eq('month',month))]);
+    const mset=await T('month_settings').select('*').eq('year',year).eq('month',month).maybeSingle().then(r=>r.data||null);
     const nm=Object.fromEntries(emps.map(e=>[e.id,e.name]));
-    const sats=Engine.saturdaysOfMonth(year,month).slice(0,rules.saturday_open_count||2).map(Engine.fmt);
+    const satMode=(mset&&mset.sat_mode)||rules.saturday_open_mode||'dois_primeiros';
+    const sats=Engine.openSaturdays(year,month,satMode).map(Engine.fmt);
     const dowFull=['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];
     const dayEv=[];
     for(let d=1;d<=dim;d++){

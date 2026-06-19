@@ -15,6 +15,13 @@ window.Engine = (function () {
     while (d.getMonth()===month-1){ if(d.getDay()===6) out.push(new Date(d)); d.setDate(d.getDate()+1); }
     return out;
   }
+  // sábados que abrem no mês conforme o modo escolhido
+  function openSaturdays(year, month, mode){
+    const all = saturdaysOfMonth(year, month);
+    if (mode==='todos') return all.slice();
+    if (mode==='primeiro_ultimo') return all.length<=1 ? all.slice() : [all[0], all[all.length-1]];
+    return all.slice(0,2); // dois_primeiros (padrão)
+  }
   function daysInMonth(year, month){ return new Date(year, month, 0).getDate(); }
   function nthWeekdayOfMonth(year, month, weekday, n){ // month 1-12
     const d=new Date(year, month-1, 1); let c=0;
@@ -104,7 +111,7 @@ window.Engine = (function () {
   // 2º sábado: padrão 2. Quem trabalha no 1º não trabalha no 2º (revezamento).
   // Exceção: se uma data comemorativa cai perto do 2º sábado, inverte (3 no 2º, 2 no 1º).
   function saturdayRotation(employees, rules, year, month, history) {
-    const sats = saturdaysOfMonth(year, month).slice(0, rules.saturday_open_count||2);
+    const sats = openSaturdays(year, month, rules.saturday_open_mode);
     const eligible = employees.filter(e => e.status==='ativa');
     const logs=[]; const assignments=[];
     const hhmm=`${rules.saturday_start||'14:00'}–${rules.saturday_end||'17:00'}`;
@@ -124,7 +131,8 @@ window.Engine = (function () {
       }
       if (inverted){ const t=firstCount; firstCount=secondCount; secondCount=t; }
     }
-    const counts=[firstCount, secondCount];
+    // 1º sábado = firstCount; demais = secondCount (vale p/ 2, primeiro+último ou todos)
+    const counts = sats.map((_,i)=> i===0 ? firstCount : secondCount);
 
     // ordena por menos sábados no histórico (quem deve mais trabalha primeiro)
     const ranked = [...eligible].sort((a,b)=>{
@@ -134,10 +142,11 @@ window.Engine = (function () {
     });
 
     const isExp = e => !!e.is_expert; // especialista em atendimento de ótica
-    const usedFirst=new Set();
+    const usedAny=new Set(); // evita repetir a mesma pessoa em sábados diferentes do mês
     sats.forEach((satDate, idx)=>{
       const need=counts[idx]||0;
-      const pool = ranked.filter(e => idx===0 ? true : !usedFirst.has(e.id)); // sem sobreposição
+      let pool = ranked.filter(e => !usedAny.has(e.id)); // sem sobreposição entre os sábados
+      if (pool.length < need) pool = ranked.slice(); // não há gente suficiente sem repetir → permite repetir
       const pick=[]; const add=e=>{ if(e && !pick.includes(e)) pick.push(e); };
       // 1) garante ao menos 1 ESPECIALISTA
       add(pool.find(e=>isExp(e)));
@@ -147,7 +156,7 @@ window.Engine = (function () {
       for (const e of pool){ if(pick.length>=need) break; add(e); }
       const finalPick = pick.slice(0, need);
       finalPick.forEach(e=>{
-        if (idx===0) usedFirst.add(e.id);
+        usedAny.add(e.id);
         assignments.push({ saturday_number: idx+1, saturday_date: fmt(satDate), employee_id:e.id, employee_name:e.name });
       });
       const nomes = finalPick.map(e=>e.name).join(', ') || '—';
@@ -392,7 +401,7 @@ window.Engine = (function () {
     {key:'recusa',     name:'10. Recusa de folga', apply:(emps)=>emps},
   ];
 
-  return { saturdaysOfMonth, daysInMonth, operationalCapacity, fairnessIndex,
+  return { saturdaysOfMonth, openSaturdays, daysInMonth, operationalCapacity, fairnessIndex,
            saturdayRotation, suggestDayOffs, simEmployees, SCENARIOS, DOW, fmt, parse,
            commemorativeDates };
 })();
