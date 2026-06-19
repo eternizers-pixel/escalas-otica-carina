@@ -216,11 +216,14 @@ window.Engine = (function () {
     const horizonEnd = new Date(start); horizonEnd.setDate(horizonEnd.getDate()+horizonDays);
     const horizonEndStr = fmt(horizonEnd);
     // folgas de cada pessoa NESTA semana (conta as já aprovadas) — base do ciclo justo
-    const genCount = {};
+    // e banco de horas RESTANTE (já descontando as folgas aprovadas) — ninguém folga além do que tem em banco
+    const genCount = {}; const bankLeft = {};
+    active.forEach(e=>{ bankLeft[e.id] = (e.time_bank_balance||0); });
     for (const it of existing){
       if (!it || !it.employee_id || !it.date) continue;
       if (it.date < startStr || it.date > horizonEndStr) continue;
       genCount[it.employee_id] = (genCount[it.employee_id]||0) + 1;
+      bankLeft[it.employee_id] = (bankLeft[it.employee_id]||0) - (+it.hours||0); // desconta horas já comprometidas
     }
     const maxBank = Math.max(0, ...pool.map(e=>e.time_bank_balance||0));
     // tags curtas que justificam a escolha (no máx. 3)
@@ -285,12 +288,14 @@ window.Engine = (function () {
           logs.push({type:'bloqueio', message:`${DIAS[dow]} (${dStr}): liberar 1 folga deixaria a loja abaixo do mínimo (${minPer}).`});
           continue;
         }
+        const costFull = cap.maxHours>=7?Math.min(8,cap.maxHours): cap.maxHours>=4?4:cap.maxHours;
         let chosen=null;
         for (const e of cands){
           const h=history[e.id]||{};
           if (dow===5 && (h.fridaysOff||0)>=2){
             logs.push({type:'bloqueio', employee_id:e.id, employee_name:e.name, message:`${e.name} não recebe esta sexta: já folgou 2 sextas no mês.`}); continue;
           }
+          if ((bankLeft[e.id]||0) < costFull) continue; // banco insuficiente para folga integral/meio turno
           chosen=e; break;
         }
         if(!chosen) continue;
@@ -307,7 +312,7 @@ window.Engine = (function () {
         const reason=`${chosen.name} pode ${acao} — tem ${fmtHoras(chosen.time_bank_balance)} de banco de horas, ${since}, e a loja ainda fica com ${availDay.length-1} pessoas no dia (mínimo ${minPer}).`;
         suggestions.push({ employee_id:chosen.id, employee_name:chosen.name, date:dStr, shift, type, hours, reason, tags:tagsFor(chosen,dow,round), score:Math.round(scoreOf(chosen)) });
         logs.push({type:'sugestao', employee_id:chosen.id, employee_name:chosen.name, message:reason});
-        genCount[chosen.id]=round+1;
+        genCount[chosen.id]=round+1; bankLeft[chosen.id]=(bankLeft[chosen.id]||0)-hours;
         continue;
       }
 
@@ -345,6 +350,12 @@ window.Engine = (function () {
             message:`${e.name} não recebe esta sexta: já folgou 2 sextas no mês — passando a vez para manter o equilíbrio.`});
           continue;
         }
+        // banco de horas: só folga se ainda tiver horas suficientes para compensar
+        if ((bankLeft[e.id]||0) < hours){
+          if (genCount[e.id]>0) logs.push({type:'bloqueio', employee_id:e.id, employee_name:e.name,
+            message:`${e.name} não recebe outra folga nesta semana: o banco de horas (${fmtHoras(bankLeft[e.id]||0)} restante) não cobre mais ${fmtHoras(hours)}.`});
+          continue;
+        }
         let allowed=String(e.dayoff_pref||'').split(',').map(s=>s.trim()).filter(c=>ALL.includes(c));
         if(!allowed.length) allowed=ALL.slice();
         // escolhe, entre os horários que a pessoa aceita, um que ainda mantenha o mínimo (o menos cheio)
@@ -366,7 +377,7 @@ window.Engine = (function () {
         const reason=`${e.name} pode ${acao} — tem ${fmtHoras(e.time_bank_balance)} de banco de horas, ${since}. Nesse horário a loja segue com ${availDay.length-absent[slot]} pessoa(s) (mínimo ${minPer}).`;
         suggestions.push({ employee_id:e.id, employee_name:e.name, date:dStr, shift, type, hours, reason, tags:tagsFor(e,dow,round), score:Math.round(scoreOf(e)) });
         logs.push({type:'sugestao', employee_id:e.id, employee_name:e.name, message:reason});
-        genCount[e.id]=round+1; doneToday.add(e.id); dayCount++;
+        genCount[e.id]=round+1; bankLeft[e.id]=(bankLeft[e.id]||0)-hours; doneToday.add(e.id); dayCount++;
       }
     }
 
