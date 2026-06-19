@@ -168,7 +168,7 @@ window.Engine = (function () {
   // tempo sem folgar, cobertura mínima, férias, pedidos e recusas.
   function suggestDayOffs(opts) {
     const { employees, rules, vacations, requests=[], refusals=[], history={},
-            blockedDates=[], horizonDays=14, startDate } = opts;
+            blockedDates=[], horizonDays=14, startDate, existing=[] } = opts;
     const cap = operationalCapacity(employees, rules);
     const logs=[]; const suggestions=[];
     const minBank = rules.min_time_bank_for_dayoff ?? 6;
@@ -202,7 +202,22 @@ window.Engine = (function () {
     }
 
     const start = startDate ? parse(startDate) : new Date();
+    const startStr = fmt(start);
+    const horizonEnd = new Date(start); horizonEnd.setDate(horizonEnd.getDate()+horizonDays);
+    const horizonEndStr = fmt(horizonEnd);
     const used = new Set(); // no máximo 1 folga por pessoa nesta geração
+    // cruza com folgas JÁ aprovadas na janela: quem já tem folga programada não recebe outra
+    for (const it of existing){
+      if (!it || !it.employee_id || !it.date) continue;
+      if (it.date < startStr || it.date > horizonEndStr) continue;
+      if (!used.has(it.employee_id)){
+        used.add(it.employee_id);
+        const emp=active.find(e=>e.id===it.employee_id);
+        const nm=it.employee_name || (emp&&emp.name) || 'Funcionária';
+        logs.push({type:'bloqueio', employee_id:it.employee_id, employee_name:nm,
+          message:`${nm} já tem folga programada nesta semana (${it.date.split('-').reverse().slice(0,2).join('/')}) — não recebe outra para manter o equilíbrio.`});
+      }
+    }
     for (let i=0;i<=horizonDays;i++){
       const d=new Date(start); d.setDate(d.getDate()+i);
       const dStr=fmt(d); const dow=d.getDay();

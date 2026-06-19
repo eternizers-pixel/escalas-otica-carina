@@ -472,13 +472,17 @@ ROUTES.folgas=async function(){
     getAll('vacation_periods'),getAll('dayoff_requests'),getAll('blocked_dates')]);
   const refusals=reqs.filter(r=>r.request_type==='recusa_folga');
   const history=await buildHistory();
+  // folgas já aprovadas (a partir de hoje) para a engine não sugerir quem já tem folga programada
+  const scheds=await getAll('schedules',b=>b.eq('is_simulation',S.sim));
+  const schedIds=new Set(scheds.map(s=>s.id));
+  const existing=(await getAll('schedule_items',b=>b.eq('status','aprovado').gte('date',todayStr()))).filter(it=>schedIds.has(it.schedule_id));
   const fresh=await bankFreshnessBanner();
   $('#view').innerHTML=`
   ${fresh}
   <div class="toolbar"><button class="btn sec" id="regen">↻ Recalcular</button><div class="spacer"></div><span class="muted" id="capInfo"></span></div>
   <div id="folgaOut"><p class="muted">Carregando sugestões da semana…</p></div>`;
   async function run(){
-    const out=Engine.suggestDayOffs({employees:emps,rules,vacations:vacs,requests:reqs,refusals,blockedDates:blk,year,month,horizonDays:7,startDate:todayStr(),history});
+    const out=Engine.suggestDayOffs({employees:emps,rules,vacations:vacs,requests:reqs,refusals,blockedDates:blk,year,month,horizonDays:7,startDate:todayStr(),history,existing});
     $('#capInfo').textContent=`Próximos 7 dias · capacidade ${out.capacity.level.replace('_',' ')}`;
     const sugCards=out.suggestions.map((s,i)=>{
       const dia=Engine.DOW[Engine.parse(s.date).getDay()]; const dataBR=s.date.split('-').reverse().slice(0,2).join('/');
