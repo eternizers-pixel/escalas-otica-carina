@@ -235,8 +235,11 @@ window.Engine = (function () {
       if (dow===6) continue;                        // sábado: controlado pelo Rodízio de sábados
       if (blocked(dStr)) continue;                  // dia bloqueado para folga
 
-      // disponíveis de fato nesse dia (ativas e não de férias)
-      const availDay = active.filter(e=>!onVac(e,dStr));
+      // folgas JÁ aprovadas neste dia (lançadas pelo gestor) — entram na conta de cobertura
+      const existToday = existing.filter(it=>it.date===dStr);
+      const integralToday = existToday.filter(it=>it.type==='integral' || it.shift==='dia_inteiro').map(it=>it.employee_id);
+      // disponíveis de fato nesse dia (ativas, não de férias e que não estão de folga integral)
+      const availDay = active.filter(e=>!onVac(e,dStr) && !integralToday.includes(e.id));
       const isFri = dow===5;
       // candidatas: quem tem MENOS folgas na semana primeiro (ciclo justo), depois sexta, depois justiça (banco/tempo sem folgar)
       const cands = pool
@@ -314,6 +317,14 @@ window.Engine = (function () {
         manha_sair:{shift:'manha',type:'saida_antecipada'},
       };
       const absent={}; // quantas pessoas ausentes em cada horário do dia
+      // já considera as folgas aprovadas neste dia: parcial ocupa 1 horário, meio turno ocupa os 2 do turno
+      const slotsOf=(it)=>{
+        if(it.type==='entrada_tarde') return it.shift==='manha'?['manha_ini']:['tarde_ini'];
+        if(it.type==='saida_antecipada') return it.shift==='manha'?['manha_fim']:['tarde_fim'];
+        if(it.type==='meio_turno') return it.shift==='manha'?['manha_ini','manha_fim']:['tarde_ini','tarde_fim'];
+        return [];
+      };
+      existToday.forEach(it=>{ slotsOf(it).forEach(sl=>{ absent[sl]=(absent[sl]||0)+1; }); });
       const doneToday=new Set(); // ninguém folga 2x no mesmo dia
       let dayCount=0;  // quantas folgas já liberadas neste dia
       for (const e of cands){

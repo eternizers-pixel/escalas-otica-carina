@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v4 (cards em grid + tags coloridas)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v5 (lançar folga aprovada integra motor)
 // ============================================================
 (function(){
 "use strict";
@@ -583,7 +583,7 @@ function folgaModal(it,emps,rules){
       <div class="field"><label>Horas</label><input id="ff_hours" type="number" step="0.5" value="${it.hours||3}"/></div></div>
     <div class="grid2">
       <div class="field"><label>Período</label><select id="ff_shift"><option value="tarde" ${(it.shift==='tarde'||!it.shift)?'selected':''}>Tarde</option><option value="manha" ${it.shift==='manha'?'selected':''}>Manhã</option></select></div>
-      <div class="field"><label>Ação</label><select id="ff_type"><option value="saida_antecipada" ${it.type!=='entrada_tarde'?'selected':''}>Sair mais cedo</option><option value="entrada_tarde" ${it.type==='entrada_tarde'?'selected':''}>Entrar mais tarde</option></select></div></div>
+      <div class="field"><label>Ação</label><select id="ff_type"><option value="saida_antecipada" ${(it.type==='saida_antecipada'||!it.type)?'selected':''}>Sair mais cedo</option><option value="entrada_tarde" ${it.type==='entrada_tarde'?'selected':''}>Entrar mais tarde</option><option value="meio_turno" ${it.type==='meio_turno'?'selected':''}>Meio turno (4h)</option><option value="integral" ${it.type==='integral'?'selected':''}>Folga integral (dia todo)</option></select></div></div>
     <div class="reason" id="ff_preview"></div>
   `,async()=>{
     if(!gate())return false;
@@ -591,7 +591,10 @@ function folgaModal(it,emps,rules){
     const date=$('#ff_date').value; if(!date){toast('Informe a data.');return false;}
     const d=Engine.parse(date);
     const sched=await getOrCreateSchedule(d.getFullYear(), d.getMonth()+1);
-    const payload={schedule_id:sched.id, employee_id:emp.id, employee_name:emp.name, date, shift:$('#ff_shift').value, type:$('#ff_type').value, hours:+$('#ff_hours').value||3, status:'aprovado', reason:'Lançada/editada manualmente'};
+    let shift=$('#ff_shift').value, type=$('#ff_type').value, hours=+$('#ff_hours').value||3;
+    if(type==='integral'){ shift='dia_inteiro'; hours=hours>=7?hours:8; }
+    else if(type==='meio_turno'){ hours=4; }
+    const payload={schedule_id:sched.id, employee_id:emp.id, employee_name:emp.name, date, shift, type, hours, status:'aprovado', reason:'Lançada manualmente pelo gestor'};
     const r = it.id ? await T('schedule_items').update(payload).eq('id',it.id) : await T('schedule_items').insert(payload);
     if(r.error){toast(r.error.message);return false;}
     toast('Folga salva.'); route(); return true;
@@ -805,25 +808,31 @@ ROUTES.calendario=async function(){
 
 // ---------- PEDIDOS ----------
 ROUTES.pedidos=async function(){
-  const [emps,reqs]=await Promise.all([getAll('employees',b=>b.eq('is_simulation',S.sim).order('name')),getAll('dayoff_requests',b=>b.order('created_at',{ascending:false}).limit(50))]);
+  const [emps,reqs,rules]=await Promise.all([
+    getAll('employees',b=>b.eq('is_simulation',S.sim).order('name')),
+    getAll('dayoff_requests',b=>b.order('created_at',{ascending:false}).limit(50)),
+    T('store_rules').select('*').eq('id',1).maybeSingle().then(r=>r.data||{})]);
   const map=Object.fromEntries(emps.map(e=>[e.id,e.name]));
   $('#view').innerHTML=`
-  <div class="toolbar"><button class="btn" id="addReq" ${isGestor()?'':'disabled'}>+ Registrar pedido / exceção</button></div>
+  <div class="toolbar"><button class="btn" id="addFolga" ${isGestor()?'':'disabled'}>+ Lançar folga</button>
+    <button class="btn sec" id="addReq" ${isGestor()?'':'disabled'}>+ Registrar exceção (falta, atestado…)</button></div>
+  ${box('info','<b>Lançar folga</b> registra uma folga <b>já aprovada</b> (você escolhe integral, meio turno ou o horário de sair/entrar) — o <b>motor de folgas já considera</b> essa folga: conta o horário ocupado e não oferece o mesmo horário para outra pessoa no dia. Férias (em Funcionárias) também entram automaticamente na conta. As <b>exceções</b> abaixo (falta, atestado, atraso, troca) são só registro de histórico.')}
   <div class="panel"><div class="pb" style="padding:0"><table>
     <thead><tr><th>Funcionária</th><th>Data</th><th>Tipo</th><th>Motivo</th><th>Status</th><th></th></tr></thead>
     <tbody>${reqs.map(r=>`<tr><td><b>${esc(r.employee_name||map[r.employee_id]||'—')}</b></td><td>${r.date||'—'}</td><td>${reqTypeLabel(r.request_type)}</td><td class="muted">${esc(r.reason||'')}</td>
       <td><span class="pill ${r.status==='aprovado'?'ativa':r.status==='recusado'?'afastada':'ferias'}">${r.status}</span></td>
       <td class="row-actions">${isGestor()&&r.status==='pendente'?`<button class="btn sm" data-ap="${r.id}">Aprovar</button><button class="btn sec sm" data-rf="${r.id}">Recusar</button>`:''}</td></tr>`).join('')||'<tr><td colspan=6 class="muted" style="padding:16px">Nenhum pedido registrado.</td></tr>'}
     </tbody></table></div></div>`;
+  $('#addFolga')?.addEventListener('click',()=>folgaModal(null,emps,rules));
   $('#addReq')?.addEventListener('click',()=>{
-    openModal('Registrar pedido / exceção',`
+    openModal('Registrar exceção',`
       <div class="field"><label>Funcionária</label><select id="q_emp">${emps.map(e=>`<option value="${e.id}">${esc(e.name)}</option>`).join('')}</select></div>
       <div class="grid2"><div class="field"><label>Data</label><input id="q_date" type="date" value="${todayStr()}"/></div>
-        <div class="field"><label>Tipo</label><select id="q_type"><option value="pedido_folga">Pedido de folga</option><option value="troca_folga">Troca de folga</option><option value="falta">Falta</option><option value="atestado">Atestado</option><option value="saida_antecipada">Saída antecipada</option><option value="atraso">Atraso</option></select></div></div>
+        <div class="field"><label>Tipo</label><select id="q_type"><option value="falta">Falta</option><option value="atestado">Atestado</option><option value="atraso">Atraso</option><option value="troca_folga">Troca de folga</option></select></div></div>
       <div class="field"><label>Motivo</label><input id="q_reason"/></div>`,
       async()=>{ if(!gate())return false; const emp=emps.find(e=>e.id===$('#q_emp').value);
-        const res=await T('dayoff_requests').insert({employee_id:emp.id,employee_name:emp.name,date:$('#q_date').value,request_type:$('#q_type').value,reason:$('#q_reason').value,status:'pendente'});
-        if(res.error){toast(res.error.message);return false;} toast('Registrado.'); route(); return true; });
+        const res=await T('dayoff_requests').insert({employee_id:emp.id,employee_name:emp.name,date:$('#q_date').value,request_type:$('#q_type').value,reason:$('#q_reason').value,status:'aprovado'});
+        if(res.error){toast(res.error.message);return false;} toast('Exceção registrada.'); route(); return true; });
   });
   $$('[data-ap]').forEach(b=>b.onclick=async()=>{ if(!gate())return; await T('dayoff_requests').update({status:'aprovado'}).eq('id',b.dataset.ap); toast('Aprovado.'); route(); });
   $$('[data-rf]').forEach(b=>b.onclick=async()=>{ if(!gate())return; await T('dayoff_requests').update({status:'recusado'}).eq('id',b.dataset.rf); toast('Recusado.'); route(); });
