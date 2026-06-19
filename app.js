@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v2 (semana/teto folgas)
 // ============================================================
 (function(){
 "use strict";
