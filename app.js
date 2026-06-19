@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v11 (banco previsto no dashboard)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v12 (escolher semana no motor)
 // ============================================================
 (function(){
 "use strict";
@@ -518,19 +518,27 @@ ROUTES.folgas=async function(){
   const schedIds=new Set(scheds.map(s=>s.id));
   const existing=(await getAll('schedule_items',b=>b.eq('status','aprovado').gte('date',todayStr()))).filter(it=>schedIds.has(it.schedule_id));
   const fresh=await bankFreshnessBanner();
+  let weekOffset=0; // 0 = semana de planejamento atual; ← / → mudam a semana (para simular as próximas)
   $('#view').innerHTML=`
   ${fresh}
-  <div class="toolbar"><button class="btn sec" id="regen">↻ Recalcular</button><div class="spacer"></div><span class="muted" id="capInfo"></span></div>
+  <div class="toolbar">
+    <button class="btn sec sm" id="wkPrev">←</button>
+    <b id="wkLabel" style="min-width:185px;text-align:center">—</b>
+    <button class="btn sec sm" id="wkNext">→</button>
+    <button class="btn sec" id="regen">↻ Recalcular</button>
+    <div class="spacer"></div><span class="muted" id="capInfo"></span></div>
   <div id="folgaOut"><p class="muted">Carregando sugestões da semana…</p></div>`;
   async function run(){
-    // semana completa (segunda a sexta), a partir de 22/06/2026 ou da semana atual
+    // semana completa (segunda a sexta), a partir de 22/06/2026 ou da semana atual, mais o deslocamento escolhido
     const SYSTEM_START='2026-06-22';
     const base = todayStr() < SYSTEM_START ? SYSTEM_START : todayStr();
-    const bd=Engine.parse(base); const wd=bd.getDay(); bd.setDate(bd.getDate()+(wd===0?1:1-wd)); // segunda-feira da semana
+    const bd=Engine.parse(base); const wd=bd.getDay(); bd.setDate(bd.getDate()+(wd===0?1:1-wd)+weekOffset*7); // segunda-feira da semana escolhida
     const weekStart=Engine.fmt(bd);
     const out=Engine.suggestDayOffs({employees:emps,rules,vacations:vacs,requests:reqs,refusals,blockedDates:blk,year,month,horizonDays:4,startDate:weekStart,history,existing});
     const wEnd=Engine.parse(weekStart); wEnd.setDate(wEnd.getDate()+4);
-    $('#capInfo').textContent=`Semana ${weekStart.split('-').reverse().slice(0,2).join('/')} a ${Engine.fmt(wEnd).split('-').reverse().slice(0,2).join('/')} · cobertura ${out.capacity.level.replace('_',' ')}`;
+    const wlabel=`${weekStart.split('-').reverse().slice(0,2).join('/')} a ${Engine.fmt(wEnd).split('-').reverse().slice(0,2).join('/')}`;
+    $('#wkLabel').textContent = weekOffset===0?`Semana ${wlabel}`:`Semana ${wlabel} ${weekOffset>0?'(+'+weekOffset+')':'('+weekOffset+')'}`;
+    $('#capInfo').textContent=`cobertura ${out.capacity.level.replace('_',' ')}${weekOffset!==0?' · simulação':''}`;
     // agrupa as sugestões por dia
     const byDay={};
     out.suggestions.forEach((s,i)=>{ (byDay[s.date]=byDay[s.date]||[]).push({...s,_i:i}); });
@@ -568,24 +576,28 @@ ROUTES.folgas=async function(){
       <details class="panel section" style="margin-top:10px"><summary style="cursor:pointer;padding:13px 16px;font-weight:700">🧠 Log de decisão <span class="muted" style="font-weight:500">— toque para ver o porquê</span></summary>
         <div class="pb" style="padding-top:4px">${logRows||'<span class="muted">Sem registros.</span>'}</div></details>`;
     $$('[data-ap]').forEach(b=>b.onclick=async()=>{ if(!gate())return; const i=+b.dataset.ap; b.disabled=true;
-      await saveApproval(out.suggestions[i],year,month);
+      await saveApproval(out.suggestions[i]);
       $('#act'+i).innerHTML='<span class="pill ativa">✓ Aprovado</span>'; toast('Folga aprovada — veja em Folgas aprovadas.'); });
     $('#apAll')?.addEventListener('click',async()=>{ if(!gate())return; if(!out.suggestions.length)return;
       if(!confirm(`Aprovar todas as ${out.suggestions.length} folgas sugeridas desta semana?`))return;
       const btn=$('#apAll'); btn.disabled=true; btn.textContent='Aprovando…';
-      for(const s of out.suggestions){ await saveApproval(s,year,month); }
+      for(const s of out.suggestions){ await saveApproval(s); }
       toast('Todas as folgas foram aprovadas! Veja em Folgas aprovadas.'); route(); });
     $$('[data-rf]').forEach(b=>b.onclick=async()=>{ if(!gate())return; const i=+b.dataset.rf; const s=out.suggestions[i]; const motivo=prompt('Motivo da recusa:','')||'';
       await T('dayoff_requests').insert({employee_id:s.employee_id,employee_name:s.employee_name,date:s.date,shift:s.shift,type:s.type,request_type:'recusa_folga',reason:motivo,status:'recusado'});
       $('#act'+i).innerHTML='<span class="pill afastada">✗ Recusado</span>'; toast('Recusa registrada. Recalcule para nova sugestão.'); });
   }
-  async function saveApproval(s,y,m){
+  async function saveApproval(s){
+    const d=Engine.parse(s.date); const y=d.getFullYear(), m=d.getMonth()+1; // mês/ano da própria folga
     let sched=(await T('schedules').select('*').eq('is_simulation',S.sim).eq('year',y).eq('month',m).order('created_at',{ascending:false}).limit(1).maybeSingle()).data;
     if(!sched) sched=(await T('schedules').insert({year:y,month:m,status:'sugerida',is_simulation:S.sim,created_by:S.user.id}).select().single()).data;
     await T('schedule_items').insert({schedule_id:sched.id,employee_id:s.employee_id,employee_name:s.employee_name,date:s.date,shift:s.shift,type:s.type,hours:s.hours,status:'aprovado',reason:s.reason});
     await T('decision_logs').insert({schedule_id:sched.id,employee_id:s.employee_id,employee_name:s.employee_name,decision_type:'sugestao',message:s.reason,is_simulation:S.sim});
   }
-  $('#regen').onclick=run; run();
+  $('#regen').onclick=run;
+  $('#wkPrev').onclick=()=>{ weekOffset--; run(); };
+  $('#wkNext').onclick=()=>{ weekOffset++; run(); };
+  run();
 };
 
 // ---------- FOLGAS APROVADAS (ver / editar / lançar) ----------
