@@ -173,6 +173,7 @@ window.Engine = (function () {
     const logs=[]; const suggestions=[];
     const minBank = rules.min_time_bank_for_dayoff ?? 6;
     const minPer  = rules.min_per_shift || 4;
+    const maxPerDay = Math.max(1, rules.max_dayoffs_per_day ?? 2); // teto de folgas no mesmo dia
     const active  = employees.filter(e=>e.status==='ativa');
     const onVac = (e, dStr) => vacations.some(v => v.employee_id===e.id && dStr>=v.start_date && dStr<=v.end_date);
     const blocked = (dStr) => blockedDates.some(b=>b.date===dStr);
@@ -303,7 +304,9 @@ window.Engine = (function () {
         manha_sair:{shift:'manha',type:'saida_antecipada'},
       };
       const absent={}; // quantas pessoas ausentes em cada horário do dia
+      let dayCount=0;  // quantas folgas já liberadas neste dia
       for (const e of cands){
+        if (dayCount>=maxPerDay) break;   // teto de folgas no mesmo dia (Regras da loja)
         if (used.has(e.id)) continue;
         const hh=history[e.id]||{};
         if (dow===5 && (hh.fridaysOff||0)>=2){
@@ -331,7 +334,7 @@ window.Engine = (function () {
         const reason=`${e.name} pode ${acao} — tem ${fmtHoras(e.time_bank_balance)} de banco de horas, ${since}. Nesse horário a loja segue com ${availDay.length-absent[slot]} pessoa(s) (mínimo ${minPer}).`;
         suggestions.push({ employee_id:e.id, employee_name:e.name, date:dStr, shift, type, hours, reason, score:Math.round(scoreOf(e)) });
         logs.push({type:'sugestao', employee_id:e.id, employee_name:e.name, message:reason});
-        used.add(e.id);
+        used.add(e.id); dayCount++;
         if (used.size>=pool.length) break;
       }
       if (used.size>=pool.length) break;            // todas as elegíveis já têm uma folga

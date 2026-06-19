@@ -298,6 +298,8 @@ ROUTES.regras=async function(){
       <div class="grid2">
         <div class="field"><label>Mín. de banco p/ sugerir folga (h)</label><input id="r_minbank" type="number" value="${r.min_time_bank_for_dayoff||6}"/></div>
         <div class="field"><label>Folga: mín–máx (h)</label><div style="display:flex;gap:6px"><input id="r_dmin" type="number" value="${r.min_dayoff_hours||3}"/><input id="r_dmax" type="number" value="${r.max_dayoff_hours||8}"/></div></div></div>
+      <div class="field"><label>Máx. de funcionárias folgando no mesmo dia</label><input id="r_maxday" type="number" min="1" value="${r.max_dayoffs_per_day??2}"/>
+        <div class="reason">Mesmo que a cobertura permita mais, o motor nunca passa desse número de folgas por dia — evita esvaziar a loja num só dia.</div></div>
       <div class="grid2">
         <div class="field"><label>Tipo de folga liberada</label><select id="r_mode"><option value="saida_antecipada" ${(r.dayoff_mode||'saida_antecipada')==='saida_antecipada'?'selected':''}>Só sair mais cedo (recomendado)</option><option value="completa" ${r.dayoff_mode==='completa'?'selected':''}>Permitir folga integral / meio turno</option></select></div>
         <div class="field"><label>Horas de saída antecipada</label><input id="r_early" type="number" value="${r.early_leave_hours??3}"/></div></div>
@@ -340,6 +342,7 @@ ROUTES.regras=async function(){
     const payload={id:1,open_morning:$('#r_om').value,close_morning:$('#r_cm').value,open_afternoon:$('#r_oa').value,close_afternoon:$('#r_ca').value,
       open_time:$('#r_om').value,close_time:$('#r_ca').value,
       min_per_shift:+$('#r_min').value,max_time_bank:+$('#r_maxbank').value,min_time_bank_for_dayoff:+$('#r_minbank').value,
+      max_dayoffs_per_day:Math.max(1,+$('#r_maxday').value||2),
       min_dayoff_hours:+$('#r_dmin').value,max_dayoff_hours:+$('#r_dmax').value,
       dayoff_mode:$('#r_mode').value,early_leave_hours:+$('#r_early').value||3,
       saturday_open_count:+$('#r_satn').value,saturday_start:$('#r_sats').value,saturday_end:$('#r_sate').value,
@@ -482,28 +485,39 @@ ROUTES.folgas=async function(){
   <div class="toolbar"><button class="btn sec" id="regen">↻ Recalcular</button><div class="spacer"></div><span class="muted" id="capInfo"></span></div>
   <div id="folgaOut"><p class="muted">Carregando sugestões da semana…</p></div>`;
   async function run(){
-    // data de início pra valer do sistema: enquanto hoje for antes de 22/06/2026, começa lá; depois segue o dia atual
+    // semana completa (segunda a sexta), a partir de 22/06/2026 ou da semana atual
     const SYSTEM_START='2026-06-22';
-    const startD = todayStr() < SYSTEM_START ? SYSTEM_START : todayStr();
-    const out=Engine.suggestDayOffs({employees:emps,rules,vacations:vacs,requests:reqs,refusals,blockedDates:blk,year,month,horizonDays:7,startDate:startD,history,existing});
-    $('#capInfo').textContent=`Semana a partir de ${startD.split('-').reverse().join('/')} · capacidade ${out.capacity.level.replace('_',' ')}`;
-    const sugCards=out.suggestions.map((s,i)=>{
-      const dia=Engine.DOW[Engine.parse(s.date).getDay()]; const dataBR=s.date.split('-').reverse().slice(0,2).join('/');
-      return `<div class="card" style="margin-bottom:12px">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
+    const base = todayStr() < SYSTEM_START ? SYSTEM_START : todayStr();
+    const bd=Engine.parse(base); const wd=bd.getDay(); bd.setDate(bd.getDate()+(wd===0?1:1-wd)); // segunda-feira da semana
+    const weekStart=Engine.fmt(bd);
+    const out=Engine.suggestDayOffs({employees:emps,rules,vacations:vacs,requests:reqs,refusals,blockedDates:blk,year,month,horizonDays:4,startDate:weekStart,history,existing});
+    const wEnd=Engine.parse(weekStart); wEnd.setDate(wEnd.getDate()+4);
+    $('#capInfo').textContent=`Semana ${weekStart.split('-').reverse().slice(0,2).join('/')} a ${Engine.fmt(wEnd).split('-').reverse().slice(0,2).join('/')} · cobertura ${out.capacity.level.replace('_',' ')}`;
+    // agrupa as sugestões por dia
+    const byDay={};
+    out.suggestions.forEach((s,i)=>{ (byDay[s.date]=byDay[s.date]||[]).push({...s,_i:i}); });
+    const dayBlocks=Object.keys(byDay).sort().map(date=>{
+      const dia=Engine.DOW[Engine.parse(date).getDay()]; const dataBR=date.split('-').reverse().slice(0,2).join('/');
+      const cards=byDay[date].map(s=>{
+        const i=s._i;
+        return `<div class="card" style="margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
           <div style="min-width:0">
-            <div style="font-weight:700;font-size:15px">${esc(s.employee_name)}</div>
-            <div class="muted" style="font-size:13px;margin-top:2px">${dia} ${dataBR} · ${TYPE_LABEL[s.type]||s.type} (${SHIFT_LABEL[s.shift]||s.shift}) · ${s.hours}h</div>
+            <div style="font-weight:700;font-size:16px">${esc(s.employee_name)}</div>
+            <div style="font-size:15px;font-weight:600;margin-top:2px">${TYPE_LABEL[s.type]||s.type} <span class="muted" style="font-weight:500">(${SHIFT_LABEL[s.shift]||s.shift}) · ${s.hours}h</span></div>
           </div>
           <div class="row-actions" id="act${i}">${isGestor()?`<button class="btn sm" data-ap="${i}">Aprovar</button><button class="btn sec sm" data-rf="${i}">Recusar</button>`:'<span class="muted">—</span>'}</div>
-        </div>
-        <div class="reason" style="margin-top:8px">${esc(s.reason)}</div></div>`;
+        </div>`;
+      }).join('');
+      return `<div style="margin-bottom:16px">
+        <div style="font-weight:800;font-size:17px;padding:8px 14px;background:var(--brand-soft);color:var(--brand-d);border-radius:10px;margin-bottom:10px;text-transform:capitalize">${dia} · ${dataBR}</div>
+        ${cards}</div>`;
     }).join('');
-    const logRows=out.logs.map(l=>`<div class="reason" style="border-left-color:${l.type==='bloqueio'?'var(--red)':l.type==='rodizio'?'var(--purple)':'var(--brand)'}">${l.type==='bloqueio'?'🚫':l.type==='rodizio'?'🔁':'✅'} ${esc(l.message)}</div>`).join('');
-    $('#folgaOut').innerHTML=`${out.suggestions.length?'':box('warn','Nenhuma folga sugerida nesta semana — veja o motivo no log abaixo.')}
-      <div class="panel"><div class="ph"><h3>Sugestões da semana</h3><span class="muted">${out.suggestions.length} sugestão(ões)</span></div>
-        <div class="pb">${sugCards||'<span class="muted">Sem sugestões.</span>'}</div></div>
-      <div class="section panel"><div class="ph"><h3>🧠 Log de decisão</h3></div><div class="pb">${logRows||'<span class="muted">Sem registros.</span>'}</div></div>`;
+    const logRows=out.logs.map(l=>`<div class="reason" style="font-size:12.5px;border-left-color:${l.type==='bloqueio'?'var(--red)':l.type==='rodizio'?'var(--purple)':'var(--brand)'}">${l.type==='bloqueio'?'🚫':l.type==='rodizio'?'🔁':'✅'} ${esc(l.message)}</div>`).join('');
+    $('#folgaOut').innerHTML=`${out.suggestions.length?'':box('warn','Nenhuma folga sugerida nesta semana — veja o porquê no log de decisão abaixo.')}
+      <div class="panel"><div class="ph"><h3>Sugestões da semana</h3><span class="muted">${out.suggestions.length} folga(s)</span></div>
+        <div class="pb">${dayBlocks||'<span class="muted">Sem sugestões nesta semana.</span>'}</div></div>
+      <details class="panel section" style="margin-top:10px"><summary style="cursor:pointer;padding:13px 16px;font-weight:700">🧠 Log de decisão <span class="muted" style="font-weight:500">— toque para ver o porquê</span></summary>
+        <div class="pb" style="padding-top:4px">${logRows||'<span class="muted">Sem registros.</span>'}</div></details>`;
     $$('[data-ap]').forEach(b=>b.onclick=async()=>{ if(!gate())return; const i=+b.dataset.ap; b.disabled=true;
       await saveApproval(out.suggestions[i],year,month);
       $('#act'+i).innerHTML='<span class="pill ativa">✓ Aprovado</span>'; toast('Folga aprovada — veja em Folgas aprovadas.'); });
