@@ -641,7 +641,7 @@ ROUTES.sabados=async function(){
       T('store_rules').select('*').eq('id',1).maybeSingle().then(r=>r.data||{}),
       getAll('saturday_rotation',b=>b.eq('year',year).eq('month',month).order('saturday_number')),
       buildHistory(),
-      getAll('saturday_rotation',b=>b.order('saturday_date',{ascending:false}).limit(12))]);
+      getAll('saturday_rotation',b=>b.order('saturday_date',{ascending:false}).limit(120))]);
     const active=emps.filter(e=>e.status==='ativa');
     const empName=Object.fromEntries(emps.map(e=>[e.id,e.name]));
     const expert=new Set(emps.filter(e=>e.is_expert).map(e=>e.id));
@@ -673,6 +673,35 @@ ROUTES.sabados=async function(){
       $$('[data-add]').forEach(s=>s.onchange=()=>{ const n=+s.dataset.add, id=s.value; if(!id)return; const e=emps.find(x=>x.id===id); state.push({saturday_number:n,saturday_date:sats[n-1],employee_id:id,employee_name:e.name}); renderEditor(); });
     }
 
+    // histórico agrupado por mês → por sábado (data DD/MM/AAAA, visual em cards)
+    const byMonth={};
+    for(const r of recent){
+      if(!r.saturday_date) continue;
+      const [yy,mm]=r.saturday_date.split('-');
+      const mk=`${yy}-${mm}`;
+      const M=byMonth[mk]||(byMonth[mk]={label:`${MONTHS[+mm-1]} ${yy}`, sats:{}});
+      const S2=M.sats[r.saturday_date]||(M.sats[r.saturday_date]={num:r.saturday_number, date:r.saturday_date, people:[]});
+      const pn=r.employee_name||empName[r.employee_id]||'';
+      if(pn && !S2.people.includes(pn)) S2.people.push(pn);
+    }
+    const histHtml=Object.keys(byMonth).sort().reverse().map(mk=>{
+      const M=byMonth[mk];
+      const rows=Object.keys(M.sats).sort().reverse().map(sk=>{
+        const s=M.sats[sk]; const dBR=s.date.split('-').reverse().join('/');
+        return `<div style="display:flex;align-items:center;gap:14px;padding:11px 12px;border:1px solid var(--line);border-radius:12px;margin-bottom:8px;background:#fff;flex-wrap:wrap">
+          <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-width:88px;background:#eef1ff;border-radius:10px;padding:7px 10px">
+            <span style="font-weight:800;font-size:12px;color:var(--brand)">${s.num}º sábado</span>
+            <span style="font-weight:700;font-size:13px">${dBR}</span>
+          </div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;flex:1;min-width:0">
+            ${s.people.map(p=>`<span class="pill ativa" style="font-size:12.5px">${esc(p)}</span>`).join('')||'<span class="muted">—</span>'}
+          </div></div>`;
+      }).join('');
+      return `<div style="margin-bottom:18px">
+        <div style="font-weight:800;font-size:15px;margin:0 0 10px;padding-bottom:6px;border-bottom:2px solid var(--line)">${M.label}</div>
+        ${rows}</div>`;
+    }).join('')||'<p class="muted" style="margin:0">Sem histórico ainda.</p>';
+
     $('#view').innerHTML=`
     <div class="toolbar">
       <button class="btn sec sm" id="satPrev">←</button>
@@ -684,10 +713,8 @@ ROUTES.sabados=async function(){
     </div>
     ${passed?box('warn','Estes sábados <b>já passaram</b>. Você pode registrar quem trabalhou (alimenta o histórico) ou ir para um mês futuro no <b>→</b>.'):box('info','O sistema sugere e <b>equilibra pelo histórico</b>. Ajuste na mão: remova no × e adicione pela lista — útil quando alguém pede para trocar um sábado. Depois <b>Salvar rodízio</b>.')}
     <div id="satEditor"></div>
-    <div class="section panel"><div class="ph"><h3>Histórico de sábados</h3></div><div class="pb" style="padding:0">
-      <table><thead><tr><th>Data</th><th>Sábado</th><th>Funcionária</th></tr></thead>
-      <tbody>${recent.map(r=>`<tr><td>${r.saturday_date||'—'}</td><td>${r.saturday_number}º</td><td><b>${esc(r.employee_name||empName[r.employee_id]||'')}</b></td></tr>`).join('')||'<tr><td colspan=3 class="muted" style="padding:16px">Sem histórico ainda.</td></tr>'}
-      </tbody></table></div></div>`;
+    <div class="section panel"><div class="ph"><h3>Histórico de sábados</h3><span class="muted">por mês</span></div>
+      <div class="pb">${histHtml}</div></div>`;
     renderEditor();
     $('#satPrev').onclick=()=>{ month--; if(month<1){month=12;year--;} load(); };
     $('#satNext').onclick=()=>{ month++; if(month>12){month=1;year++;} load(); };
