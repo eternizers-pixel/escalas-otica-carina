@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v8 (aprovar todos no motor)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v10 (relatório por dia da semana)
 // ============================================================
 (function(){
 "use strict";
@@ -31,6 +31,15 @@ function folgaTimeLabel(it,r){
   if(it.type==='integral')         return 'Folga o dia todo';
   if(it.type==='meio_turno')       return 'Meio turno '+(it.shift==='manha'?'manhã':'tarde');
   return TYPE_LABEL[it.type]||'Folga';
+}
+// chave de ordenação por horário: manhã antes da tarde (integral primeiro)
+function folgaSortKey(it,r){
+  r=r||{}; const toMin=s=>{const[h,m]=String(s||'').split(':').map(Number);return (h||0)*60+(m||0);};
+  const lab=folgaTimeLabel(it,r); const m=lab.match(/(\d{2}):(\d{2})/);
+  if(m) return (+m[1])*60+(+m[2]);
+  if(it.shift==='manha') return toMin(r.open_morning||'09:00');
+  if(it.shift==='tarde') return toMin(r.open_afternoon||'14:00');
+  return 0; // integral / dia inteiro
 }
 async function getOrCreateSchedule(year,month){
   let s=(await T('schedules').select('*').eq('is_simulation',S.sim).eq('year',year).eq('month',month).order('created_at',{ascending:false}).limit(1).maybeSingle()).data;
@@ -653,23 +662,30 @@ function weekReportText(monday, emps, items, rot, vacs, rules){
   const days=[...Array(7)].map((_,i)=>{ const d=new Date(monday); d.setDate(d.getDate()+i); return Engine.fmt(d); });
   const start=days[0], end=days[6];
   const br=(ds)=>ds.split('-').reverse().slice(0,2).join('/');
-  const dshort=['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
-  const inWeek=(ds)=>ds&&ds>=start&&ds<=end;
+  const dlong=['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];
   const ss=(rules.saturday_start||'14:00').slice(0,5), se=(rules.saturday_end||'17:00').slice(0,5);
+  const nameOf=id=>{const e=emps.find(x=>x.id===id);return e?(e.name.split(' ')[0]||e.name):'';};
+  const first=n=>(String(n||'').split(' ')[0]||n||'').toUpperCase();
+  // no relatório, meio turno fica mais explícito ("Folga meio turno tarde")
+  const lblOf=it=> it.type==='meio_turno' ? 'Folga meio turno '+(it.shift==='manha'?'manhã':'tarde') : folgaTimeLabel(it,rules);
   let out=`*Escala da semana — ${br(start)} a ${br(end)}*\n`;
-  const active=emps.filter(e=>e.status!=='desligada').sort((a,b)=>a.name.localeCompare(b.name));
-  for(const e of active){
+  // por DIA da semana, ordenado por horário (manhã antes da tarde)
+  days.forEach(ds=>{
+    const dow=Engine.parse(ds).getDay();
+    if(dow===0) return; // domingo: loja fechada
     const lines=[];
-    items.filter(it=>it.employee_id===e.id && inWeek(it.date)).sort((a,b)=>a.date<b.date?-1:1)
-      .forEach(it=>{ const dow=Engine.parse(it.date).getDay(); lines.push(`${dshort[dow]} ${br(it.date)} — ${folgaTimeLabel(it,rules)}`); });
-    rot.filter(r=>r.employee_id===e.id && inWeek(r.saturday_date))
-      .forEach(r=>lines.push(`Sáb ${br(r.saturday_date)} — Trabalha ${ss}–${se}`));
-    const vac=vacs.find(v=>v.employee_id===e.id && v.start_date<=end && v.end_date>=start);
-    if(vac) lines.push(`Férias (${br(vac.start_date)} a ${br(vac.end_date)})`);
-    out+=`\n*${(e.name.split(' ')[0]||e.name).toUpperCase()}*\n`;
-    out+= lines.length ? lines.map(l=>'• '+l).join('\n') : '• Horário normal a semana toda';
+    items.filter(it=>it.date===ds).sort((a,b)=>folgaSortKey(a,rules)-folgaSortKey(b,rules))
+      .forEach(it=>lines.push(`${first(it.employee_name||nameOf(it.employee_id))} — ${lblOf(it)}`));
+    const sab=rot.filter(r=>r.saturday_date===ds);
+    if(sab.length) lines.push(`Trabalham (${ss}–${se}): ${sab.map(r=>first(r.employee_name||nameOf(r.employee_id))).join(', ')}`);
+    out+=`\n*${dlong[dow]} ${br(ds)}*\n`;
+    out+= lines.length ? lines.map(l=>'• '+l).join('\n') : '• Sem alterações';
     out+='\n';
-  }
+  });
+  // férias da semana (resumo no fim)
+  const vacLines=[];
+  emps.forEach(e=>{ const v=vacs.find(v=>v.employee_id===e.id && v.start_date<=end && v.end_date>=start); if(v) vacLines.push(`${first(e.name)} — Férias (${br(v.start_date)} a ${br(v.end_date)})`); });
+  if(vacLines.length) out+=`\n*Férias*\n`+vacLines.map(l=>'• '+l).join('\n');
   return out.trim();
 }
 ROUTES.relsemana=async function(){
@@ -835,7 +851,7 @@ ROUTES.calendario=async function(){
     for(let d=1;d<=dim;d++){
       const ds=`${year}-${mm}-${String(d).padStart(2,'0')}`; const dow=new Date(year,month-1,d).getDay();
       let ev='';
-      items.filter(x=>x.date===ds).forEach(x=>{ const fn=(x.employee_name||'').split(' ')[0]; const t=folgaTimeLabel(x,rules); ev+=`<span class="ev folga" title="${esc(x.employee_name||'')} — ${esc(t)}">${esc(fn)}<span class="evt">${esc(t)}</span></span>`; });
+      items.filter(x=>x.date===ds).sort((a,b)=>folgaSortKey(a,rules)-folgaSortKey(b,rules)).forEach(x=>{ const fn=(x.employee_name||'').split(' ')[0]; const t=folgaTimeLabel(x,rules); ev+=`<span class="ev folga" title="${esc(x.employee_name||'')} — ${esc(t)}">${esc(fn)}<span class="evt">${esc(t)}</span></span>`; });
       vacs.filter(v=>ds>=v.start_date&&ds<=v.end_date).forEach(v=>{ const fn=(nm[v.employee_id]||'').split(' ')[0]; ev+=`<span class="ev fer">${esc(fn)}<span class="evt">Férias</span></span>`; });
       rot.filter(r=>r.saturday_date===ds).forEach(r=>{ const fn=(r.employee_name||nm[r.employee_id]||'').split(' ')[0]; ev+=`<span class="ev sab" title="${esc(r.employee_name||'')}">${esc(fn)}</span>`; });
       if(sats.includes(ds) && !rot.some(r=>r.saturday_date===ds)) ev+=`<span class="ev sab">Sábado (definir)</span>`;
@@ -856,7 +872,8 @@ ROUTES.calendario=async function(){
       body=`<div class="panel"><div class="pb"><div class="cal">${['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'].map(d=>`<div class="dow">${d}</div>`).join('')}${cells}</div></div></div>`;
     }
     $('#view').innerHTML=`
-    <div class="toolbar"><button class="btn sec sm" id="prev">←</button><b style="min-width:140px;text-align:center">${MONTHS[month-1]} ${year}</b><button class="btn sec sm" id="next">→</button><div class="spacer"></div>
+    <div class="toolbar"><button class="btn sec sm" id="prev">←</button><b style="min-width:140px;text-align:center">${MONTHS[month-1]} ${year}</b><button class="btn sec sm" id="next">→</button>
+      <button class="btn sm" onclick="location.hash='#relsemana'">📋 Relatório semanal</button><div class="spacer"></div>
       <div class="legend"><span><i class="dot" style="background:var(--green)"></i>Folga</span><span><i class="dot" style="background:var(--amber)"></i>Férias</span><span><i class="dot" style="background:var(--purple)"></i>Sábado</span><span><i class="dot" style="background:var(--red)"></i>Bloqueio</span></div></div>
     ${body}`;
     $('#prev').onclick=()=>{month--;if(month<1){month=12;year--;}draw();};
