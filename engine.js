@@ -240,7 +240,7 @@ window.Engine = (function () {
       return t.slice(0,3);
     };
     const mode = rules.dayoff_mode || 'saida_antecipada';
-    const maxPerWeek = Math.max(1, rules.max_dayoffs_per_week ?? 1); // teto de folgas por pessoa na semana
+    const maxPerWeek = Math.max(1, rules.max_dayoffs_per_week ?? 2); // teto de folgas por pessoa na semana
     const want = rules.early_leave_hours ?? 3;
     const hours = Math.max(1, Math.min(want, cap.maxHours));          // custo (h) de cada folga parcial
     const ALL=['tarde_sair','manha_entrar','tarde_entrar','manha_sair'];
@@ -268,7 +268,8 @@ window.Engine = (function () {
       const availDay = active.filter(e=>!onVac(e,dStr) && !integralToday.includes(e.id));
       if (availDay.length < minPer){ logs.push({type:'bloqueio', message:`${DIAS[dow]} (${dStr}): só ${availDay.length} pessoa(s) disponível(is) e o mínimo da loja é ${minPer}.`}); continue; }
       const absent={}; existToday.forEach(it=>slotsOf(it).forEach(sl=>{ absent[sl]=(absent[sl]||0)+1; }));
-      openDays.push({dStr,dow,availDay,absent,doneToday:new Set(),count:0});
+      // o teto de folgas por dia JÁ CONTA as folgas aprovadas neste dia (não oferece mais que o limite)
+      openDays.push({dStr,dow,availDay,absent,doneToday:new Set(existToday.map(it=>it.employee_id)),count:existToday.length});
     }
 
     // round-robin: cada rodada coloca no MÁX 1 folga por dia → espalha pela semana.
