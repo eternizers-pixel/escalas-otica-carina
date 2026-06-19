@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v12 (escolher semana no motor)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v13 (justiça por semana + espalhar folgas)
 // ============================================================
 (function(){
 "use strict";
@@ -65,22 +65,24 @@ async function bankFreshnessBanner(){
   return box('ok',`<b>Banco de horas atualizado em ${quando}</b> ${days>0?`(há ${days} dia${days>1?'s':''})`:'(hoje)'} — dado fresco para planejar.`);
 }
 
-// Histórico real (justiça): folgas aprovadas + sábados trabalhados por funcionária
-async function buildHistory(){
+// Histórico real (justiça): folgas aprovadas + sábados trabalhados por funcionária.
+// refISO = data de referência (Monday da semana sendo planejada). Só contam folgas ANTES dessa data,
+// então a recência ("há quanto tempo sem folgar") fica correta inclusive ao simular semanas futuras.
+async function buildHistory(refISO){
   const scheds=await getAll('schedules',b=>b.eq('is_simulation',S.sim));
   const schedIds=new Set(scheds.map(s=>s.id));
   const items=(await getAll('schedule_items',b=>b.eq('status','aprovado'))).filter(it=>schedIds.has(it.schedule_id));
   const rot=await getAll('saturday_rotation');
-  const today=new Date();
+  const ref=refISO ? new Date(refISO+'T00:00:00') : new Date();
   const h={};
   const get=(id)=> h[id]||(h[id]={dayoffs:0,fridaysOff:0,mondaysOff:0,saturdays:0,lastDayOffDays:null});
   for(const it of items){ if(!it.employee_id||!it.date) continue;
-    const r=get(it.employee_id); r.dayoffs++;
     const d=new Date(it.date+'T00:00:00'); const dow=d.getDay();
+    const days=Math.floor((ref-d)/86400000);
+    if(days<=0) continue; // só folgas ANTES da semana de referência contam para a justiça/recência
+    const r=get(it.employee_id); r.dayoffs++;
     if(dow===5) r.fridaysOff++; if(dow===1) r.mondaysOff++;
-    const days=Math.floor((today-d)/86400000);
-    // só folgas já ocorridas contam para "não folga há X dias" (futuras não viram número negativo)
-    if(days>=0 && (r.lastDayOffDays==null||days<r.lastDayOffDays)) r.lastDayOffDays=days;
+    if(r.lastDayOffDays==null||days<r.lastDayOffDays) r.lastDayOffDays=days;
   }
   for(const s of rot){ if(s.employee_id && s.worked!==false) get(s.employee_id).saturdays++; }
   return h;
@@ -512,7 +514,6 @@ ROUTES.folgas=async function(){
     T('store_rules').select('*').eq('id',1).maybeSingle().then(r=>r.data||{}),
     getAll('vacation_periods'),getAll('dayoff_requests'),getAll('blocked_dates')]);
   const refusals=reqs.filter(r=>r.request_type==='recusa_folga');
-  const history=await buildHistory();
   // folgas já aprovadas (a partir de hoje) para a engine não sugerir quem já tem folga programada
   const scheds=await getAll('schedules',b=>b.eq('is_simulation',S.sim));
   const schedIds=new Set(scheds.map(s=>s.id));
@@ -534,6 +535,7 @@ ROUTES.folgas=async function(){
     const base = todayStr() < SYSTEM_START ? SYSTEM_START : todayStr();
     const bd=Engine.parse(base); const wd=bd.getDay(); bd.setDate(bd.getDate()+(wd===0?1:1-wd)+weekOffset*7); // segunda-feira da semana escolhida
     const weekStart=Engine.fmt(bd);
+    const history=await buildHistory(weekStart); // recência/justiça relativas à semana planejada (conta folgas anteriores a ela)
     const out=Engine.suggestDayOffs({employees:emps,rules,vacations:vacs,requests:reqs,refusals,blockedDates:blk,year,month,horizonDays:4,startDate:weekStart,history,existing});
     const wEnd=Engine.parse(weekStart); wEnd.setDate(wEnd.getDate()+4);
     const wlabel=`${weekStart.split('-').reverse().slice(0,2).join('/')} a ${Engine.fmt(wEnd).split('-').reverse().slice(0,2).join('/')}`;

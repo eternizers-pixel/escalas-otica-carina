@@ -217,14 +217,18 @@ window.Engine = (function () {
     const horizonEndStr = fmt(horizonEnd);
     // folgas de cada pessoa NESTA semana (conta as já aprovadas) — base do ciclo justo
     // e banco de horas RESTANTE (já descontando as folgas aprovadas) — ninguém folga além do que tem em banco
-    const genCount = {}; const bankLeft = {};
+    const genCount = {}; const bankLeft = {}; const assignedDates = {};
     active.forEach(e=>{ bankLeft[e.id] = (e.time_bank_balance||0); });
     for (const it of existing){
       if (!it || !it.employee_id || !it.date) continue;
       if (it.date < startStr || it.date > horizonEndStr) continue;
       genCount[it.employee_id] = (genCount[it.employee_id]||0) + 1;
       bankLeft[it.employee_id] = (bankLeft[it.employee_id]||0) - (+it.hours||0); // desconta horas já comprometidas
+      (assignedDates[it.employee_id]=assignedDates[it.employee_id]||[]).push(it.date);
     }
+    // distância (em dias) do dia até a folga mais próxima que a pessoa já tem na semana — usado para espalhar
+    const dayNum=ds=>Math.floor(parse(ds).getTime()/86400000);
+    const minDist=(id,ds)=>{ const arr=assignedDates[id]; if(!arr||!arr.length) return Infinity; const t=dayNum(ds); return Math.min(...arr.map(x=>Math.abs(dayNum(x)-t))); };
     const maxBank = Math.max(0, ...pool.map(e=>e.time_bank_balance||0));
     // tags curtas que justificam a escolha (no máx. 3)
     const tagsFor = (e, dow, round) => {
@@ -287,7 +291,8 @@ window.Engine = (function () {
             !refusals.some(r=>r.employee_id===e.id && r.date===day.dStr) &&
             !existing.some(it=>it.employee_id===e.id && it.date===day.dStr))
           .sort((a,b)=>{
-            const ga=genCount[a.id]||0, gb=genCount[b.id]||0; if(ga!==gb) return ga-gb;
+            const ga=genCount[a.id]||0, gb=genCount[b.id]||0; if(ga!==gb) return ga-gb;       // menos folgas na semana primeiro
+            const da=minDist(a.id,day.dStr), db=minDist(b.id,day.dStr); if(da!==db) return db-da; // mais longe da própria folga (evita dias seguidos)
             if (isFri){ const fa=(history[a.id]?.fridaysOff)||0, fb=(history[b.id]?.fridaysOff)||0; if(fa!==fb) return fa-fb; }
             return scoreOf(b)-scoreOf(a);
           });
@@ -312,7 +317,7 @@ window.Engine = (function () {
           const reason=`${chosen.name} pode ${acao} — tem ${fmtHoras(chosen.time_bank_balance)} de banco de horas, ${since}, e a loja ainda fica com ${day.availDay.length-1} pessoas no dia (mínimo ${minPer}).`;
           suggestions.push({ employee_id:chosen.id, employee_name:chosen.name, date:day.dStr, shift, type, hours:hours2, reason, tags:tagsFor(chosen,day.dow,round), score:Math.round(scoreOf(chosen)) });
           logs.push({type:'sugestao', employee_id:chosen.id, employee_name:chosen.name, message:reason});
-          genCount[chosen.id]=round+1; bankLeft[chosen.id]=(bankLeft[chosen.id]||0)-hours2; day.count++; placed=true;
+          genCount[chosen.id]=round+1; bankLeft[chosen.id]=(bankLeft[chosen.id]||0)-hours2; (assignedDates[chosen.id]=assignedDates[chosen.id]||[]).push(day.dStr); day.count++; placed=true;
           continue;
         }
 
@@ -341,7 +346,7 @@ window.Engine = (function () {
           const reason=`${e.name} pode ${acao} — tem ${fmtHoras(e.time_bank_balance)} de banco de horas, ${since}. Nesse horário a loja segue com ${day.availDay.length-day.absent[slot]} pessoa(s) (mínimo ${minPer}).`;
           suggestions.push({ employee_id:e.id, employee_name:e.name, date:day.dStr, shift, type, hours, reason, tags:tagsFor(e,day.dow,round), score:Math.round(scoreOf(e)) });
           logs.push({type:'sugestao', employee_id:e.id, employee_name:e.name, message:reason});
-          genCount[e.id]=round+1; bankLeft[e.id]=(bankLeft[e.id]||0)-hours; day.doneToday.add(e.id); day.count++; placed=true;
+          genCount[e.id]=round+1; bankLeft[e.id]=(bankLeft[e.id]||0)-hours; (assignedDates[e.id]=assignedDates[e.id]||[]).push(day.dStr); day.doneToday.add(e.id); day.count++; placed=true;
           break; // só 1 por dia por rodada → espalha pela semana
         }
       }
