@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v5 (lançar folga aprovada integra motor)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v6 (pedidos na home 3+4, editar folga)
 // ============================================================
 (function(){
 "use strict";
@@ -133,8 +133,10 @@ const NAV=[
   ['simulacao','🧪','r','Simulação','Teste cenários sem risco'],
   ['relsemana','📋','t','Relatório da semana','Texto pronto para o grupo'],
 ];
-const HOME_KEYS=['dashboard','folgas','escala','sabados','calendario','config'];
-const CONFIG_KEYS=['funcionarias','ferias','pedidos','tiquetaque','regras','relatorios','simulacao'];
+const HOME_TOP=['dashboard','folgas','escala'];
+const HOME_BOTTOM=['sabados','calendario','pedidos','config'];
+const HOME_KEYS=[...HOME_TOP,...HOME_BOTTOM];
+const CONFIG_KEYS=['funcionarias','ferias','tiquetaque','regras','relatorios','simulacao'];
 
 function updateSimBanner(){ $('#simBanner').innerHTML = S.sim ? `<div class="simbanner">🧪 MODO SIMULAÇÃO — dados fictícios. Nada aqui afeta os dados reais.</div>`:''; }
 
@@ -171,7 +173,7 @@ function renderHome(){
       <a href="#relsemana" style="color:var(--brand);font-weight:600;font-size:14px">📋 Relatório da semana (grupo)</a>
     </div>
   </div>
-  ${cardsFor(HOME_KEYS,'cols3')}`;
+  ${cardsFor(HOME_TOP,'cols3')}${cardsFor(HOME_BOTTOM,'cols4')}`;
   $$('[data-go]').forEach(el=>el.onclick=()=>location.hash='#'+el.dataset.go);
 }
 ROUTES.config=function(){
@@ -808,22 +810,36 @@ ROUTES.calendario=async function(){
 
 // ---------- PEDIDOS ----------
 ROUTES.pedidos=async function(){
-  const [emps,reqs,rules]=await Promise.all([
+  const ini=todayStr().slice(0,8)+'01';
+  const [emps,reqs,rules,scheds]=await Promise.all([
     getAll('employees',b=>b.eq('is_simulation',S.sim).order('name')),
     getAll('dayoff_requests',b=>b.order('created_at',{ascending:false}).limit(50)),
-    T('store_rules').select('*').eq('id',1).maybeSingle().then(r=>r.data||{})]);
+    T('store_rules').select('*').eq('id',1).maybeSingle().then(r=>r.data||{}),
+    getAll('schedules',b=>b.eq('is_simulation',S.sim))]);
+  const schedIds=new Set(scheds.map(s=>s.id));
+  const folgas=(await getAll('schedule_items',b=>b.eq('status','aprovado').gte('date',ini).order('date'))).filter(it=>schedIds.has(it.schedule_id));
   const map=Object.fromEntries(emps.map(e=>[e.id,e.name]));
   $('#view').innerHTML=`
   <div class="toolbar"><button class="btn" id="addFolga" ${isGestor()?'':'disabled'}>+ Lançar folga</button>
     <button class="btn sec" id="addReq" ${isGestor()?'':'disabled'}>+ Registrar exceção (falta, atestado…)</button></div>
   ${box('info','<b>Lançar folga</b> registra uma folga <b>já aprovada</b> (você escolhe integral, meio turno ou o horário de sair/entrar) — o <b>motor de folgas já considera</b> essa folga: conta o horário ocupado e não oferece o mesmo horário para outra pessoa no dia. Férias (em Funcionárias) também entram automaticamente na conta. As <b>exceções</b> abaixo (falta, atestado, atraso, troca) são só registro de histórico.')}
-  <div class="panel"><div class="pb" style="padding:0"><table>
+  <div class="panel"><div class="ph"><h3>Folgas lançadas (a partir deste mês)</h3><span class="muted">${folgas.length} folga(s)</span></div>
+    <div class="pb">${folgas.map(it=>`<div class="card" style="margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+      <div style="min-width:0">
+        <div style="font-weight:700">${esc(it.employee_name||map[it.employee_id]||'')} <span class="muted" style="font-weight:500;font-size:13px">· ${(it.date||'').split('-').reverse().slice(0,2).join('/')} (${it.date?Engine.DOW[Engine.parse(it.date).getDay()]:''})</span></div>
+        <div style="font-size:14px;font-weight:600;margin-top:2px">${folgaTimeLabel(it,rules)} <span class="muted" style="font-weight:500">(${TYPE_LABEL[it.type]||it.type}${it.hours?' · '+it.hours+'h':''})</span></div>
+      </div>
+      <div class="row-actions">${isGestor()?`<button class="btn ghost sm" data-edf="${it.id}">Editar</button><button class="btn ghost sm" style="color:var(--red)" data-delf="${it.id}">Remover</button>`:''}</div>
+    </div>`).join('')||'<p class="muted" style="margin:0">Nenhuma folga lançada. Use “+ Lançar folga”.</p>'}</div></div>
+  <div class="section panel"><div class="ph"><h3>Exceções (falta, atestado, atraso, troca)</h3></div><div class="pb" style="padding:0"><table>
     <thead><tr><th>Funcionária</th><th>Data</th><th>Tipo</th><th>Motivo</th><th>Status</th><th></th></tr></thead>
     <tbody>${reqs.map(r=>`<tr><td><b>${esc(r.employee_name||map[r.employee_id]||'—')}</b></td><td>${r.date||'—'}</td><td>${reqTypeLabel(r.request_type)}</td><td class="muted">${esc(r.reason||'')}</td>
       <td><span class="pill ${r.status==='aprovado'?'ativa':r.status==='recusado'?'afastada':'ferias'}">${r.status}</span></td>
       <td class="row-actions">${isGestor()&&r.status==='pendente'?`<button class="btn sm" data-ap="${r.id}">Aprovar</button><button class="btn sec sm" data-rf="${r.id}">Recusar</button>`:''}</td></tr>`).join('')||'<tr><td colspan=6 class="muted" style="padding:16px">Nenhum pedido registrado.</td></tr>'}
     </tbody></table></div></div>`;
   $('#addFolga')?.addEventListener('click',()=>folgaModal(null,emps,rules));
+  $$('[data-edf]').forEach(b=>b.onclick=()=>folgaModal(folgas.find(x=>x.id===b.dataset.edf),emps,rules));
+  $$('[data-delf]').forEach(b=>b.onclick=async()=>{ if(!gate())return; if(!confirm('Remover esta folga?'))return; await T('schedule_items').delete().eq('id',b.dataset.delf); toast('Folga removida.'); route(); });
   $('#addReq')?.addEventListener('click',()=>{
     openModal('Registrar exceção',`
       <div class="field"><label>Funcionária</label><select id="q_emp">${emps.map(e=>`<option value="${e.id}">${esc(e.name)}</option>`).join('')}</select></div>
