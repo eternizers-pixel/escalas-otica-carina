@@ -520,6 +520,8 @@ ROUTES.escala=async function(){
     T('store_rules').select('*').eq('id',1).maybeSingle().then(r=>r.data||{}),
     getAll('schedule_items',b=>b.gte('date',ini).order('date'))]);
   const map=Object.fromEntries(emps.map(e=>[e.id,e.name]));
+  const timeKey=it=>{const m=folgaTimeLabel(it,rules).match(/(\d{2}):(\d{2})/);return m?(+m[1]*60+ +m[2]):9999;};
+  items.sort((a,b)=>(a.date||'').localeCompare(b.date||'')||timeKey(a)-timeKey(b));
   $('#view').innerHTML=`
   <div class="toolbar"><button class="btn" id="addFolga" ${isGestor()?'':'disabled'}>+ Lançar folga</button>
     <div class="spacer"></div><span class="muted">${items.length} folga(s) a partir deste mês</span></div>
