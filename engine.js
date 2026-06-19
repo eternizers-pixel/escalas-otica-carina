@@ -281,8 +281,9 @@ window.Engine = (function () {
       else if (type==='saida_antecipada') acao=`sair ${hours}h mais cedo ${periodoTxt} de ${DIAS[dow]} (${dStr})`;
       else acao=`folgar meio turno (${shift==='tarde'?'tarde':'manhã'}) de ${DIAS[dow]} (${dStr})`;
       const h=history[chosen.id]||{};
-      const since=(h.lastDayOffDays==null?'há bastante tempo':`há ${h.lastDayOffDays} dias`);
-      const reason=`${chosen.name} pode ${acao} — tem ${fmtHoras(chosen.time_bank_balance)} de banco de horas, não folga ${since}, e a loja ainda fica com ${remaining} pessoas no dia (mínimo ${minPer}).`;
+      const ld=h.lastDayOffDays;
+      const since=(ld==null?'não folga há bastante tempo':ld===0?'folgou por último hoje':ld===1?'última folga foi ontem':`não folga há ${ld} dias`);
+      const reason=`${chosen.name} pode ${acao} — tem ${fmtHoras(chosen.time_bank_balance)} de banco de horas, ${since}, e a loja ainda fica com ${remaining} pessoas no dia (mínimo ${minPer}).`;
       suggestions.push({ employee_id:chosen.id, employee_name:chosen.name, date:dStr, shift, type, hours, reason, score:Math.round(scoreOf(chosen)) });
       logs.push({type:'sugestao', employee_id:chosen.id, employee_name:chosen.name, message:reason});
       used.add(chosen.id);

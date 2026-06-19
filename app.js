@@ -70,7 +70,8 @@ async function buildHistory(){
     const d=new Date(it.date+'T00:00:00'); const dow=d.getDay();
     if(dow===5) r.fridaysOff++; if(dow===1) r.mondaysOff++;
     const days=Math.floor((today-d)/86400000);
-    if(r.lastDayOffDays==null||days<r.lastDayOffDays) r.lastDayOffDays=days;
+    // só folgas já ocorridas contam para "não folga há X dias" (futuras não viram número negativo)
+    if(days>=0 && (r.lastDayOffDays==null||days<r.lastDayOffDays)) r.lastDayOffDays=days;
   }
   for(const s of rot){ if(s.employee_id && s.worked!==false) get(s.employee_id).saturdays++; }
   return h;
