@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v2 (semana/teto folgas)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v3 (ciclo justo + tags)
 // ============================================================
 (function(){
 "use strict";
@@ -504,6 +504,7 @@ ROUTES.folgas=async function(){
           <div style="min-width:0">
             <div style="font-weight:700;font-size:16px">${esc(s.employee_name)}</div>
             <div style="font-size:15px;font-weight:600;margin-top:2px">${TYPE_LABEL[s.type]||s.type} <span class="muted" style="font-weight:500">(${SHIFT_LABEL[s.shift]||s.shift}) · ${s.hours}h</span></div>
+            ${(s.tags&&s.tags.length)?`<div style="margin-top:7px;display:flex;gap:5px;flex-wrap:wrap">${s.tags.map(t=>`<span style="font-size:11px;font-weight:600;background:var(--brand-soft);color:var(--brand-d);padding:2px 9px;border-radius:20px">${esc(t)}</span>`).join('')}</div>`:''}
           </div>
           <div class="row-actions" id="act${i}">${isGestor()?`<button class="btn sm" data-ap="${i}">Aprovar</button><button class="btn sec sm" data-rf="${i}">Recusar</button>`:'<span class="muted">—</span>'}</div>
         </div>`;

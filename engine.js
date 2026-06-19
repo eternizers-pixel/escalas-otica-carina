@@ -206,23 +206,31 @@ window.Engine = (function () {
     const startStr = fmt(start);
     const horizonEnd = new Date(start); horizonEnd.setDate(horizonEnd.getDate()+horizonDays);
     const horizonEndStr = fmt(horizonEnd);
-    const used = new Set(); // no máximo 1 folga por pessoa nesta geração
-    // cruza com folgas JÁ aprovadas na janela: quem já tem folga programada não recebe outra
+    // folgas de cada pessoa NESTA semana (conta as já aprovadas) — base do ciclo justo
+    const genCount = {};
     for (const it of existing){
       if (!it || !it.employee_id || !it.date) continue;
       if (it.date < startStr || it.date > horizonEndStr) continue;
-      if (!used.has(it.employee_id)){
-        used.add(it.employee_id);
-        const emp=active.find(e=>e.id===it.employee_id);
-        const nm=it.employee_name || (emp&&emp.name) || 'Funcionária';
-        logs.push({type:'bloqueio', employee_id:it.employee_id, employee_name:nm,
-          message:`${nm} já tem folga programada nesta semana (${it.date.split('-').reverse().slice(0,2).join('/')}) — não recebe outra para manter o equilíbrio.`});
-      }
+      genCount[it.employee_id] = (genCount[it.employee_id]||0) + 1;
     }
+    const maxBank = Math.max(0, ...pool.map(e=>e.time_bank_balance||0));
+    // tags curtas que justificam a escolha (no máx. 3)
+    const tagsFor = (e, dow, round) => {
+      const t=[]; const bank=e.time_bank_balance||0; const h=history[e.id]||{};
+      if (bank>0 && bank>=maxBank) t.push('Maior banco de horas');
+      else if (maxBank>0 && bank>=maxBank*0.7) t.push('Banco alto');
+      if (h.lastDayOffDays==null) t.push('Há mais tempo sem folgar');
+      else if (h.lastDayOffDays>=14) t.push('Faz tempo sem folgar');
+      if ((h.dayoffs||0)===0 && h.lastDayOffDays!=null) t.push('Poucas folgas no histórico');
+      if (dow===5) t.push('Revezamento de sexta');
+      if ((e.manual_priority||0)>0) t.push('Prioridade definida');
+      if (round>0) t.push('2ª da semana (todas já tiveram)');
+      return t.slice(0,3);
+    };
     for (let i=0;i<=horizonDays;i++){
       const d=new Date(start); d.setDate(d.getDate()+i);
       const dStr=fmt(d); const dow=d.getDay();
-      if (dStr<=todayISO) continue;                 // não sugere hoje nem dias que já passaram
+      if (dStr<todayISO) continue;                  // dias que já passaram (hoje é permitido)
       if (dow===0) continue;                        // domingo: loja fechada
       if (dow===6) continue;                        // sábado: controlado pelo Rodízio de sábados
       if (blocked(dStr)) continue;                  // dia bloqueado para folga
@@ -230,11 +238,13 @@ window.Engine = (function () {
       // disponíveis de fato nesse dia (ativas e não de férias)
       const availDay = active.filter(e=>!onVac(e,dStr));
       const isFri = dow===5;
+      // candidatas: quem tem MENOS folgas na semana primeiro (ciclo justo), depois sexta, depois justiça (banco/tempo sem folgar)
       const cands = pool
-        .filter(e=>!used.has(e.id) && !onVac(e,dStr))
+        .filter(e=>!onVac(e,dStr))
         .filter(e=>!refusals.some(r=>r.employee_id===e.id && r.date===dStr))
+        .filter(e=>!existing.some(it=>it.employee_id===e.id && it.date===dStr))  // não duplica folga já aprovada no mesmo dia
         .sort((a,b)=>{
-          // nas sextas, quem já pegou menos sextas vai primeiro (revezamento)
+          const ga=genCount[a.id]||0, gb=genCount[b.id]||0; if(ga!==gb) return ga-gb;
           if (isFri){ const fa=(history[a.id]?.fridaysOff)||0, fb=(history[b.id]?.fridaysOff)||0; if(fa!==fb) return fa-fb; }
           return scoreOf(b)-scoreOf(a);
         });
@@ -272,6 +282,7 @@ window.Engine = (function () {
           chosen=e; break;
         }
         if(!chosen) continue;
+        const round=genCount[chosen.id]||0;
         let type,hours,shift;
         if (cap.maxHours>=7){ type='integral'; hours=Math.min(8,cap.maxHours); shift='dia_inteiro'; }
         else if (cap.maxHours>=4){ type='meio_turno'; hours=4; shift='tarde'; }
@@ -282,10 +293,9 @@ window.Engine = (function () {
         const h=history[chosen.id]||{}; const ld=h.lastDayOffDays;
         const since=(ld==null?'não folga há bastante tempo':ld===0?'folgou por último hoje':ld===1?'última folga foi ontem':`não folga há ${ld} dias`);
         const reason=`${chosen.name} pode ${acao} — tem ${fmtHoras(chosen.time_bank_balance)} de banco de horas, ${since}, e a loja ainda fica com ${availDay.length-1} pessoas no dia (mínimo ${minPer}).`;
-        suggestions.push({ employee_id:chosen.id, employee_name:chosen.name, date:dStr, shift, type, hours, reason, score:Math.round(scoreOf(chosen)) });
+        suggestions.push({ employee_id:chosen.id, employee_name:chosen.name, date:dStr, shift, type, hours, reason, tags:tagsFor(chosen,dow,round), score:Math.round(scoreOf(chosen)) });
         logs.push({type:'sugestao', employee_id:chosen.id, employee_name:chosen.name, message:reason});
-        used.add(chosen.id);
-        if (used.size>=pool.length) break;
+        genCount[chosen.id]=round+1;
         continue;
       }
 
@@ -304,10 +314,11 @@ window.Engine = (function () {
         manha_sair:{shift:'manha',type:'saida_antecipada'},
       };
       const absent={}; // quantas pessoas ausentes em cada horário do dia
+      const doneToday=new Set(); // ninguém folga 2x no mesmo dia
       let dayCount=0;  // quantas folgas já liberadas neste dia
       for (const e of cands){
         if (dayCount>=maxPerDay) break;   // teto de folgas no mesmo dia (Regras da loja)
-        if (used.has(e.id)) continue;
+        if (doneToday.has(e.id)) continue;
         const hh=history[e.id]||{};
         if (dow===5 && (hh.fridaysOff||0)>=2){
           logs.push({type:'bloqueio', employee_id:e.id, employee_name:e.name,
@@ -325,6 +336,7 @@ window.Engine = (function () {
         if(!bestCode) continue; // qualquer horário desta pessoa deixaria a loja abaixo do mínimo nesse dia
         const slot=SLOT[bestCode]; absent[slot]=(absent[slot]||0)+1;
         const {shift,type}=MAP[bestCode];
+        const round=genCount[e.id]||0;
         const periodoTxt = shift==='manha' ? 'de manhã' : 'à tarde';
         const acao = type==='entrada_tarde'
           ? `entrar ${hours}h mais tarde ${periodoTxt} de ${DIAS[dow]} (${dStr})`
@@ -332,12 +344,10 @@ window.Engine = (function () {
         const ld=hh.lastDayOffDays;
         const since=(ld==null?'não folga há bastante tempo':ld===0?'folgou por último hoje':ld===1?'última folga foi ontem':`não folga há ${ld} dias`);
         const reason=`${e.name} pode ${acao} — tem ${fmtHoras(e.time_bank_balance)} de banco de horas, ${since}. Nesse horário a loja segue com ${availDay.length-absent[slot]} pessoa(s) (mínimo ${minPer}).`;
-        suggestions.push({ employee_id:e.id, employee_name:e.name, date:dStr, shift, type, hours, reason, score:Math.round(scoreOf(e)) });
+        suggestions.push({ employee_id:e.id, employee_name:e.name, date:dStr, shift, type, hours, reason, tags:tagsFor(e,dow,round), score:Math.round(scoreOf(e)) });
         logs.push({type:'sugestao', employee_id:e.id, employee_name:e.name, message:reason});
-        used.add(e.id); dayCount++;
-        if (used.size>=pool.length) break;
+        genCount[e.id]=round+1; doneToday.add(e.id); dayCount++;
       }
-      if (used.size>=pool.length) break;            // todas as elegíveis já têm uma folga
     }
 
     requests.filter(r=>r.status==='pendente' && r.request_type==='pedido_folga').forEach(r=>{
