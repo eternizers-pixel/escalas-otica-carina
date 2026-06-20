@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v21 (reconciliação automática do banco)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v22 (opções de folga configuráveis + rodízio entrar/sair)
 // ============================================================
 (function(){
 "use strict";
@@ -352,6 +352,8 @@ ROUTES.regras=async function(){
   const comm=[...Engine.commemorativeDates(cy),...Engine.commemorativeDates(cy+1)].filter(c=>c.date>=todayS).slice(0,8);
   const commRows=comm.map(c=>{ const d=new Date(c.date+'T00:00:00'); const ini=new Date(d); ini.setDate(ini.getDate()-lead);
     return `<tr><td><b>${esc(c.name)}</b></td><td>${c.date.split('-').reverse().join('/')}</td><td class="muted">${ini.toLocaleDateString('pt-BR')} → ${d.toLocaleDateString('pt-BR')}</td></tr>`; }).join('');
+  const adt=String(r.allowed_dayoff_types||'').split(',').map(s=>s.trim()).filter(Boolean);
+  const chk=c=>(adt.length?adt.includes(c):true)?'checked':''; // sem config = todas marcadas
   $('#view').innerHTML=`
   <div class="toolbar"><span class="muted">Altere qualquer bloco e salve.</span><div class="spacer"></div><button class="btn" id="saveRules" ${isGestor()?'':'disabled'}>💾 Salvar regras da loja</button></div>
   <div class="grid2">
@@ -377,6 +379,14 @@ ROUTES.regras=async function(){
         <div class="field"><label>Tipo de folga liberada</label><select id="r_mode"><option value="saida_antecipada" ${(r.dayoff_mode||'saida_antecipada')==='saida_antecipada'?'selected':''}>Só sair mais cedo (recomendado)</option><option value="completa" ${r.dayoff_mode==='completa'?'selected':''}>Permitir folga integral / meio turno</option></select></div>
         <div class="field"><label>Horas de saída antecipada</label><input id="r_early" type="number" value="${r.early_leave_hours??3}"/></div></div>
       <div class="reason">No modo recomendado, o sistema só sugere <b>sair mais cedo</b> (manhã ou tarde) — nunca o dia inteiro — evitando o incentivo de "acumular horas para ganhar o dia".</div>
+      <div class="field" style="margin-top:10px"><label>Opções de folga que a loja permite</label>
+        <div style="display:flex;flex-direction:column;gap:6px;margin-top:4px">
+          <label style="font-weight:400;display:flex;align-items:center;gap:8px"><input type="checkbox" class="r_dtype" value="manha_entrar" ${chk('manha_entrar')}/> Entrar mais tarde (manhã)</label>
+          <label style="font-weight:400;display:flex;align-items:center;gap:8px"><input type="checkbox" class="r_dtype" value="manha_sair" ${chk('manha_sair')}/> Sair mais cedo (manhã)</label>
+          <label style="font-weight:400;display:flex;align-items:center;gap:8px"><input type="checkbox" class="r_dtype" value="tarde_entrar" ${chk('tarde_entrar')}/> Entrar mais tarde (tarde)</label>
+          <label style="font-weight:400;display:flex;align-items:center;gap:8px"><input type="checkbox" class="r_dtype" value="tarde_sair" ${chk('tarde_sair')}/> Sair mais cedo (tarde)</label>
+        </div>
+        <div class="reason">O motor só sugere os horários marcados aqui. Para o <b>rodízio justo</b> (não repetir só "entrar" ou só "sair" na mesma semana), marque pelo menos uma opção de <b>entrar</b> e uma de <b>sair</b>.</div></div>
       <div class="field" style="margin-top:10px"><label>Alertas de banco de horas alto (h) — prioridade escalonada</label>
         <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
           <span class="muted" style="font-size:12px">Atenção</span><input id="r_bk1" type="number" style="width:64px" value="${r.bank_alert_atencao??8}"/>
@@ -434,6 +444,7 @@ ROUTES.regras=async function(){
       max_dayoffs_per_day:Math.max(1,+$('#r_maxday').value||2),
       bank_alert_atencao:+$('#r_bk1').value||8, bank_alert_alta:+$('#r_bk2').value||12, bank_alert_maxima:+$('#r_bk3').value||16, bank_alert_critico:+$('#r_bk4').value||20,
       require_expert:$('#r_expert').value!=='false',
+      allowed_dayoff_types:$$('.r_dtype').filter(c=>c.checked).map(c=>c.value).join(','),
       min_dayoff_hours:+$('#r_dmin').value,max_dayoff_hours:+$('#r_dmax').value,
       dayoff_mode:$('#r_mode').value,early_leave_hours:+$('#r_early').value||3,
       saturday_open_count:+$('#r_satn').value,saturday_start:$('#r_sats').value,saturday_end:$('#r_sate').value,

@@ -229,7 +229,7 @@ window.Engine = (function () {
     const horizonEndStr = fmt(horizonEnd);
     // folgas de cada pessoa NESTA semana (conta as já aprovadas) — base do ciclo justo
     // e banco de horas RESTANTE (já descontando as folgas aprovadas) — ninguém folga além do que tem em banco
-    const genCount = {}; const bankLeft = {}; const assignedDates = {};
+    const genCount = {}; const bankLeft = {}; const assignedDates = {}; const usedKind = {};
     active.forEach(e=>{ bankLeft[e.id] = (e.time_bank_balance||0); });
     for (const it of existing){
       if (!it || !it.employee_id || !it.date) continue;
@@ -239,6 +239,8 @@ window.Engine = (function () {
       bankLeft[it.employee_id] = (bankLeft[it.employee_id]||0) - (+it.hours||0);
       if (it.date < startStr || it.date > horizonEndStr) continue; // genCount (teto por semana) só da semana planejada
       genCount[it.employee_id] = (genCount[it.employee_id]||0) + 1;
+      // rodízio entrar/sair: registra o tipo já usado na semana
+      if (it.type==='entrada_tarde'||it.type==='saida_antecipada'){ (usedKind[it.employee_id]=usedKind[it.employee_id]||new Set()).add(it.type); }
     }
     // distância (em dias) do dia até a folga mais próxima que a pessoa já tem na semana — usado para espalhar
     const dayNum=ds=>Math.floor(parse(ds).getTime()/86400000);
@@ -264,6 +266,9 @@ window.Engine = (function () {
     const SLOT={tarde_sair:'tarde_fim', manha_entrar:'manha_ini', tarde_entrar:'tarde_ini', manha_sair:'manha_fim'};
     const MAP={ tarde_sair:{shift:'tarde',type:'saida_antecipada'}, manha_entrar:{shift:'manha',type:'entrada_tarde'},
                 tarde_entrar:{shift:'tarde',type:'entrada_tarde'}, manha_sair:{shift:'manha',type:'saida_antecipada'} };
+    // opções que a LOJA permite (configurável em Regras). Vazio/ausente = todas as 4.
+    const storeAllowed = String(rules.allowed_dayoff_types||'').split(',').map(s=>s.trim()).filter(c=>ALL.includes(c));
+    const STORE = storeAllowed.length ? storeAllowed : ALL.slice();
     const slotsOf=(it)=>{
       if(it.type==='entrada_tarde') return it.shift==='manha'?['manha_ini']:['tarde_ini'];
       if(it.type==='saida_antecipada') return it.shift==='manha'?['manha_fim']:['tarde_fim'];
@@ -358,13 +363,23 @@ window.Engine = (function () {
             logs.push({type:'bloqueio', employee_id:e.id, employee_name:e.name, message:`${e.name} (mais experiente) não folga ${DIAS[day.dow]} (${day.dStr}): deixaria a loja sem ninguém com mais conhecimento no dia.`});
             continue;
           }
+          // opções permitidas: preferência da funcionária ∩ o que a LOJA permite (Regras). Sem interseção → usa o da loja.
           let allowed=String(e.dayoff_pref||'').split(',').map(s=>s.trim()).filter(c=>ALL.includes(c));
-          if(!allowed.length) allowed=ALL.slice();
+          if(!allowed.length) allowed=STORE.slice(); else allowed=allowed.filter(c=>STORE.includes(c));
+          if(!allowed.length) allowed=STORE.slice();
+          // só horários que mantêm o mínimo na loja
+          const validos=allowed.filter(code=> (day.availDay.length-((day.absent[SLOT[code]]||0)+1)) >= minPer);
+          if(!validos.length) continue;
+          // rodízio entrar/sair: se já teve "entrar mais tarde" nesta semana, a próxima é "sair mais cedo" (e vice-versa)
+          const jaUsou = usedKind[e.id] || new Set();
+          let pool = validos.filter(code=> !jaUsou.has(MAP[code].type));
+          if(!pool.length) pool = validos; // já teve os dois tipos (ou só sobra repetido)
           let bestCode=null, bestLoad=Infinity;
-          for (const code of allowed){ const load=day.absent[SLOT[code]]||0; if (day.availDay.length-(load+1) >= minPer && load < bestLoad){ bestCode=code; bestLoad=load; } }
+          for (const code of pool){ const load=day.absent[SLOT[code]]||0; if (load < bestLoad){ bestCode=code; bestLoad=load; } }
           if(!bestCode) continue;
           const slot=SLOT[bestCode]; day.absent[slot]=(day.absent[slot]||0)+1;
           const {shift,type}=MAP[bestCode];
+          (usedKind[e.id]=usedKind[e.id]||new Set()).add(type); // registra o tipo usado p/ o rodízio
           const round=genCount[e.id]||0;
           const periodoTxt = shift==='manha' ? 'de manhã' : 'à tarde';
           const acao = type==='entrada_tarde' ? `entrar ${hours}h mais tarde ${periodoTxt} de ${DIAS[day.dow]} (${day.dStr})` : `sair ${hours}h mais cedo ${periodoTxt} de ${DIAS[day.dow]} (${day.dStr})`;
