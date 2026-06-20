@@ -388,7 +388,7 @@ window.Engine = (function () {
       lista.forEach(s=>{
         s.tags=(s.tags||[]).filter(t=>!/da semana/i.test(t)); // limpa qualquer marca antiga
         const antes=exDatas.filter(d=>d<s.date).length + lista.filter(x=>x.date<s.date).length;
-        if(antes>0){ s.tags.push('2ª folga da semana'); s.tags=s.tags.slice(0,3); }
+        if(antes>0){ s.tags.unshift('2ª folga da semana'); s.tags=s.tags.slice(0,3); } // garante que apareça
       });
     }
 
