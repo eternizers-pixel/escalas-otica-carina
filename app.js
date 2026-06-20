@@ -981,7 +981,7 @@ function reqTypeLabel(t){return {pedido_folga:'Pedido de folga',recusa_folga:'Re
 // ---------- RELATÓRIOS ----------
 ROUTES.relatorios=async function(){
   const now=new Date(), year=now.getFullYear(), month=now.getMonth()+1, hoje=todayStr();
-  const [emps,items,reqs,rot,scheds]=await Promise.all([getAll('employees',b=>b.eq('is_simulation',S.sim)),getAll('schedule_items'),getAll('dayoff_requests'),getAll('saturday_rotation'),getAll('schedules',b=>b.eq('is_simulation',S.sim))]);
+  const [emps,items,reqs,rot,scheds,rules]=await Promise.all([getAll('employees',b=>b.eq('is_simulation',S.sim)),getAll('schedule_items'),getAll('dayoff_requests'),getAll('saturday_rotation'),getAll('schedules',b=>b.eq('is_simulation',S.sim)),T('store_rules').select('*').eq('id',1).maybeSingle().then(r=>r.data||{})]);
   const sIds=new Set(scheds.map(s=>s.id));
   const appr=items.filter(i=>i.status==='aprovado'&&sIds.has(i.schedule_id));
   const history=await buildHistory();
