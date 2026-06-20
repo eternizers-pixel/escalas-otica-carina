@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v15 (banco escalonado + função essencial + justiça histórica)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v16 (folgas aprovadas por dia + relatório de justiça expandido)
 // ============================================================
 (function(){
 "use strict";
@@ -629,17 +629,21 @@ ROUTES.escala=async function(){
     <div class="spacer"></div><span class="muted">${items.length} folga(s) a partir deste mês</span></div>
   ${box('info','Todas as folgas aprovadas. <b>Editar</b> troca o dia/horário, <b>Remover</b> apaga — útil quando a funcionária pede um dia diferente do que o sistema sugeriu. Você também pode <b>lançar</b> uma folga do zero.')}
   <div class="panel"><div class="pb">
-    ${items.map(it=>`<div class="card" style="margin-bottom:10px">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
-        <div style="min-width:0">
-          <div style="font-weight:700">${esc(it.employee_name||map[it.employee_id]||'')}</div>
-          <div class="muted" style="font-size:13px;margin-top:2px">${(it.date||'').split('-').reverse().join('/')} ${it.date?'('+Engine.DOW[Engine.parse(it.date).getDay()]+')':''} · <b style="color:var(--ink)">${folgaTimeLabel(it,rules)}</b> · ${TYPE_LABEL[it.type]||it.type}${it.hours?' '+it.hours+'h':''}</div>
-        </div>
-        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-          <span class="pill ${it.status==='aprovado'?'ativa':it.status==='recusado'?'afastada':'ferias'}">${it.status==='aprovado'?'Aprovado':it.status}</span>
-          ${isGestor()?`<button class="btn ghost sm" data-edf="${it.id}">Editar</button><button class="btn ghost sm" style="color:var(--red)" data-delf="${it.id}">Remover</button>`:''}
-        </div>
-      </div></div>`).join('')||'<p class="muted" style="margin:0">Nenhuma folga registrada. Aprove no Motor de folgas ou clique em “Lançar folga”.</p>'}
+    ${(()=>{ const byDay={}; items.forEach(it=>{(byDay[it.date]=byDay[it.date]||[]).push(it);});
+      return Object.keys(byDay).sort().map(date=>{
+        const dia=Engine.DOW[Engine.parse(date).getDay()]; const dataBR=date.split('-').reverse().join('/');
+        const cards=byDay[date].map(it=>`<div class="card" style="margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+          <div style="min-width:0">
+            <div style="font-weight:700">${esc(it.employee_name||map[it.employee_id]||'')}</div>
+            <div class="muted" style="font-size:13px;margin-top:2px"><b style="color:var(--ink)">${folgaTimeLabel(it,rules)}</b> · ${TYPE_LABEL[it.type]||it.type}${it.hours?' '+it.hours+'h':''}</div>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <span class="pill ${it.status==='aprovado'?'ativa':it.status==='recusado'?'afastada':'ferias'}">${it.status==='aprovado'?'Aprovado':it.status}</span>
+            ${isGestor()?`<button class="btn ghost sm" data-edf="${it.id}">Editar</button><button class="btn ghost sm" style="color:var(--red)" data-delf="${it.id}">Remover</button>`:''}
+          </div></div>`).join('');
+        return `<div style="margin-bottom:16px"><div style="font-weight:800;font-size:17px;padding:8px 14px;background:var(--brand-soft);color:var(--brand-d);border-radius:10px;margin-bottom:10px;text-transform:capitalize">${dia} · ${dataBR}</div>${cards}</div>`;
+      }).join('');
+    })()||'<p class="muted" style="margin:0">Nenhuma folga registrada. Aprove no Motor de folgas ou clique em “Lançar folga”.</p>'}
   </div></div>`;
   $('#addFolga')?.addEventListener('click',()=>folgaModal(null,emps,rules));
   $$('[data-edf]').forEach(b=>b.onclick=()=>folgaModal(items.find(x=>x.id===b.dataset.edf),emps,rules));
@@ -976,23 +980,58 @@ function reqTypeLabel(t){return {pedido_folga:'Pedido de folga',recusa_folga:'Re
 
 // ---------- RELATÓRIOS ----------
 ROUTES.relatorios=async function(){
-  const now=new Date(), year=now.getFullYear(), month=now.getMonth()+1;
-  const [emps,items,reqs,rot]=await Promise.all([getAll('employees',b=>b.eq('is_simulation',S.sim)),getAll('schedule_items'),getAll('dayoff_requests'),getAll('saturday_rotation')]);
+  const now=new Date(), year=now.getFullYear(), month=now.getMonth()+1, hoje=todayStr();
+  const [emps,items,reqs,rot,scheds]=await Promise.all([getAll('employees',b=>b.eq('is_simulation',S.sim)),getAll('schedule_items'),getAll('dayoff_requests'),getAll('saturday_rotation'),getAll('schedules',b=>b.eq('is_simulation',S.sim))]);
+  const sIds=new Set(scheds.map(s=>s.id));
+  const appr=items.filter(i=>i.status==='aprovado'&&sIds.has(i.schedule_id));
   const history=await buildHistory();
   const fair=Engine.fairnessIndex(emps,history);
   const ballColor={justo:'var(--green)',aceitavel:'var(--brand)',atencao:'var(--amber)',desequilibrado:'var(--red)'}[fair.status];
-  const perEmp=emps.map(e=>({e,folgas:items.filter(i=>i.employee_id===e.id&&i.status==='aprovado').length,sabados:rot.filter(r=>r.employee_id===e.id).length,faltas:reqs.filter(r=>r.employee_id===e.id&&r.request_type==='falta').length,recusas:reqs.filter(r=>r.employee_id===e.id&&r.request_type==='recusa_folga').length}));
+  // véspera/pós-feriado (±1 dia de data comemorativa)
+  const commDates=[...Engine.commemorativeDates(year-1),...Engine.commemorativeDates(year),...Engine.commemorativeDates(year+1)].map(c=>Engine.parse(c.date).getTime());
+  const nearHoliday=(ds)=>{const t=Engine.parse(ds).getTime();return commDates.some(c=>Math.abs((c-t)/86400000)<=1);};
+  const active=emps.filter(e=>e.status!=='desligada');
+  const per=active.map(e=>{
+    const mine=appr.filter(i=>i.employee_id===e.id);
+    const dow=ds=>Engine.parse(ds).getDay();
+    const past=mine.filter(i=>i.date<=hoje).map(i=>i.date).sort();
+    const ultima=past.length?past[past.length-1]:null;
+    const r={ e,
+      folgas:mine.length,
+      horas:mine.reduce((s,i)=>s+(+i.hours||0),0),
+      sextas:mine.filter(i=>dow(i.date)===5).length,
+      segundas:mine.filter(i=>dow(i.date)===1).length,
+      integral:mine.filter(i=>i.type==='integral').length,
+      meio:mine.filter(i=>i.type==='meio_turno').length,
+      vesp:mine.filter(i=>nearHoliday(i.date)).length,
+      sabados:rot.filter(x=>x.employee_id===e.id && x.worked!==false).length,
+      recusas:reqs.filter(x=>x.employee_id===e.id&&x.request_type==='recusa_folga').length,
+      faltas:reqs.filter(x=>x.employee_id===e.id&&x.request_type==='falta').length,
+      pedidos:reqs.filter(x=>x.employee_id===e.id&&['troca_folga','pedido_folga'].includes(x.request_type)).length + mine.filter(i=>/manual/i.test(i.reason||'')).length,
+      semFolgar: ultima? Math.floor((new Date(hoje+'T00:00:00')-Engine.parse(ultima))/86400000) : null,
+      banco:+e.time_bank_balance||0 };
+    r.vantagem = r.sextas*2 + r.segundas*1.5 + r.integral*2 + r.vesp*1.5 + r.folgas; // folgas "boas" acumuladas
+    return r;
+  });
+  const avgV = per.length? per.reduce((s,p)=>s+p.vantagem,0)/per.length : 0;
+  const balanco=(v)=> avgV<=0?{t:'equilibrada',c:'var(--muted)'}: v>avgV*1.3?{t:'favorecida',c:'var(--amber)'}: v<avgV*0.7?{t:'prejudicada',c:'var(--green)'}:{t:'equilibrada',c:'var(--muted)'};
   $('#view').innerHTML=`
   <div class="cards">
     <div class="card"><h3>Índice de justiça</h3><div class="fair" style="font-size:20px"><span class="ball" style="background:${ballColor}"></span>${fair.status} · ${fair.score}</div><div class="reason">${esc(fair.reason)}</div></div>
-    <div class="card"><h3>Folgas aprovadas</h3><div class="kpi">${items.filter(i=>i.status==='aprovado').length}</div></div>
-    <div class="card"><h3>Sábados trabalhados</h3><div class="kpi">${rot.length}</div></div>
+    <div class="card"><h3>Folgas aprovadas</h3><div class="kpi">${appr.length}</div></div>
+    <div class="card"><h3>Sábados trabalhados</h3><div class="kpi">${rot.filter(r=>r.worked!==false).length}</div></div>
     <div class="card"><h3>Em férias</h3><div class="kpi">${emps.filter(e=>e.status==='ferias').length}</div></div>
   </div>
-  <div class="section panel"><div class="ph"><h3>Resumo por funcionária — ${MONTHS[month-1]} ${year}</h3></div><div class="pb" style="padding:0">
-    <table><thead><tr><th>Funcionária</th><th>Banco atual</th><th>Folgas</th><th>Sábados</th><th>Faltas</th><th>Recusas</th></tr></thead>
-    <tbody>${perEmp.map(p=>`<tr><td><b>${esc(p.e.name)}</b></td><td>${fmtH(p.e.time_bank_balance)}</td><td>${p.folgas}</td><td>${p.sabados}</td><td>${p.faltas}</td><td>${p.recusas}</td></tr>`).join('')||'<tr><td colspan=6 class="muted" style="padding:16px">Sem dados.</td></tr>'}
-    </tbody></table></div></div>`;
+  <div class="section panel"><div class="ph"><h3>Justiça por funcionária</h3><span class="muted">todos os fatores</span></div><div class="pb">
+    <table><thead><tr><th>Funcionária</th><th>Banco</th><th>Folgas</th><th>Horas comp.</th><th>Sextas</th><th>Segundas</th><th>Integral</th><th>Meio turno</th><th>Vésp. feriado</th><th>Sábados</th><th>Recusas</th><th>Faltas</th><th>Pedidos</th><th>Sem folgar</th><th>Balanço</th></tr></thead>
+    <tbody>${per.sort((a,b)=>b.banco-a.banco).map(p=>{const b=balanco(p.vantagem);return `<tr>
+      <td><b>${esc(p.e.name)}</b></td><td>${fmtH(p.banco)}</td><td>${p.folgas}</td><td>${fmtH(p.horas)}</td>
+      <td>${p.sextas}</td><td>${p.segundas}</td><td>${p.integral}</td><td>${p.meio}</td><td>${p.vesp}</td>
+      <td>${p.sabados}</td><td>${p.recusas}</td><td>${p.faltas}</td><td>${p.pedidos}</td>
+      <td>${p.semFolgar==null?'—':p.semFolgar+'d'}</td>
+      <td><span class="pill" style="background:${b.c}22;color:${b.c}">${b.t}</span></td></tr>`;}).join('')||'<tr><td colspan=15 class="muted" style="padding:16px">Sem dados.</td></tr>'}
+    </tbody></table></div></div>
+  ${box('info','<b>Como o balanço é calculado:</b> o sistema soma as folgas "boas" de cada uma (sextas, segundas, dia inteiro, véspera de feriado, total de folgas) e compara com a média da equipe. Quem está bem acima aparece como <b>favorecida</b> (perde prioridade nas próximas), quem está abaixo como <b>prejudicada</b> (ganha prioridade). Tudo isso já é considerado automaticamente pelo motor de folgas.')}`;
 };
 
 // ---------- SIMULAÇÃO ----------
