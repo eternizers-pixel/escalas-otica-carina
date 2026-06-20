@@ -861,7 +861,7 @@ ROUTES.sabados=async function(){
         const avail=active.filter(e=>!assigned.some(a=>a.employee_id===e.id));
         const ok=assigned.length===tgt;
         const noExp=assigned.length>0 && !assigned.some(a=>expert.has(a.employee_id));
-        return `<div class="panel" style="margin-bottom:12px"><div class="ph">
+        return `<div class="panel" style="margin-bottom:0;flex:1 1 300px;min-width:280px"><div class="ph">
           <h3>${n}º sábado · ${d.split('-').reverse().join('/')}</h3>
           <span class="pill ${ok?'ativa':'ferias'}">${assigned.length}/${tgt} pessoas</span></div>
           <div class="pb">
@@ -870,7 +870,7 @@ ROUTES.sabados=async function(){
             ${isGestor()?`<div style="margin-top:10px;max-width:300px"><select data-add="${n}"><option value="">+ adicionar funcionária…</option>${avail.map(e=>`<option value="${e.id}">${esc(e.name)}</option>`).join('')}</select></div>`:''}
           </div></div>`;
       }).join('');
-      $('#satEditor').innerHTML=cards+(invNote?`<div class="section">${invNote}</div>`:'');
+      $('#satEditor').innerHTML=`<div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start">${cards}</div>`+(invNote?`<div class="section">${invNote}</div>`:'');
       $$('[data-rm]').forEach(b=>b.onclick=()=>{ const [n,id]=b.dataset.rm.split('|'); state=state.filter(a=>!(String(a.saturday_number)===n&&a.employee_id===id)); renderEditor(); });
       $$('[data-add]').forEach(s=>s.onchange=()=>{ const n=+s.dataset.add, id=s.value; if(!id)return; const e=emps.find(x=>x.id===id); state.push({saturday_number:n,saturday_date:sats[n-1],employee_id:id,employee_name:e.name}); renderEditor(); });
     }
