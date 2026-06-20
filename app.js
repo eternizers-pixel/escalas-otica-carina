@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v22 (opções de folga configuráveis + rodízio entrar/sair)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v23 (sábado: 1 especialista garantida + reforço escolhível 1º/2º)
 // ============================================================
 (function(){
 "use strict";
@@ -843,7 +843,10 @@ ROUTES.sabados=async function(){
     const empName=Object.fromEntries(emps.map(e=>[e.id,e.name]));
     const expert=new Set(emps.filter(e=>e.is_expert).map(e=>e.id));
     const monthMode=(mset&&mset.sat_mode)||rules.saturday_open_mode||'dois_primeiros';
-    const erules={...rules, saturday_open_mode:monthMode};
+    const monthReinforce=(mset&&mset.sat_reinforce)||rules.saturday_reinforce||'auto';
+    const bigN=Math.max(rules.saturday_first_count??3, rules.saturday_second_count??2);
+    const smallN=Math.min(rules.saturday_first_count??3, rules.saturday_second_count??2);
+    const erules={...rules, saturday_open_mode:monthMode, saturday_reinforce:monthReinforce};
     const sats=Engine.openSaturdays(year,month,monthMode).map(Engine.fmt);
     const meta=Engine.saturdayRotation(active,erules,year,month,hist);
     const targets=meta.counts||[rules.saturday_first_count??3, rules.saturday_second_count??2];
@@ -916,6 +919,12 @@ ROUTES.sabados=async function(){
         <option value="primeiro_ultimo" ${monthMode==='primeiro_ultimo'?'selected':''}>O primeiro e o último</option>
         <option value="todos" ${monthMode==='todos'?'selected':''}>Todos</option></select>
       <span class="muted">${sats.length} sábado(s): ${sats.map(d=>d.split('-').reverse().slice(0,2).join('/')).join(', ')||'—'}</span></div>
+    <div class="toolbar"><span class="muted">Reforço (mais gente em qual sábado):</span>
+      <select id="satReinf" ${isGestor()?'':'disabled'}>
+        <option value="auto" ${monthReinforce==='auto'?'selected':''}>Automático (mais no 1º, inverte em feriado)</option>
+        <option value="primeiro" ${monthReinforce==='primeiro'?'selected':''}>Mais no 1º sábado (${bigN} e ${smallN})</option>
+        <option value="segundo" ${monthReinforce==='segundo'?'selected':''}>Mais no 2º sábado (${smallN} e ${bigN})</option></select>
+      <span class="muted">1º: ${targets[0]??'—'} · 2º: ${targets[1]??'—'} pessoa(s)</span></div>
     ${passed?box('warn','Estes sábados <b>já passaram</b>. Você pode registrar quem trabalhou (alimenta o histórico) ou ir para um mês futuro no <b>→</b>.'):box('info','O sistema sugere e <b>equilibra pelo histórico</b>. Ajuste na mão: remova no × e adicione pela lista — útil quando alguém pede para trocar um sábado. Depois <b>Salvar rodízio</b>.')}
     <div id="satEditor"></div>
     <div class="section panel"><div class="ph"><h3>Histórico de sábados</h3><span class="muted">por mês</span></div>
@@ -926,6 +935,9 @@ ROUTES.sabados=async function(){
     $('#satMode')?.addEventListener('change',async(e)=>{ if(!gate())return; const mode=e.target.value;
       const res=await T('month_settings').upsert({year,month,sat_mode:mode},{onConflict:'year,month'}); if(res.error){toast(res.error.message);return;}
       toast('Modo de sábados deste mês atualizado.'); load(); });
+    $('#satReinf')?.addEventListener('change',async(e)=>{ if(!gate())return; const rein=e.target.value;
+      const res=await T('month_settings').upsert({year,month,sat_reinforce:rein},{onConflict:'year,month'}); if(res.error){toast(res.error.message);return;}
+      toast('Reforço deste mês atualizado — gere a sugestão de novo.'); load(); });
     $('#genSat')?.addEventListener('click',()=>{ if(!gate())return; state=meta.assignments.map(a=>({...a})); renderEditor(); toast('Sugestão gerada — ajuste se precisar e salve.'); });
     $('#saveSat')?.addEventListener('click',async()=>{ if(!gate())return;
       if(!state.length){ toast('Nada para salvar. Gere a sugestão ou adicione funcionárias.'); return; }

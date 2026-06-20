@@ -125,10 +125,15 @@ window.Engine = (function () {
     }
     let firstCount = rules.saturday_first_count ?? 3;
     let secondCount = rules.saturday_second_count ?? 2;
+    // reforço escolhido na tela de sábados: 'auto' | 'primeiro' | 'segundo'
+    const reinforce = rules.saturday_reinforce || 'auto';
+    const big = Math.max(firstCount, secondCount), small = Math.min(firstCount, secondCount);
 
-    // exceção: comemorativa perto do 2º sábado -> inverte o reforço
     let inverted=false, commName=null;
-    if (sats.length>=2){
+    if (reinforce==='primeiro'){ firstCount=big; secondCount=small; }       // gestor: mais no 1º
+    else if (reinforce==='segundo'){ firstCount=small; secondCount=big; }   // gestor: mais no 2º (vice-versa)
+    else if (sats.length>=2){
+      // automático: comemorativa perto do 2º sábado -> inverte o reforço
       const sat2=sats[1];
       for (const c of commemorativeDates(year)){
         if (Math.abs(Math.round((parse(c.date)-sat2)/86400000))<=3){ inverted=true; commName=c.name; break; }
