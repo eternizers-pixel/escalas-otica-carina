@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v18 (balanço considera banco — em dia)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v19 (balanço pelo saldo restante)
 // ============================================================
 (function(){
 "use strict";
@@ -1015,13 +1015,14 @@ ROUTES.relatorios=async function(){
   });
   const avgV = per.length? per.reduce((s,p)=>s+p.vantagem,0)/per.length : 0;
   const minB = rules.min_time_bank_for_dayoff||6, custoFolga = rules.early_leave_hours??3;
-  // balanço considera o BANCO: quem não tem horas para compensar não é "prejudicada", está "em dia".
+  const limiteFolga = Math.min(minB, custoFolga); // saldo mínimo para conseguir UMA folga
+  // balanço usa o banco RESTANTE (descontando as folgas já aprovadas). Sem saldo = "em dia", não prejuízo.
   const balanco=(p)=>{
-    const podeFolgar = p.banco >= Math.min(minB, custoFolga); // tem banco para ao menos uma folga
-    if (!podeFolgar) return {t:'em dia',c:'var(--muted)',note:'banco baixo'};
+    const restante = p.banco - (p.horas||0);
+    if (restante < limiteFolga) return {t:'em dia',c:'var(--muted)',note:'sem saldo p/ folga'};
     if (avgV<=0) return {t:'equilibrada',c:'var(--muted)'};
     if (p.vantagem > avgV*1.3) return {t:'favorecida',c:'var(--amber)'};
-    if (p.vantagem < avgV*0.7) return {t:'prejudicada',c:'var(--green)'}; // tem banco e recebeu poucas folgas boas
+    if (p.vantagem < avgV*0.7) return {t:'prejudicada',c:'var(--green)'}; // tem saldo e recebeu poucas folgas boas
     return {t:'equilibrada',c:'var(--muted)'};
   };
   $('#view').innerHTML=`
@@ -1038,7 +1039,7 @@ ROUTES.relatorios=async function(){
           <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px">
             <div style="font-weight:800;font-size:16px">${esc(p.e.name)}</div>
             <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-              <span class="muted" style="font-size:13px">Banco de horas: <b style="color:var(--ink)">${fmtH(p.banco)}</b></span>
+              <span class="muted" style="font-size:13px">Banco: <b style="color:var(--ink)">${fmtH(p.banco)}</b>${p.horas>0?` · resta <b style="color:var(--ink)">${fmtH(p.banco-p.horas)}</b> após folgas`:''}</span>
               <span class="pill" style="background:${b.c}22;color:${b.c};font-weight:700;text-transform:capitalize">${b.t}${b.note?' · '+b.note:''}</span></div></div>
           <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(155px,1fr));gap:8px">
             ${stat('Folgas no total',p.folgas)}
