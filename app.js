@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v23 (sábado: 1 especialista garantida + reforço escolhível 1º/2º)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v24 (trocar folga entre funcionárias)
 // ============================================================
 (function(){
 "use strict";
@@ -692,7 +692,7 @@ ROUTES.escala=async function(){
           </div>
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
             <span class="pill ${it.status==='aprovado'?'ativa':it.status==='recusado'?'afastada':'ferias'}">${it.status==='aprovado'?'Aprovado':it.status}</span>
-            ${isGestor()?`<button class="btn ghost sm" data-edf="${it.id}">Editar</button><button class="btn ghost sm" style="color:var(--red)" data-delf="${it.id}">Remover</button>`:''}
+            ${isGestor()?`<button class="btn ghost sm" data-swapf="${it.id}">🔁 Trocar</button><button class="btn ghost sm" data-edf="${it.id}">Editar</button><button class="btn ghost sm" style="color:var(--red)" data-delf="${it.id}">Remover</button>`:''}
           </div></div>`).join('');
         return `<div style="margin-bottom:16px"><div style="font-weight:800;font-size:17px;padding:8px 14px;background:var(--brand-soft);color:var(--brand-d);border-radius:10px;margin-bottom:10px;text-transform:capitalize">${dia} · ${dataBR}</div>${cards}</div>`;
       }).join('');
@@ -704,8 +704,41 @@ ROUTES.escala=async function(){
     const res=await T('schedule_items').delete().in('id',items.map(i=>i.id)); if(res.error){toast(res.error.message);return;}
     toast('Todas as folgas foram removidas.'); route(); });
   $$('[data-edf]').forEach(b=>b.onclick=()=>folgaModal(items.find(x=>x.id===b.dataset.edf),emps,rules));
+  $$('[data-swapf]').forEach(b=>b.onclick=()=>swapModal(items.find(x=>x.id===b.dataset.swapf),items,emps,rules));
   $$('[data-delf]').forEach(b=>b.onclick=async()=>{ if(!gate())return; if(!confirm('Remover esta folga?'))return; await T('schedule_items').delete().eq('id',b.dataset.delf); toast('Folga removida.'); route(); });
 };
+// ---------- TROCAR FOLGA (entre funcionárias) ----------
+function swapModal(folga, items, emps, rules){
+  if(!folga) return;
+  const map=Object.fromEntries(emps.map(e=>[e.id,e.name]));
+  const desc=f=>{ const dow=Engine.DOW[Engine.parse(f.date).getDay()]; const dBR=f.date.split('-').reverse().slice(0,2).join('/'); return `${dow} ${dBR} · ${folgaTimeLabel(f,rules)} · ${TYPE_LABEL[f.type]||f.type}`; };
+  const meName=folga.employee_name||map[folga.employee_id]||'';
+  const others=items.filter(x=>x.id!==folga.id && x.employee_id!==folga.employee_id).sort((a,b)=>(a.date||'').localeCompare(b.date||''));
+  const rows=others.map(f=>{ const nm=f.employee_name||map[f.employee_id]||'';
+    return `<button class="card" data-sw="${f.id}" style="width:100%;text-align:left;display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px;cursor:pointer;background:#fff">
+      <div style="min-width:0"><div style="font-weight:700">${esc(nm)}</div><div class="muted" style="font-size:13px;margin-top:2px">${desc(f)}</div></div>
+      <span class="pill ativa" style="white-space:nowrap">trocar →</span></button>`; }).join('')
+    ||'<p class="muted" style="margin:0">Não há folgas de outras funcionárias para trocar.</p>';
+  const root=$('#modalRoot');
+  root.innerHTML=`<div class="modal-bg"><div class="modal"><div class="mh"><h3>Trocar folga</h3><button class="x" id="mClose">×</button></div>
+    <div class="mb">
+      <div class="reason" style="margin-bottom:12px">Folga de <b>${esc(meName)}</b>: ${desc(folga)}.<br>Escolha com quem trocar — as duas funcionárias trocam de folga.</div>
+      <div style="max-height:52vh;overflow:auto">${rows}</div>
+    </div>
+    <div class="mf"><button class="btn sec" id="mCancel">Fechar</button></div></div></div>`;
+  const close=()=>root.innerHTML='';
+  $('#mClose').onclick=close; $('#mCancel').onclick=close;
+  $('.modal-bg').onclick=(e)=>{ if(e.target.classList.contains('modal-bg')) close(); };
+  $$('[data-sw]').forEach(btn=>btn.onclick=async()=>{ if(!gate())return;
+    const other=others.find(x=>x.id===btn.dataset.sw); if(!other)return;
+    const otherNm=other.employee_name||map[other.employee_id]||'';
+    if(!confirm(`Trocar a folga de ${meName} (${desc(folga)}) com a de ${otherNm} (${desc(other)})?\n\nDepois: ${meName} fica com ${desc(other)} · ${otherNm} fica com ${desc(folga)}.`)) return;
+    const [ra,rb]=await Promise.all([
+      T('schedule_items').update({employee_id:other.employee_id, employee_name:otherNm}).eq('id',folga.id),
+      T('schedule_items').update({employee_id:folga.employee_id, employee_name:meName}).eq('id',other.id)]);
+    if(ra.error||rb.error){ toast((ra.error||rb.error).message); return; }
+    close(); toast('Folgas trocadas.'); route(); });
+}
 function folgaModal(it,emps,rules){
   it=it||{};
   const toMin=s=>{const[h,m]=String(s||'').split(':').map(Number);return (h||0)*60+(m||0);};
