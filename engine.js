@@ -146,21 +146,42 @@ window.Engine = (function () {
     });
 
     const isExp = e => !!e.is_expert; // especialista em atendimento de ótica
-    const usedAny=new Set(); // evita repetir a mesma pessoa em sábados diferentes do mês
+    const experts = ranked.filter(isExp);
+    const usedAny = new Set();          // evita repetir a mesma pessoa em sábados diferentes do mês
+    const monthCount = {};              // quantos sábados deste mês a pessoa já pegou (p/ espalhar as especialistas)
+    const expLoad = e => (history[e.id]?.saturdays||0) + (monthCount[e.id]||0);
+    const picks = sats.map(()=>[]);     // pessoas escolhidas por sábado
+
+    // FASE 1 — garante ao menos 1 ESPECIALISTA em CADA sábado (espalha pelo histórico; só repete a mesma se faltar especialista)
     sats.forEach((satDate, idx)=>{
-      const need=counts[idx]||0;
-      let pool = ranked.filter(e => !usedAny.has(e.id)); // sem sobreposição entre os sábados
-      if (pool.length < need) pool = ranked.slice(); // não há gente suficiente sem repetir → permite repetir
-      const pick=[]; const add=e=>{ if(e && !pick.includes(e)) pick.push(e); };
-      // 1) garante ao menos 1 ESPECIALISTA
-      add(pool.find(e=>isExp(e)));
-      // 2) garante ao menos 1 das que SABEM MENOS (quando há 2+ vagas)
-      if (need>=2) add(pool.find(e=>!isExp(e)));
-      // 3) completa o restante pelo ranking de justiça
-      for (const e of pool){ if(pick.length>=need) break; add(e); }
-      const finalPick = pick.slice(0, need);
+      if ((counts[idx]||0) < 1 || experts.length===0) return;
+      let cand = experts.filter(e=>!usedAny.has(e.id));
+      if (!cand.length) cand = experts.slice();   // acabaram as especialistas → reusa p/ nenhum sábado ficar sem
+      cand.sort((a,b)=> expLoad(a)-expLoad(b) || (b.manual_priority||0)-(a.manual_priority||0));
+      const exp = cand[0];
+      picks[idx].push(exp); usedAny.add(exp.id); monthCount[exp.id]=(monthCount[exp.id]||0)+1;
+    });
+
+    // FASE 2 — completa as vagas (justiça + ao menos 1 que sabe menos quando há 2+ vagas)
+    sats.forEach((satDate, idx)=>{
+      const need=counts[idx]||0; const pick=picks[idx];
+      const has=id=>pick.some(e=>e.id===id);
+      // ao menos 1 que SABE MENOS, se ainda não houver e sobra vaga
+      if (need>=2 && pick.length<need && !pick.some(e=>!isExp(e))){
+        const nx = ranked.find(e=>!isExp(e) && !usedAny.has(e.id) && !has(e.id));
+        if (nx){ pick.push(nx); usedAny.add(nx.id); }
+      }
+      // completa pelo ranking de justiça, sem repetir entre sábados
+      for (const e of ranked){ if(pick.length>=need) break; if(has(e.id)||usedAny.has(e.id)) continue; pick.push(e); usedAny.add(e.id); }
+      // se ainda faltou gente sem repetir → permite repetir entre sábados
+      for (const e of ranked){ if(pick.length>=need) break; if(has(e.id)) continue; pick.push(e); }
+      picks[idx]=pick.slice(0,need);
+    });
+
+    // registra atribuições + monta os logs
+    sats.forEach((satDate, idx)=>{
+      const need=counts[idx]||0; const finalPick=picks[idx];
       finalPick.forEach(e=>{
-        usedAny.add(e.id);
         assignments.push({ saturday_number: idx+1, saturday_date: fmt(satDate), employee_id:e.id, employee_name:e.name });
       });
       const nomes = finalPick.map(e=>e.name).join(', ') || '—';
@@ -168,7 +189,7 @@ window.Engine = (function () {
       if (idx===0) nota = inverted ? ` Reduzido para ${need} (reforço foi para o 2º por causa de ${commName}).` : ' (1º sábado: mais movimento, pós-pagamento.)';
       else nota = inverted ? ` Reforço para ${need} por causa de ${commName}.` : '';
       let alerta='';
-      if (!finalPick.some(isExp)) alerta=' ⚠️ Nenhuma especialista disponível — revise manualmente.';
+      if (!finalPick.some(isExp)) alerta=' ⚠️ Nenhuma especialista cadastrada — marque quem tem mais conhecimento em Funcionárias.';
       else if (need>=2 && !finalPick.some(e=>!isExp(e))) alerta=' (Ninguém do grupo que sabe menos disponível neste sábado.)';
       logs.push({type:'rodizio',
         message:`${idx+1}º sábado (${fmt(satDate)}, ${hhmm}): ${need} pessoa(s) — ${nomes}.${nota}${alerta}`});
