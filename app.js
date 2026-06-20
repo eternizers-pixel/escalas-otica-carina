@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v17 (relatório de justiça visual em cards)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v18 (balanço considera banco — em dia)
 // ============================================================
 (function(){
 "use strict";
@@ -1014,7 +1014,16 @@ ROUTES.relatorios=async function(){
     return r;
   });
   const avgV = per.length? per.reduce((s,p)=>s+p.vantagem,0)/per.length : 0;
-  const balanco=(v)=> avgV<=0?{t:'equilibrada',c:'var(--muted)'}: v>avgV*1.3?{t:'favorecida',c:'var(--amber)'}: v<avgV*0.7?{t:'prejudicada',c:'var(--green)'}:{t:'equilibrada',c:'var(--muted)'};
+  const minB = rules.min_time_bank_for_dayoff||6, custoFolga = rules.early_leave_hours??3;
+  // balanço considera o BANCO: quem não tem horas para compensar não é "prejudicada", está "em dia".
+  const balanco=(p)=>{
+    const podeFolgar = p.banco >= Math.min(minB, custoFolga); // tem banco para ao menos uma folga
+    if (!podeFolgar) return {t:'em dia',c:'var(--muted)',note:'banco baixo'};
+    if (avgV<=0) return {t:'equilibrada',c:'var(--muted)'};
+    if (p.vantagem > avgV*1.3) return {t:'favorecida',c:'var(--amber)'};
+    if (p.vantagem < avgV*0.7) return {t:'prejudicada',c:'var(--green)'}; // tem banco e recebeu poucas folgas boas
+    return {t:'equilibrada',c:'var(--muted)'};
+  };
   $('#view').innerHTML=`
   <div class="cards">
     <div class="card"><h3>Índice de justiça</h3><div class="fair" style="font-size:20px"><span class="ball" style="background:${ballColor}"></span>${fair.status} · ${fair.score}</div><div class="reason">${esc(fair.reason)}</div></div>
@@ -1024,13 +1033,13 @@ ROUTES.relatorios=async function(){
   </div>
   <div class="section"><div class="ph" style="padding:0 4px 8px"><h3>Justiça por funcionária</h3><span class="muted">todos os fatores</span></div>
     ${(()=>{ const stat=(label,val,hot)=>`<div style="background:#f4f6fb;border-radius:10px;padding:9px 11px"><div class="muted" style="font-size:11.5px;line-height:1.25">${label}</div><div style="font-weight:800;font-size:19px;margin-top:3px;color:${hot?'var(--amber)':'var(--ink)'}">${val}</div></div>`;
-      return per.sort((a,b)=>b.banco-a.banco).map(p=>{ const b=balanco(p.vantagem);
+      return per.sort((a,b)=>b.banco-a.banco).map(p=>{ const b=balanco(p);
         return `<div class="card" style="margin-bottom:12px">
           <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px">
             <div style="font-weight:800;font-size:16px">${esc(p.e.name)}</div>
             <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
               <span class="muted" style="font-size:13px">Banco de horas: <b style="color:var(--ink)">${fmtH(p.banco)}</b></span>
-              <span class="pill" style="background:${b.c}22;color:${b.c};font-weight:700;text-transform:capitalize">${b.t}</span></div></div>
+              <span class="pill" style="background:${b.c}22;color:${b.c};font-weight:700;text-transform:capitalize">${b.t}${b.note?' · '+b.note:''}</span></div></div>
           <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(155px,1fr));gap:8px">
             ${stat('Folgas no total',p.folgas)}
             ${stat('Horas compensadas',fmtH(p.horas))}
@@ -1048,7 +1057,7 @@ ROUTES.relatorios=async function(){
       }).join('')||'<p class="muted">Sem dados ainda.</p>';
     })()}
   </div>
-  ${box('info','<b>Como o balanço é calculado:</b> o sistema soma as folgas "boas" de cada uma (sextas, segundas, dia inteiro, véspera de feriado, total de folgas) e compara com a média da equipe. Quem está bem acima aparece como <b>favorecida</b> (perde prioridade nas próximas), quem está abaixo como <b>prejudicada</b> (ganha prioridade). Os números em <span style="color:var(--amber);font-weight:700">laranja</span> destacam as folgas mais disputadas. Tudo isso já é considerado automaticamente pelo motor de folgas.')}`;
+  ${box('info','<b>Como o balanço é calculado:</b> o sistema soma as folgas "boas" de cada uma (sextas, segundas, dia inteiro, véspera de feriado, total de folgas) e compara com a média da equipe — <b>mas só entre quem tem banco de horas para folgar</b>. <b>Favorecida</b>: recebeu mais folgas boas que a média (perde prioridade). <b>Prejudicada</b>: tem banco para compensar mas recebeu poucas folgas boas (ganha prioridade). <b>Em dia (banco baixo)</b>: já compensou as horas e não tem saldo para mais folgas — não é prejuízo. Os números em <span style="color:var(--amber);font-weight:700">laranja</span> destacam as folgas mais disputadas. Tudo já entra automaticamente no motor.')}`;
 };
 
 // ---------- SIMULAÇÃO ----------
