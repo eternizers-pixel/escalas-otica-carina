@@ -913,18 +913,24 @@ ROUTES.sabados=async function(){
       <button class="btn sec" id="saveSat" ${isGestor()?'':'disabled'}>💾 Salvar rodízio</button>
       <div class="spacer"></div><span class="muted">${rules.saturday_start||'14:00'}–${rules.saturday_end||'17:00'}</span>
     </div>
-    <div class="toolbar"><span class="muted">Sábados que abrem neste mês:</span>
-      <select id="satMode" ${isGestor()?'':'disabled'}>
-        <option value="dois_primeiros" ${monthMode==='dois_primeiros'?'selected':''}>Os dois primeiros</option>
-        <option value="primeiro_ultimo" ${monthMode==='primeiro_ultimo'?'selected':''}>O primeiro e o último</option>
-        <option value="todos" ${monthMode==='todos'?'selected':''}>Todos</option></select>
-      <span class="muted">${sats.length} sábado(s): ${sats.map(d=>d.split('-').reverse().slice(0,2).join('/')).join(', ')||'—'}</span></div>
-    <div class="toolbar"><span class="muted">Reforço (mais gente em qual sábado):</span>
-      <select id="satReinf" ${isGestor()?'':'disabled'}>
-        <option value="auto" ${monthReinforce==='auto'?'selected':''}>Automático (mais no 1º, inverte em feriado)</option>
-        <option value="primeiro" ${monthReinforce==='primeiro'?'selected':''}>Mais no 1º sábado (${bigN} e ${smallN})</option>
-        <option value="segundo" ${monthReinforce==='segundo'?'selected':''}>Mais no 2º sábado (${smallN} e ${bigN})</option></select>
-      <span class="muted">1º: ${targets[0]??'—'} · 2º: ${targets[1]??'—'} pessoa(s)</span></div>
+    <div style="display:flex;gap:16px;flex-wrap:wrap;margin:6px 0 4px">
+      <div style="display:flex;flex-direction:column;gap:4px;flex:1;min-width:230px;max-width:360px">
+        <span class="muted">Sábados que abrem neste mês:</span>
+        <select id="satMode" ${isGestor()?'':'disabled'}>
+          <option value="dois_primeiros" ${monthMode==='dois_primeiros'?'selected':''}>Os dois primeiros</option>
+          <option value="primeiro_ultimo" ${monthMode==='primeiro_ultimo'?'selected':''}>O primeiro e o último</option>
+          <option value="todos" ${monthMode==='todos'?'selected':''}>Todos</option></select>
+        <span class="muted" style="font-size:12px">${sats.length} sábado(s): ${sats.map(d=>d.split('-').reverse().slice(0,2).join('/')).join(', ')||'—'}</span>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:4px;flex:1;min-width:230px;max-width:360px">
+        <span class="muted">Reforço (mais gente em qual sábado):</span>
+        <select id="satReinf" ${isGestor()?'':'disabled'}>
+          <option value="auto" ${monthReinforce==='auto'?'selected':''}>Automático (mais no 1º, inverte em feriado)</option>
+          <option value="primeiro" ${monthReinforce==='primeiro'?'selected':''}>Mais no 1º sábado (${bigN} e ${smallN})</option>
+          <option value="segundo" ${monthReinforce==='segundo'?'selected':''}>Mais no 2º sábado (${smallN} e ${bigN})</option></select>
+        <span class="muted" style="font-size:12px">1º: ${targets[0]??'—'} · 2º: ${targets[1]??'—'} pessoa(s)</span>
+      </div>
+    </div>
     ${passed?box('warn','Estes sábados <b>já passaram</b>. Você pode registrar quem trabalhou (alimenta o histórico) ou ir para um mês futuro no <b>→</b>.'):box('info','O sistema sugere e <b>equilibra pelo histórico</b>. Ajuste na mão: remova no × e adicione pela lista — útil quando alguém pede para trocar um sábado. Depois <b>Salvar rodízio</b>.')}
     <div id="satEditor"></div>
     <div class="section panel"><div class="ph"><h3>Histórico de sábados</h3><span class="muted">por mês</span></div>
