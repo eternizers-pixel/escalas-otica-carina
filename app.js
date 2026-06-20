@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v19 (balanço pelo saldo restante)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v20 (remover tudo + relatório na home 4+4)
 // ============================================================
 (function(){
 "use strict";
@@ -145,10 +145,10 @@ const NAV=[
   ['simulacao','🧪','r','Simulação','Teste cenários sem risco'],
   ['relsemana','📋','t','Relatório da semana','Texto pronto para o grupo'],
 ];
-const HOME_TOP=['dashboard','folgas','escala'];
+const HOME_TOP=['dashboard','folgas','escala','relatorios'];
 const HOME_BOTTOM=['sabados','calendario','pedidos','config'];
 const HOME_KEYS=[...HOME_TOP,...HOME_BOTTOM];
-const CONFIG_KEYS=['funcionarias','ferias','tiquetaque','regras','relatorios','simulacao'];
+const CONFIG_KEYS=['funcionarias','ferias','tiquetaque','regras','simulacao'];
 
 function updateSimBanner(){ $('#simBanner').innerHTML = S.sim ? `<div class="simbanner">🧪 MODO SIMULAÇÃO — dados fictícios. Nada aqui afeta os dados reais.</div>`:''; }
 
@@ -185,7 +185,7 @@ function renderHome(){
       <a href="#relsemana" style="color:var(--brand);font-weight:600;font-size:14px">📋 Relatório da semana (grupo)</a>
     </div>
   </div>
-  ${cardsFor(HOME_TOP,'cols3')}${cardsFor(HOME_BOTTOM,'cols4')}`;
+  ${cardsFor(HOME_TOP,'cols4')}${cardsFor(HOME_BOTTOM,'cols4')}`;
   $$('[data-go]').forEach(el=>el.onclick=()=>location.hash='#'+el.dataset.go);
 }
 ROUTES.config=function(){
@@ -626,6 +626,7 @@ ROUTES.escala=async function(){
   items.sort((a,b)=>(a.date||'').localeCompare(b.date||'')||timeKey(a)-timeKey(b));
   $('#view').innerHTML=`
   <div class="toolbar"><button class="btn" id="addFolga" ${isGestor()?'':'disabled'}>+ Lançar folga</button>
+    ${(isGestor()&&items.length)?`<button class="btn sec" id="delAllF" style="color:var(--red)">🗑️ Remover tudo</button>`:''}
     <div class="spacer"></div><span class="muted">${items.length} folga(s) a partir deste mês</span></div>
   ${box('info','Todas as folgas aprovadas. <b>Editar</b> troca o dia/horário, <b>Remover</b> apaga — útil quando a funcionária pede um dia diferente do que o sistema sugeriu. Você também pode <b>lançar</b> uma folga do zero.')}
   <div class="panel"><div class="pb">
@@ -646,6 +647,10 @@ ROUTES.escala=async function(){
     })()||'<p class="muted" style="margin:0">Nenhuma folga registrada. Aprove no Motor de folgas ou clique em “Lançar folga”.</p>'}
   </div></div>`;
   $('#addFolga')?.addEventListener('click',()=>folgaModal(null,emps,rules));
+  $('#delAllF')?.addEventListener('click',async()=>{ if(!gate())return;
+    if(!confirm(`Remover TODAS as ${items.length} folgas aprovadas a partir deste mês? Esta ação não pode ser desfeita.`))return;
+    const res=await T('schedule_items').delete().in('id',items.map(i=>i.id)); if(res.error){toast(res.error.message);return;}
+    toast('Todas as folgas foram removidas.'); route(); });
   $$('[data-edf]').forEach(b=>b.onclick=()=>folgaModal(items.find(x=>x.id===b.dataset.edf),emps,rules));
   $$('[data-delf]').forEach(b=>b.onclick=async()=>{ if(!gate())return; if(!confirm('Remover esta folga?'))return; await T('schedule_items').delete().eq('id',b.dataset.delf); toast('Folga removida.'); route(); });
 };
