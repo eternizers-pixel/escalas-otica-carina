@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v20 (remover tudo + relatório na home 4+4)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v21 (reconciliação automática do banco)
 // ============================================================
 (function(){
 "use strict";
@@ -87,6 +87,40 @@ async function buildHistory(refISO){
   }
   for(const s of rot){ if(s.employee_id && s.worked!==false) get(s.employee_id).saturdays++; }
   return h;
+}
+
+// Reconciliação automática do banco: compara as 2 últimas importações de planilha.
+// Se o banco de alguém caiu, ela usou horas → confere com a folga programada ou registra como saída avulsa.
+async function reconcileBank(){
+  const imps=await getAll('time_bank_imports',b=>b.eq('source','planilha').order('imported_at',{ascending:false}).limit(2));
+  if(imps.length<2) return [];
+  const cur=imps[0], prev=imps[1];
+  if(cur.reconciled) return []; // já processado
+  const [curBal,prevBal,scheds]=await Promise.all([
+    getAll('time_bank_balances',b=>b.eq('import_id',cur.id)),
+    getAll('time_bank_balances',b=>b.eq('import_id',prev.id)),
+    getAll('schedules',b=>b.eq('is_simulation',false))]);
+  const sIds=new Set(scheds.map(s=>s.id));
+  const keyOf=b=>b.employee_id||('n:'+(b.employee_name||'').toLowerCase());
+  const prevMap={}; prevBal.forEach(b=>{prevMap[keyOf(b)]=+b.balance_hours||0;});
+  const w0=(prev.imported_at||'').slice(0,10), w1=(cur.imported_at||todayStr()).slice(0,10);
+  const items=(await getAll('schedule_items',b=>b.eq('status','aprovado').gte('date',w0).lte('date',w1))).filter(it=>sIds.has(it.schedule_id));
+  const rows=[];
+  for(const cb of curBal){
+    const before=prevMap[keyOf(cb)]; if(before==null) continue;
+    const delta=Math.round((before-(+cb.balance_hours||0))*100)/100; // queda de banco
+    if(delta<0.25) continue; // sem queda relevante (ignora arredondamento)
+    const folgas=cb.employee_id?items.filter(it=>it.employee_id===cb.employee_id):[];
+    const folgaH=Math.round(folgas.reduce((s,it)=>s+(+it.hours||0),0)*100)/100;
+    let note, matched=false;
+    if(folgas.length && Math.abs(folgaH-delta)<=0.6){ matched=true; note=`Usou ${fmtH(delta)} — confere com folga programada (${folgas.map(f=>f.date.split('-').reverse().slice(0,2).join('/')).join(', ')}).`; }
+    else if(folgas.length){ matched=true; note=`Usou ${fmtH(delta)}; tinha folga programada de ${fmtH(folgaH)} — diferença de ${fmtH(Math.abs(delta-folgaH))} pode ser saída avulsa.`; }
+    else { note=`Usou ${fmtH(delta)} do banco SEM folga programada — provável saída avulsa/imprevisto.`; }
+    rows.push({usage_date:w1, employee_id:cb.employee_id||null, employee_name:cb.employee_name, hours:delta, matched, note});
+  }
+  if(rows.length) await T('bank_usage').insert(rows);
+  await T('time_bank_imports').update({reconciled:true}).eq('id',cur.id);
+  return rows;
 }
 
 // ---------- Auth ----------
@@ -220,6 +254,9 @@ ROUTES.dashboard=async function(){
   wkItems.forEach(it=>{ folgaH[it.employee_id]=(folgaH[it.employee_id]||0)+(+it.hours||0); (folgaDates[it.employee_id]=folgaDates[it.employee_id]||[]).push(it.date); });
   const totalFolga=Object.values(folgaH).reduce((s,h)=>s+h,0);
   const totalPrev=totalBank-totalFolga;
+  // reconciliação automática (também pega importações feitas pelo robô das 7h) + usos recentes
+  if(!S.sim){ try{ await reconcileBank(); }catch(_){} }
+  const usos = S.sim?[]:await getAll('bank_usage',b=>b.order('created_at',{ascending:false}).limit(8));
   const fresh=await bankFreshnessBanner();
   $('#view').innerHTML=`
   ${fresh}
@@ -234,6 +271,9 @@ ROUTES.dashboard=async function(){
     <div class="card"><h3>Banco previsto (após as folgas)</h3><div class="kpi" style="color:var(--green)">${fmtH(totalPrev)}</div></div>
   </div>
   <div class="section">${alerts}</div>
+  ${usos.length?`<div class="section panel"><div class="ph"><h3>🔎 Uso de banco detectado</h3><span class="muted">comparando importações</span></div><div class="pb">
+    ${usos.map(u=>`<div class="reason" style="border-left-color:${u.matched?'var(--green)':'var(--amber)'};font-size:13px"><b>${esc(u.employee_name||'')}</b> — ${esc(u.note||'')} <span class="muted">(${(u.usage_date||'').split('-').reverse().slice(0,2).join('/')})</span></div>`).join('')}
+  </div></div>`:''}
   <div class="toolbar">
     <button class="btn" onclick="location.hash='#folgas'">⚡ Gerar escala automática</button>
     <button class="btn sec" onclick="location.hash='#tiquetaque'">🔄 Sincronizar TiqueTaque</button>
@@ -489,7 +529,8 @@ ROUTES.tiquetaque=async function(){
         else await T('employees').update({time_bank_balance:p.balance,updated_at:new Date().toISOString()}).eq('id',e.id);
         await T('time_bank_balances').insert({import_id:imp.data.id,employee_id:e?e.id:null,employee_name:p.name,balance_hours:p.balance,positive_hours:p.positive,negative_hours:p.negative,absences:p.absences,lates:p.lates,early_leaves:p.early,missing_punches:p.missing});
       }
-      toast('Importação concluída.'); route();
+      const rec=await reconcileBank();
+      toast(rec.length?`Importação concluída. Detectado uso de banco de ${rec.length} funcionária(s) — veja no Dashboard.`:'Importação concluída.'); route();
     };
   });
 };
