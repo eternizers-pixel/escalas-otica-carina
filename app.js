@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v16 (folgas aprovadas por dia + relatório de justiça expandido)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v17 (relatório de justiça visual em cards)
 // ============================================================
 (function(){
 "use strict";
@@ -1022,16 +1022,33 @@ ROUTES.relatorios=async function(){
     <div class="card"><h3>Sábados trabalhados</h3><div class="kpi">${rot.filter(r=>r.worked!==false).length}</div></div>
     <div class="card"><h3>Em férias</h3><div class="kpi">${emps.filter(e=>e.status==='ferias').length}</div></div>
   </div>
-  <div class="section panel"><div class="ph"><h3>Justiça por funcionária</h3><span class="muted">todos os fatores</span></div><div class="pb">
-    <table><thead><tr><th>Funcionária</th><th>Banco</th><th>Folgas</th><th>Horas comp.</th><th>Sextas</th><th>Segundas</th><th>Integral</th><th>Meio turno</th><th>Vésp. feriado</th><th>Sábados</th><th>Recusas</th><th>Faltas</th><th>Pedidos</th><th>Sem folgar</th><th>Balanço</th></tr></thead>
-    <tbody>${per.sort((a,b)=>b.banco-a.banco).map(p=>{const b=balanco(p.vantagem);return `<tr>
-      <td><b>${esc(p.e.name)}</b></td><td>${fmtH(p.banco)}</td><td>${p.folgas}</td><td>${fmtH(p.horas)}</td>
-      <td>${p.sextas}</td><td>${p.segundas}</td><td>${p.integral}</td><td>${p.meio}</td><td>${p.vesp}</td>
-      <td>${p.sabados}</td><td>${p.recusas}</td><td>${p.faltas}</td><td>${p.pedidos}</td>
-      <td>${p.semFolgar==null?'—':p.semFolgar+'d'}</td>
-      <td><span class="pill" style="background:${b.c}22;color:${b.c}">${b.t}</span></td></tr>`;}).join('')||'<tr><td colspan=15 class="muted" style="padding:16px">Sem dados.</td></tr>'}
-    </tbody></table></div></div>
-  ${box('info','<b>Como o balanço é calculado:</b> o sistema soma as folgas "boas" de cada uma (sextas, segundas, dia inteiro, véspera de feriado, total de folgas) e compara com a média da equipe. Quem está bem acima aparece como <b>favorecida</b> (perde prioridade nas próximas), quem está abaixo como <b>prejudicada</b> (ganha prioridade). Tudo isso já é considerado automaticamente pelo motor de folgas.')}`;
+  <div class="section"><div class="ph" style="padding:0 4px 8px"><h3>Justiça por funcionária</h3><span class="muted">todos os fatores</span></div>
+    ${(()=>{ const stat=(label,val,hot)=>`<div style="background:#f4f6fb;border-radius:10px;padding:9px 11px"><div class="muted" style="font-size:11.5px;line-height:1.25">${label}</div><div style="font-weight:800;font-size:19px;margin-top:3px;color:${hot?'var(--amber)':'var(--ink)'}">${val}</div></div>`;
+      return per.sort((a,b)=>b.banco-a.banco).map(p=>{ const b=balanco(p.vantagem);
+        return `<div class="card" style="margin-bottom:12px">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px">
+            <div style="font-weight:800;font-size:16px">${esc(p.e.name)}</div>
+            <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+              <span class="muted" style="font-size:13px">Banco de horas: <b style="color:var(--ink)">${fmtH(p.banco)}</b></span>
+              <span class="pill" style="background:${b.c}22;color:${b.c};font-weight:700;text-transform:capitalize">${b.t}</span></div></div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(155px,1fr));gap:8px">
+            ${stat('Folgas no total',p.folgas)}
+            ${stat('Horas compensadas',fmtH(p.horas))}
+            ${stat('Sextas folgadas',p.sextas,p.sextas>0)}
+            ${stat('Segundas folgadas',p.segundas,p.segundas>0)}
+            ${stat('Folgas de dia inteiro',p.integral,p.integral>0)}
+            ${stat('Folgas de meio turno',p.meio)}
+            ${stat('Véspera de feriado',p.vesp,p.vesp>0)}
+            ${stat('Sábados trabalhados',p.sabados)}
+            ${stat('Recusas de folga',p.recusas)}
+            ${stat('Faltas',p.faltas)}
+            ${stat('Pedidos / trocas',p.pedidos)}
+            ${stat('Dias sem folgar',p.semFolgar==null?'—':p.semFolgar+' dias')}
+          </div></div>`;
+      }).join('')||'<p class="muted">Sem dados ainda.</p>';
+    })()}
+  </div>
+  ${box('info','<b>Como o balanço é calculado:</b> o sistema soma as folgas "boas" de cada uma (sextas, segundas, dia inteiro, véspera de feriado, total de folgas) e compara com a média da equipe. Quem está bem acima aparece como <b>favorecida</b> (perde prioridade nas próximas), quem está abaixo como <b>prejudicada</b> (ganha prioridade). Os números em <span style="color:var(--amber);font-weight:700">laranja</span> destacam as folgas mais disputadas. Tudo isso já é considerado automaticamente pelo motor de folgas.')}`;
 };
 
 // ---------- SIMULAÇÃO ----------
