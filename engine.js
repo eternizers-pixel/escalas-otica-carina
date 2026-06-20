@@ -254,7 +254,6 @@ window.Engine = (function () {
       if ((h.dayoffs||0)===0 && h.lastDayOffDays!=null) t.push('Poucas folgas no histórico');
       if (dow===5) t.push('Revezamento de sexta');
       if ((e.manual_priority||0)>0) t.push('Prioridade definida');
-      if (round>0) t.push('2ª da semana (todas já tiveram)');
       return t.slice(0,3);
     };
     const mode = rules.dayoff_mode || 'saida_antecipada';
@@ -378,6 +377,19 @@ window.Engine = (function () {
           break; // só 1 por dia por rodada → espalha pela semana
         }
       }
+    }
+
+    // tag "2ª folga da semana" em ordem CRONOLÓGICA real (conta folgas já aprovadas antes na semana)
+    const porFunc={};
+    suggestions.forEach(s=>{ (porFunc[s.employee_id]=porFunc[s.employee_id]||[]).push(s); });
+    for(const id in porFunc){
+      const exDatas=existing.filter(it=>it.employee_id===id && it.date>=startStr && it.date<=horizonEndStr).map(it=>it.date);
+      const lista=porFunc[id].sort((a,b)=> a.date<b.date?-1:1);
+      lista.forEach(s=>{
+        s.tags=(s.tags||[]).filter(t=>!/da semana/i.test(t)); // limpa qualquer marca antiga
+        const antes=exDatas.filter(d=>d<s.date).length + lista.filter(x=>x.date<s.date).length;
+        if(antes>0){ s.tags.push('2ª folga da semana'); s.tags=s.tags.slice(0,3); }
+      });
     }
 
     requests.filter(r=>r.status==='pendente' && r.request_type==='pedido_folga').forEach(r=>{
