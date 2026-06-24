@@ -207,7 +207,9 @@ window.Engine = (function () {
   // tempo sem folgar, cobertura mínima, férias, pedidos e recusas.
   function suggestDayOffs(opts) {
     const { employees, rules, vacations, requests=[], refusals=[], history={},
-            blockedDates=[], horizonDays=14, startDate, existing=[] } = opts;
+            blockedDates=[], horizonDays=14, startDate, existing=[], weekdays } = opts;
+    // dias da semana onde o motor PODE distribuir folga (1=seg … 5=sex). Padrão: seg a sex.
+    const allowDow = (Array.isArray(weekdays) && weekdays.length) ? weekdays.map(Number) : [1,2,3,4,5];
     const cap = operationalCapacity(employees, rules);
     const logs=[]; const suggestions=[];
     const minBank = rules.min_time_bank_for_dayoff ?? 6;
@@ -308,7 +310,7 @@ window.Engine = (function () {
     for (let i=0;i<=horizonDays;i++){
       const d=new Date(start); d.setDate(d.getDate()+i);
       const dStr=fmt(d); const dow=d.getDay();
-      if (dStr<todayISO || dow===0 || dow===6 || blocked(dStr)) continue;
+      if (dStr<todayISO || !allowDow.includes(dow) || blocked(dStr)) continue;
       const comm = (rules.block_commemorative!==false) ? commemorativeBlock(dStr, leadDays) : null;
       if (comm){ logs.push({type:'bloqueio', message:`${DIAS[dow]} (${dStr}): sem folga — semana de ${comm} (alto movimento). As folgas ficam para depois da data.`}); continue; }
       const existToday = existing.filter(it=>it.date===dStr);

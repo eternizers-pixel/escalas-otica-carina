@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v24 (trocar folga entre funcionárias)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v25 (selecionar dias da semana p/ distribuir folgas)
 // ============================================================
 (function(){
 "use strict";
@@ -584,6 +584,9 @@ ROUTES.folgas=async function(){
   const existing=(await getAll('schedule_items',b=>b.eq('status','aprovado').gte('date',todayStr()))).filter(it=>schedIds.has(it.schedule_id));
   const fresh=await bankFreshnessBanner();
   let weekOffset=0; // 0 = semana de planejamento atual; ← / → mudam a semana (para simular as próximas)
+  // dias da semana onde o motor pode distribuir folgas (1=seg … 5=sex). Padrão: todos.
+  let selDays=String(rules.dayoff_weekdays||'1,2,3,4,5').split(',').map(s=>+s.trim()).filter(n=>n>=1&&n<=5);
+  if(!selDays.length) selDays=[1,2,3,4,5];
   $('#view').innerHTML=`
   ${fresh}
   <div class="toolbar">
@@ -592,6 +595,9 @@ ROUTES.folgas=async function(){
     <button class="btn sec sm" id="wkNext">→</button>
     <button class="btn sec" id="regen">↻ Recalcular</button>
     <div class="spacer"></div><span class="muted" id="capInfo"></span></div>
+  <div class="toolbar" style="flex-wrap:wrap"><span class="muted">Distribuir folgas em:</span>
+    ${[[1,'Seg'],[2,'Ter'],[3,'Qua'],[4,'Qui'],[5,'Sex']].map(([n,lb])=>`<label style="display:inline-flex;align-items:center;gap:5px;font-weight:600;font-size:13px;cursor:pointer"><input type="checkbox" class="wkday" value="${n}" ${selDays.includes(n)?'checked':''} ${isGestor()?'':'disabled'}/> ${lb}</label>`).join('')}
+    <span class="muted" style="font-size:12px">desmarque um dia para o motor não dar folga nele</span></div>
   <div id="folgaOut"><p class="muted">Carregando sugestões da semana…</p></div>`;
   async function run(){
     // semana completa (segunda a sexta), a partir de 22/06/2026 ou da semana atual, mais o deslocamento escolhido
@@ -600,7 +606,7 @@ ROUTES.folgas=async function(){
     const bd=Engine.parse(base); const wd=bd.getDay(); bd.setDate(bd.getDate()+(wd===0?1:1-wd)+weekOffset*7); // segunda-feira da semana escolhida
     const weekStart=Engine.fmt(bd);
     const history=await buildHistory(weekStart); // recência/justiça relativas à semana planejada (conta folgas anteriores a ela)
-    const out=Engine.suggestDayOffs({employees:emps,rules,vacations:vacs,requests:reqs,refusals,blockedDates:blk,year,month,horizonDays:4,startDate:weekStart,history,existing});
+    const out=Engine.suggestDayOffs({employees:emps,rules,vacations:vacs,requests:reqs,refusals,blockedDates:blk,year,month,horizonDays:4,startDate:weekStart,history,existing,weekdays:selDays});
     const wEnd=Engine.parse(weekStart); wEnd.setDate(wEnd.getDate()+4);
     const wlabel=`${weekStart.split('-').reverse().slice(0,2).join('/')} a ${Engine.fmt(wEnd).split('-').reverse().slice(0,2).join('/')}`;
     $('#wkLabel').textContent = weekOffset===0?`Semana ${wlabel}`:`Semana ${wlabel} ${weekOffset>0?'(+'+weekOffset+')':'('+weekOffset+')'}`;
@@ -663,6 +669,13 @@ ROUTES.folgas=async function(){
   $('#regen').onclick=run;
   $('#wkPrev').onclick=()=>{ weekOffset--; run(); };
   $('#wkNext').onclick=()=>{ weekOffset++; run(); };
+  $$('.wkday').forEach(c=>c.addEventListener('change',async()=>{
+    const sel=$$('.wkday').filter(x=>x.checked).map(x=>+x.value);
+    if(!sel.length){ toast('Selecione pelo menos um dia.'); c.checked=true; return; }
+    selDays=sel;
+    if(isGestor()) await T('store_rules').update({dayoff_weekdays:selDays.join(',')}).eq('id',1);
+    run();
+  }));
   run();
 };
 
