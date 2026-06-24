@@ -466,7 +466,41 @@ window.Engine = (function () {
     {key:'recusa',     name:'10. Recusa de folga', apply:(emps)=>emps},
   ];
 
+  // FILA DE JUSTIÇA: ordena quem está na frente para folgar e explica o porquê.
+  // Critérios (na ordem): elegível (banco ≥ mínimo) → maior banco → mais tempo sem folgar → menos folgas "boas".
+  function dayoffQueue(employees, rules, history={}){
+    const fH = v=>{ v=+v||0; const neg=v<0; let m=Math.round(Math.abs(v)*60); const h=Math.floor(m/60); m=m%60; return (neg?'-':'')+h+'h'+(m?String(m).padStart(2,'0'):''); };
+    const minBank = rules.min_time_bank_for_dayoff ?? 6;
+    const active = employees.filter(e=>e.status==='ativa');
+    const maxBank = Math.max(0, ...active.map(e=>+e.time_bank_balance||0));
+    const good = x => x.fri*2 + x.mon + x.integral*2;   // folgas "boas" no histórico
+    const rows = active.map(e=>{ const h=history[e.id]||{}; const bank=+e.time_bank_balance||0;
+      return { id:e.id, name:e.name, bank, elig:bank>=minBank,
+        last:(h.lastDayOffDays==null?null:h.lastDayOffDays), fri:h.fridaysOff||0, mon:h.mondaysOff||0,
+        integral:h.integral||0, dayoffs:h.dayoffs||0 }; });
+    rows.sort((a,b)=>{
+      if(a.elig!==b.elig) return a.elig?-1:1;
+      if(b.bank!==a.bank) return b.bank-a.bank;
+      const la=a.last==null?99999:a.last, lb=b.last==null?99999:b.last;
+      if(lb!==la) return lb-la;
+      if(good(a)!==good(b)) return good(a)-good(b);
+      return (a.name||'').localeCompare(b.name||'');
+    });
+    rows.forEach((x,i)=>{ x.position=i+1; const w=[];
+      if(!x.elig){ w.push(`sem saldo p/ folga (banco ${fH(x.bank)} abaixo do mínimo ${fH(minBank)})`); }
+      else {
+        w.push(x.bank>0&&x.bank>=maxBank ? `maior banco de horas (${fH(x.bank)})` : `banco de ${fH(x.bank)}`);
+        if(x.last==null) w.push('ainda não folgou no período');
+        else if(x.last>=14) w.push(`há ${x.last} dias sem folgar`);
+        else w.push(`última folga há ${x.last} dia(s)`);
+        if(good(x)===0 && x.dayoffs>0) w.push('poucas folgas boas (sexta/segunda)');
+      }
+      x.why = w.join(' · ');
+    });
+    return rows;
+  }
+
   return { saturdaysOfMonth, openSaturdays, daysInMonth, operationalCapacity, fairnessIndex,
-           saturdayRotation, suggestDayOffs, simEmployees, SCENARIOS, DOW, fmt, parse,
+           saturdayRotation, suggestDayOffs, dayoffQueue, simEmployees, SCENARIOS, DOW, fmt, parse,
            commemorativeDates };
 })();
