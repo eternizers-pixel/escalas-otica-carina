@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v33 (última folga: cards seg/sex na mesma altura)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v34 (não folga sexta + segunda seguinte — fim de semana prolongado)
 // ============================================================
 (function(){
 "use strict";

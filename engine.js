@@ -333,6 +333,14 @@ window.Engine = (function () {
       if(!iso) return false;
       return Math.round((parse(day.dStr)-parse(iso))/86400000) <= 10;
     };
+    // "ponte de fim de semana": mesma pessoa não folga sexta + a segunda seguinte (vira fim de semana prolongado)
+    const weekendBridge = (e, day)=>{
+      const arr = assignedDates[e.id]; if(!arr||!arr.length) return false;
+      const t = parse(day.dStr).getTime();
+      if(day.dow===1) return arr.some(d=>{ const x=parse(d); return x.getDay()===5 && Math.round((t-x.getTime())/86400000)===3; }); // segunda: bloqueia quem folga na sexta anterior
+      if(day.dow===5) return arr.some(d=>{ const x=parse(d); return x.getDay()===1 && Math.round((x.getTime()-t)/86400000)===3; }); // sexta: bloqueia quem folga na segunda seguinte
+      return false;
+    };
 
     // FILA, DIA A DIA: preenche cada dia com as de MAIOR prioridade até o teto do dia, antes de passar ao próximo.
     // Sexta vem primeiro (rodízio). Mantém banco, cobertura mínima, especialista, sem dias seguidos e rodízio entrar/sair.
@@ -348,6 +356,7 @@ window.Engine = (function () {
             !onVac(e,day.dStr) &&
             !refusals.some(r=>r.employee_id===e.id && r.date===day.dStr) &&
             !recentSameDow(e,day) &&   // não repete a mesma pessoa na segunda/sexta em semanas seguidas
+            !weekendBridge(e,day) &&   // não folga sexta + segunda seguinte (fim de semana prolongado)
             !existing.some(it=>it.employee_id===e.id && it.date===day.dStr))
           .sort((a,b)=>{
             const ga=genCount[a.id]||0, gb=genCount[b.id]||0; if(ga!==gb) return ga-gb;       // 1) menos folgas na semana primeiro
