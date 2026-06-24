@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v34 (não folga sexta + segunda seguinte — fim de semana prolongado)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v35 (folgas aprovadas em blocos por dia, 2 por linha)
 // ============================================================
 (function(){
 "use strict";
@@ -719,11 +719,11 @@ ROUTES.escala=async function(){
     ${(isGestor()&&items.length)?`<button class="btn sec" id="delAllF" style="color:var(--red)">🗑️ Remover tudo</button>`:''}
     <div class="spacer"></div><span class="muted">${items.length} folga(s) a partir deste mês</span></div>
   ${box('info','Todas as folgas aprovadas. <b>Editar</b> troca o dia/horário, <b>Remover</b> apaga — útil quando a funcionária pede um dia diferente do que o sistema sugeriu. Você também pode <b>lançar</b> uma folga do zero.')}
-  <div class="panel"><div class="pb">
+  <div style="display:flex;flex-wrap:wrap;gap:14px;align-items:flex-start">
     ${(()=>{ const byDay={}; items.forEach(it=>{(byDay[it.date]=byDay[it.date]||[]).push(it);});
       return Object.keys(byDay).sort().map(date=>{
         const dia=Engine.DOW[Engine.parse(date).getDay()]; const dataBR=date.split('-').reverse().join('/');
-        const cards=byDay[date].map(it=>`<div class="card" style="margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+        const cards=byDay[date].map(it=>`<div class="card" style="margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
           <div style="min-width:0">
             <div style="font-weight:700">${esc(it.employee_name||map[it.employee_id]||'')}</div>
             <div class="muted" style="font-size:13px;margin-top:2px"><b style="color:var(--ink)">${folgaTimeLabel(it,rules)}</b> · ${TYPE_LABEL[it.type]||it.type}${it.hours?' '+it.hours+'h':''}</div>
@@ -732,10 +732,10 @@ ROUTES.escala=async function(){
             <span class="pill ${it.status==='aprovado'?'ativa':it.status==='recusado'?'afastada':'ferias'}">${it.status==='aprovado'?'Aprovado':it.status}</span>
             ${isGestor()?`<button class="btn ghost sm" data-swapf="${it.id}">🔁 Trocar</button><button class="btn ghost sm" data-edf="${it.id}">Editar</button><button class="btn ghost sm" style="color:var(--red)" data-delf="${it.id}">Remover</button>`:''}
           </div></div>`).join('');
-        return `<div style="margin-bottom:16px"><div style="font-weight:800;font-size:17px;padding:8px 14px;background:var(--brand-soft);color:var(--brand-d);border-radius:10px;margin-bottom:10px;text-transform:capitalize">${dia} · ${dataBR}</div>${cards}</div>`;
+        return `<div class="panel" style="flex:1 1 calc(50% - 7px);min-width:300px;margin:0"><div class="ph" style="background:var(--brand-soft)"><h3 style="color:var(--brand-d);text-transform:capitalize;margin:0">${dia} · ${dataBR}</h3></div><div class="pb">${cards}</div></div>`;
       }).join('');
     })()||'<p class="muted" style="margin:0">Nenhuma folga registrada. Aprove no Motor de folgas ou clique em “Lançar folga”.</p>'}
-  </div></div>`;
+  </div>`;
   $('#addFolga')?.addEventListener('click',()=>folgaModal(null,emps,rules));
   $('#delAllF')?.addEventListener('click',async()=>{ if(!gate())return;
     if(!confirm(`Remover TODAS as ${items.length} folgas aprovadas a partir deste mês? Esta ação não pode ser desfeita.`))return;
