@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v30 (folga: opções em chips visíveis + botão Ajustar com fundo)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v31 (motor reorganizado: última folga em faixa + fila/sugestões lado a lado)
 // ============================================================
 (function(){
 "use strict";
@@ -645,23 +645,26 @@ ROUTES.folgas=async function(){
         <div style="min-width:30px;height:30px;border-radius:50%;display:grid;place-items:center;font-weight:800;font-size:13px;flex:none;background:${(q.elig&&q.position<=3)?'var(--brand)':'#eef1f8'};color:${(q.elig&&q.position<=3)?'#fff':'var(--muted)'}">${q.position}º</div>
         <div style="flex:1;min-width:0"><div style="font-weight:700">${esc(q.name)}</div><div class="muted" style="font-size:12.5px;margin-top:1px">${esc(q.why)}</div></div></div>`).join('');
     const lf=it=> it?`<b>${esc(it.employee_name||'')}</b> <span class="muted">· ${it.date.split('-').reverse().join('/')}</span>`:'<span class="muted">ninguém ainda</span>';
-    const monFri=`<div style="display:flex;flex-direction:column;gap:8px">
-      <div style="border:1px solid var(--line);border-radius:10px;padding:10px 12px"><div class="muted" style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em">Segunda</div><div style="margin-top:3px">${lf(lastMon)}</div></div>
-      <div style="border:1px solid var(--line);border-radius:10px;padding:10px 12px"><div class="muted" style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em">Sexta</div><div style="margin-top:3px">${lf(lastFri)}</div></div></div>`;
+    // faixa fina full-width: última folga seg/sex
+    const monFri=`<div class="panel" style="margin-bottom:12px"><div class="pb" style="padding:11px 14px">
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+        <span class="muted" style="font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.03em;display:flex;align-items:center;gap:6px">🗓️ Última folga</span>
+        <div style="flex:1;min-width:190px;border:1px solid var(--line);border-radius:10px;padding:7px 12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span class="muted" style="font-size:11px;font-weight:700;text-transform:uppercase">Segunda</span> <span>${lf(lastMon)}</span></div>
+        <div style="flex:1;min-width:190px;border:1px solid var(--line);border-radius:10px;padding:7px 12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span class="muted" style="font-size:11px;font-weight:700;text-transform:uppercase">Sexta</span> <span>${lf(lastFri)}</span></div>
+        <span class="muted" style="font-size:11.5px;flex-basis:100%">Evita repetir a mesma pessoa na segunda/sexta em semanas seguidas.</span>
+      </div></div></div>`;
     $('#folgaOut').innerHTML=`
-      <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start;margin-bottom:12px">
-        <details class="panel" open style="flex:1.5 1 340px;min-width:300px;margin:0"><summary style="cursor:pointer;padding:13px 16px;font-weight:700">📋 Fila de justiça — quem está na frente p/ folgar <span class="muted" style="font-weight:500">(${queue.filter(q=>q.elig).length} com saldo)</span></summary>
+      ${monFri}
+      <div style="display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap">
+        <details class="panel" open style="flex:1 1 300px;min-width:270px;max-width:400px;margin:0"><summary style="cursor:pointer;padding:13px 16px;font-weight:700">📋 Fila de justiça <span class="muted" style="font-weight:500">(${queue.filter(q=>q.elig).length} com saldo)</span></summary>
           <div class="pb" style="padding-top:4px">${queueHtml||'<span class="muted">Sem funcionárias ativas.</span>'}
-          <div class="reason">Ordem por <b>banco de horas</b>, depois <b>tempo sem folgar</b> e justiça do histórico. Quem está sem saldo aparece no fim (em dia, sem horas a compensar).</div></div></details>
-        <div class="panel" style="flex:1 1 240px;min-width:230px;margin:0"><div class="ph"><h3>🗓️ Última folga · seg / sex</h3></div><div class="pb">${monFri}
-          <div class="reason">Evita repetir a mesma pessoa na segunda/sexta em semanas seguidas.</div></div></div>
+          <div class="reason">Ordem por <b>banco de horas</b>, depois <b>tempo sem folgar</b> e justiça do histórico. Quem está sem saldo aparece no fim (em dia).</div></div></details>
+        <div class="panel" style="flex:2 1 440px;min-width:300px;margin:0"><div class="ph"><h3>Sugestões da semana</h3>
+          <div style="display:flex;align-items:center;gap:10px"><span class="muted">${out.suggestions.length} folga(s)</span>
+          ${(isGestor()&&out.suggestions.length)?`<button class="btn sm" id="apAll">✓ Aprovar todos</button>`:''}</div></div>
+          <div class="pb">${out.suggestions.length?'':box('warn','Nenhuma folga sugerida nesta semana — veja o porquê no log abaixo.')}${dayBlocks||'<span class="muted">Sem sugestões nesta semana.</span>'}</div></div>
       </div>
-      ${out.suggestions.length?'':box('warn','Nenhuma folga sugerida nesta semana — veja o porquê no log de decisão abaixo.')}
-      <div class="panel"><div class="ph"><h3>Sugestões da semana</h3>
-        <div style="display:flex;align-items:center;gap:10px"><span class="muted">${out.suggestions.length} folga(s)</span>
-        ${(isGestor()&&out.suggestions.length)?`<button class="btn sm" id="apAll">✓ Aprovar todos</button>`:''}</div></div>
-        <div class="pb">${dayBlocks||'<span class="muted">Sem sugestões nesta semana.</span>'}</div></div>
-      <details class="panel section" style="margin-top:10px"><summary style="cursor:pointer;padding:13px 16px;font-weight:700">🧠 Log de decisão <span class="muted" style="font-weight:500">— toque para ver o porquê</span></summary>
+      <details class="panel section" style="margin-top:12px"><summary style="cursor:pointer;padding:13px 16px;font-weight:700">🧠 Log de decisão <span class="muted" style="font-weight:500">— toque para ver o porquê</span></summary>
         <div class="pb" style="padding-top:4px">${logRows||'<span class="muted">Sem registros.</span>'}</div></details>`;
     $$('[data-ap]').forEach(b=>b.onclick=async()=>{ if(!gate())return; const i=+b.dataset.ap; b.disabled=true;
       await saveApproval(out.suggestions[i]);
