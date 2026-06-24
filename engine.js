@@ -324,10 +324,18 @@ window.Engine = (function () {
       // o teto de folgas por dia JÁ CONTA as folgas aprovadas neste dia (não oferece mais que o limite)
       openDays.push({dStr,dow,availDay,absent,doneToday:new Set(existToday.map(it=>it.employee_id)),count:existToday.length,expertsAvail,expertOff});
     }
+    // SEXTA primeiro: garante o rodízio justo de sexta (reserva quem não pegou sexta recentemente);
+    // os demais dias seguem em ordem de data.
+    openDays.sort((a,b)=> (b.dow===5?1:0)-(a.dow===5?1:0) || (a.dStr<b.dStr?-1:1));
+    // bloqueia repetir a MESMA pessoa na segunda/sexta em semanas seguidas (pegou esse dia na ~última semana)
+    const recentSameDow = (e, day)=>{
+      const iso = day.dow===5 ? (history[e.id]&&history[e.id].lastFridayISO) : day.dow===1 ? (history[e.id]&&history[e.id].lastMondayISO) : null;
+      if(!iso) return false;
+      return Math.round((parse(day.dStr)-parse(iso))/86400000) <= 10;
+    };
 
-    // FILA, DIA A DIA: preenche cada dia (na ordem das datas) com as de MAIOR prioridade
-    // até o teto do dia, antes de passar ao próximo — segue a ordem da fila de justiça.
-    // Mantém banco de horas, cobertura mínima, especialista, sem dias seguidos e rodízio entrar/sair.
+    // FILA, DIA A DIA: preenche cada dia com as de MAIOR prioridade até o teto do dia, antes de passar ao próximo.
+    // Sexta vem primeiro (rodízio). Mantém banco, cobertura mínima, especialista, sem dias seguidos e rodízio entrar/sair.
     const costFull = cap.maxHours>=7?Math.min(8,cap.maxHours): cap.maxHours>=4?4:cap.maxHours;
     for (const day of openDays){
       const isFri = day.dow===5;
@@ -339,6 +347,7 @@ window.Engine = (function () {
             !day.doneToday.has(e.id) &&
             !onVac(e,day.dStr) &&
             !refusals.some(r=>r.employee_id===e.id && r.date===day.dStr) &&
+            !recentSameDow(e,day) &&   // não repete a mesma pessoa na segunda/sexta em semanas seguidas
             !existing.some(it=>it.employee_id===e.id && it.date===day.dStr))
           .sort((a,b)=>{
             const ga=genCount[a.id]||0, gb=genCount[b.id]||0; if(ga!==gb) return ga-gb;       // 1) menos folgas na semana primeiro

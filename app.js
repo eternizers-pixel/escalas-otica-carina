@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v31 (motor reorganizado: última folga em faixa + fila/sugestões lado a lado)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v32 (rodízio de segunda/sexta sem repetir + última folga mostra a agendada)
 // ============================================================
 (function(){
 "use strict";
@@ -75,13 +75,14 @@ async function buildHistory(refISO){
   const rot=await getAll('saturday_rotation');
   const ref=refISO ? new Date(refISO+'T00:00:00') : new Date();
   const h={};
-  const get=(id)=> h[id]||(h[id]={dayoffs:0,fridaysOff:0,mondaysOff:0,saturdays:0,integral:0,meioTurno:0,lastDayOffDays:null});
+  const get=(id)=> h[id]||(h[id]={dayoffs:0,fridaysOff:0,mondaysOff:0,saturdays:0,integral:0,meioTurno:0,lastDayOffDays:null,lastFridayISO:null,lastMondayISO:null});
   for(const it of items){ if(!it.employee_id||!it.date) continue;
     const d=new Date(it.date+'T00:00:00'); const dow=d.getDay();
     const days=Math.floor((ref-d)/86400000);
     if(days<=0) continue; // só folgas ANTES da semana de referência contam para a justiça/recência
     const r=get(it.employee_id); r.dayoffs++;
-    if(dow===5) r.fridaysOff++; if(dow===1) r.mondaysOff++;
+    if(dow===5){ r.fridaysOff++; if(!r.lastFridayISO||it.date>r.lastFridayISO) r.lastFridayISO=it.date; }
+    if(dow===1){ r.mondaysOff++; if(!r.lastMondayISO||it.date>r.lastMondayISO) r.lastMondayISO=it.date; }
     if(it.type==='integral') r.integral++; if(it.type==='meio_turno') r.meioTurno++; // folgas "boas" para a justiça histórica
     if(r.lastDayOffDays==null||days<r.lastDayOffDays) r.lastDayOffDays=days;
   }
@@ -573,9 +574,11 @@ ROUTES.folgas=async function(){
   // folgas já aprovadas (a partir de hoje) para a engine não sugerir quem já tem folga programada
   const scheds=await getAll('schedules',b=>b.eq('is_simulation',S.sim));
   const schedIds=new Set(scheds.map(s=>s.id));
-  // última folga que já aconteceu numa segunda e numa sexta (para o rodízio)
-  const pastF=(await getAll('schedule_items',b=>b.eq('status','aprovado').lte('date',todayStr()).order('date',{ascending:false}))).filter(it=>schedIds.has(it.schedule_id));
-  const lastDow=dw=>pastF.find(it=>Engine.parse(it.date).getDay()===dw);
+  // folga de segunda/sexta MAIS RECENTE já agendada (passada ou futura) — base do rodízio
+  const nmMap=Object.fromEntries(emps.map(e=>[e.id,e.name]));
+  const allAp=(await getAll('schedule_items',b=>b.eq('status','aprovado').order('date',{ascending:false}))).filter(it=>schedIds.has(it.schedule_id));
+  const lastDow=dw=>{ const arr=allAp.filter(it=>Engine.parse(it.date).getDay()===dw); if(!arr.length) return null;
+    const d=arr[0].date; return {date:d, names:[...new Set(arr.filter(x=>x.date===d).map(x=>x.employee_name||nmMap[x.employee_id]||''))].filter(Boolean)}; };
   const lastMon=lastDow(1), lastFri=lastDow(5);
   const fresh=await bankFreshnessBanner();
   let weekOffset=0; // 0 = semana de planejamento atual; ← / → mudam a semana (para simular as próximas)
@@ -644,7 +647,7 @@ ROUTES.folgas=async function(){
     const queueHtml=queue.map(q=>`<div style="display:flex;align-items:center;gap:11px;padding:8px 10px;border:1px solid var(--line);border-radius:10px;margin-bottom:6px;background:${q.elig?'#fff':'#f6f8fb'}">
         <div style="min-width:30px;height:30px;border-radius:50%;display:grid;place-items:center;font-weight:800;font-size:13px;flex:none;background:${(q.elig&&q.position<=3)?'var(--brand)':'#eef1f8'};color:${(q.elig&&q.position<=3)?'#fff':'var(--muted)'}">${q.position}º</div>
         <div style="flex:1;min-width:0"><div style="font-weight:700">${esc(q.name)}</div><div class="muted" style="font-size:12.5px;margin-top:1px">${esc(q.why)}</div></div></div>`).join('');
-    const lf=it=> it?`<b>${esc(it.employee_name||'')}</b> <span class="muted">· ${it.date.split('-').reverse().join('/')}</span>`:'<span class="muted">ninguém ainda</span>';
+    const lf=info=> (info&&info.names&&info.names.length)?`<b>${info.names.map(esc).join(', ')}</b> <span class="muted">· ${info.date.split('-').reverse().join('/')}</span>`:'<span class="muted">ninguém ainda</span>';
     // faixa fina full-width: última folga seg/sex
     const monFri=`<div class="panel" style="margin-bottom:12px"><div class="pb" style="padding:11px 14px">
       <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
