@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v32 (rodízio de segunda/sexta sem repetir + última folga mostra a agendada)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v33 (última folga: cards seg/sex na mesma altura)
 // ============================================================
 (function(){
 "use strict";
@@ -650,10 +650,10 @@ ROUTES.folgas=async function(){
     const lf=info=> (info&&info.names&&info.names.length)?`<b>${info.names.map(esc).join(', ')}</b> <span class="muted">· ${info.date.split('-').reverse().join('/')}</span>`:'<span class="muted">ninguém ainda</span>';
     // faixa fina full-width: última folga seg/sex
     const monFri=`<div class="panel" style="margin-bottom:12px"><div class="pb" style="padding:11px 14px">
-      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
-        <span class="muted" style="font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.03em;display:flex;align-items:center;gap:6px">🗓️ Última folga</span>
-        <div style="flex:1;min-width:190px;border:1px solid var(--line);border-radius:10px;padding:7px 12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span class="muted" style="font-size:11px;font-weight:700;text-transform:uppercase">Segunda</span> <span>${lf(lastMon)}</span></div>
-        <div style="flex:1;min-width:190px;border:1px solid var(--line);border-radius:10px;padding:7px 12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span class="muted" style="font-size:11px;font-weight:700;text-transform:uppercase">Sexta</span> <span>${lf(lastFri)}</span></div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:stretch">
+        <span class="muted" style="font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.03em;display:flex;align-items:center;gap:6px;align-self:center">🗓️ Última folga</span>
+        <div style="flex:1;min-width:190px;border:1px solid var(--line);border-radius:10px;padding:8px 12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span class="muted" style="font-size:11px;font-weight:700;text-transform:uppercase">Segunda</span> <span>${lf(lastMon)}</span></div>
+        <div style="flex:1;min-width:190px;border:1px solid var(--line);border-radius:10px;padding:8px 12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span class="muted" style="font-size:11px;font-weight:700;text-transform:uppercase">Sexta</span> <span>${lf(lastFri)}</span></div>
         <span class="muted" style="font-size:11.5px;flex-basis:100%">Evita repetir a mesma pessoa na segunda/sexta em semanas seguidas.</span>
       </div></div></div>`;
     $('#folgaOut').innerHTML=`
