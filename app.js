@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v29 (botão Ajustar na sugestão: muda dia/horário antes de aprovar)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v30 (folga: opções em chips visíveis + botão Ajustar com fundo)
 // ============================================================
 (function(){
 "use strict";
@@ -631,7 +631,7 @@ ROUTES.folgas=async function(){
             <div style="font-size:14px;font-weight:600;margin-top:3px">${TYPE_LABEL[s.type]||s.type} <span class="muted" style="font-weight:500">(${SHIFT_LABEL[s.shift]||s.shift}) · ${s.hours}h${hora}</span></div>
           </div>
           ${(s.tags&&s.tags.length)?`<div style="display:flex;gap:5px;flex-wrap:wrap">${s.tags.map(t=>`<span style="font-size:11px;font-weight:600;${tagColor(t)};padding:2px 9px;border-radius:20px">${esc(t)}</span>`).join('')}</div>`:''}
-          <div class="row-actions" id="act${i}" style="margin-top:auto;padding-top:2px">${isGestor()?`<button class="btn sm" data-ap="${i}">Aprovar</button><button class="btn ghost sm" data-aj="${i}">✏️ Ajustar</button><button class="btn sec sm" data-rf="${i}">Recusar</button>`:'<span class="muted">—</span>'}</div>
+          <div class="row-actions" id="act${i}" style="margin-top:auto;padding-top:2px">${isGestor()?`<button class="btn sm" data-ap="${i}">Aprovar</button><button class="btn sm" data-aj="${i}" style="background:var(--amber-soft);color:var(--amber)">✏️ Ajustar</button><button class="btn sec sm" data-rf="${i}">Recusar</button>`:'<span class="muted">—</span>'}</div>
         </div>`;
       }).join('');
       return `<div style="margin-bottom:16px">
@@ -780,52 +780,61 @@ function folgaModal(it,emps,rules){
   const fmtHrs=h=>{const m=Math.round(h*60);const H=Math.floor(m/60),M=m%60;return H+'h'+(M?String(M).padStart(2,'0'):'');};
   const oM=(rules.open_morning||'09:00').slice(0,5), cM=(rules.close_morning||'12:00').slice(0,5);
   const oA=(rules.open_afternoon||'14:00').slice(0,5), cA=(rules.close_afternoon||'18:00').slice(0,5);
-  // ação inicial a partir do registro existente
-  let act0='saida_antecipada';
-  if(it.type==='entrada_tarde') act0='entrada_tarde';
-  else if(it.type==='meio_turno') act0 = it.shift==='manha'?'meio_turno_manha':'meio_turno_tarde';
-  else if(it.type==='integral') act0='integral';
+  // combo inicial (tipo|período) a partir do registro existente
+  let sel0='saida_antecipada|tarde';
+  if(it.type==='entrada_tarde') sel0='entrada_tarde|'+(it.shift==='manha'?'manha':'tarde');
+  else if(it.type==='saida_antecipada') sel0='saida_antecipada|'+(it.shift==='manha'?'manha':'tarde');
+  else if(it.type==='meio_turno') sel0='meio_turno|'+(it.shift==='manha'?'manha':'tarde');
+  else if(it.type==='integral') sel0='integral|dia_inteiro';
+  const chipR=(val,label)=>`<label class="chk-chip"><input type="radio" name="ff_act" value="${val}" ${sel0===val?'checked':''}/> ${label}</label>`;
   openModal(it.id?'Editar folga':'Lançar folga',`
     <div class="field"><label>Funcionária</label><select id="ff_emp">${emps.map(e=>`<option value="${e.id}" ${it.employee_id===e.id?'selected':''}>${esc(e.name)}</option>`).join('')}</select></div>
+    <div class="field"><label>O que vai acontecer — marque uma opção</label>
+      <div class="chip-row">
+        ${chipR('entrada_tarde|manha','Entrar mais tarde (manhã)')}
+        ${chipR('saida_antecipada|manha','Sair mais cedo (manhã)')}
+        ${chipR('entrada_tarde|tarde','Entrar mais tarde (tarde)')}
+        ${chipR('saida_antecipada|tarde','Sair mais cedo (tarde)')}
+      </div>
+      <div class="chip-row" style="margin-top:7px">
+        ${chipR('meio_turno|manha','Meio turno (manhã)')}
+        ${chipR('meio_turno|tarde','Meio turno (tarde)')}
+        ${chipR('integral|dia_inteiro','Dia inteiro')}
+      </div></div>
     <div class="grid2">
       <div class="field"><label>Data</label><input id="ff_date" type="date" value="${it.date||todayStr()}"/></div>
-      <div class="field"><label>Ação</label><select id="ff_type">
-        <option value="saida_antecipada" ${act0==='saida_antecipada'?'selected':''}>Sair mais cedo</option>
-        <option value="entrada_tarde" ${act0==='entrada_tarde'?'selected':''}>Entrar mais tarde</option>
-        <option value="meio_turno_manha" ${act0==='meio_turno_manha'?'selected':''}>Meio turno (manhã)</option>
-        <option value="meio_turno_tarde" ${act0==='meio_turno_tarde'?'selected':''}>Meio turno (tarde)</option>
-        <option value="integral" ${act0==='integral'?'selected':''}>Folga integral (dia todo)</option></select></div></div>
-    <div class="grid2" id="ff_partial">
-      <div class="field"><label>Período</label><select id="ff_shift"><option value="tarde" ${it.shift!=='manha'?'selected':''}>Tarde</option><option value="manha" ${it.shift==='manha'?'selected':''}>Manhã</option></select></div>
-      <div class="field"><label>Horas</label><input id="ff_hours" type="number" step="0.5" min="1" value="${it.hours||1}"/></div></div>
+      <div class="field" id="ff_hoursWrap"><label>Horas</label><input id="ff_hours" type="number" step="0.5" min="1" value="${it.hours||rules.early_leave_hours||3}"/></div></div>
     <div class="reason" id="ff_preview"></div>
   `,async()=>{
     if(!gate())return false;
     const emp=emps.find(e=>e.id===$('#ff_emp').value);
     const date=$('#ff_date').value; if(!date){toast('Informe a data.');return false;}
+    const selEl=$$('input[name=ff_act]').find(r=>r.checked); if(!selEl){toast('Escolha uma opção de folga.');return false;}
+    const [type,shift]=selEl.value.split('|');
+    let hours;
+    if(type==='meio_turno') hours = shift==='manha'?mh:ah;
+    else if(type==='integral') hours = mh+ah;
+    else hours = +$('#ff_hours').value||1;
     const d=Engine.parse(date);
     const sched=await getOrCreateSchedule(d.getFullYear(), d.getMonth()+1);
-    const act=$('#ff_type').value; let type,shift,hours;
-    if(act==='saida_antecipada'||act==='entrada_tarde'){ type=act; shift=$('#ff_shift').value; hours=+$('#ff_hours').value||1; }
-    else if(act==='meio_turno_manha'){ type='meio_turno'; shift='manha'; hours=mh; }
-    else if(act==='meio_turno_tarde'){ type='meio_turno'; shift='tarde'; hours=ah; }
-    else { type='integral'; shift='dia_inteiro'; hours=mh+ah; }
     const payload={schedule_id:sched.id, employee_id:emp.id, employee_name:emp.name, date, shift, type, hours:Math.round(hours*100)/100, status:'aprovado', reason:'Lançada manualmente pelo gestor'};
     const r = it.id ? await T('schedule_items').update(payload).eq('id',it.id) : await T('schedule_items').insert(payload);
     if(r.error){toast(r.error.message);return false;}
     toast('Folga salva.'); route(); return true;
   });
   const upd=()=>{
-    const act=$('#ff_type').value;
-    $('#ff_partial').style.display=(act==='saida_antecipada'||act==='entrada_tarde')?'':'none';
+    const sel=($$('input[name=ff_act]').find(r=>r.checked)||{}).value||'saida_antecipada|tarde';
+    const [type,shift]=sel.split('|');
+    const partial=(type==='saida_antecipada'||type==='entrada_tarde');
+    $('#ff_hoursWrap').style.display=partial?'':'none';
     let txt;
-    if(act==='meio_turno_manha') txt=`Meio turno manhã · ${fmtHrs(mh)} (das ${oM} às ${cM})`;
-    else if(act==='meio_turno_tarde') txt=`Meio turno tarde · ${fmtHrs(ah)} (das ${oA} às ${cA})`;
-    else if(act==='integral') txt=`Folga o dia todo · ${fmtHrs(mh+ah)}`;
-    else { const prev={type:act,shift:$('#ff_shift').value,hours:+$('#ff_hours').value||1}; txt=folgaTimeLabel(prev,rules)+' · '+prev.hours+'h'; }
+    if(type==='meio_turno') txt=`Meio turno ${shift==='manha'?'manhã':'tarde'} · ${fmtHrs(shift==='manha'?mh:ah)} (das ${shift==='manha'?oM+' às '+cM:oA+' às '+cA})`;
+    else if(type==='integral') txt=`Folga o dia todo · ${fmtHrs(mh+ah)}`;
+    else { const prev={type,shift,hours:+$('#ff_hours').value||1}; txt=folgaTimeLabel(prev,rules)+' · '+prev.hours+'h'; }
     $('#ff_preview').textContent='Vai aparecer como: '+txt;
   };
-  ['ff_type','ff_shift','ff_hours'].forEach(id=>$('#'+id)?.addEventListener('change',upd)); upd();
+  $$('input[name=ff_act]').forEach(r=>r.addEventListener('change',upd));
+  $('#ff_hours')?.addEventListener('input',upd); upd();
 }
 
 // ---------- RELATÓRIO DA SEMANA (texto p/ o grupo) ----------
