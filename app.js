@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v26 (Regras redesenhada + fila de justiça + última folga seg/sex + chips)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v27 (motor enche por ordem da fila dia a dia + blocos lado a lado)
 // ============================================================
 (function(){
 "use strict";
@@ -642,15 +642,17 @@ ROUTES.folgas=async function(){
         <div style="min-width:30px;height:30px;border-radius:50%;display:grid;place-items:center;font-weight:800;font-size:13px;flex:none;background:${(q.elig&&q.position<=3)?'var(--brand)':'#eef1f8'};color:${(q.elig&&q.position<=3)?'#fff':'var(--muted)'}">${q.position}º</div>
         <div style="flex:1;min-width:0"><div style="font-weight:700">${esc(q.name)}</div><div class="muted" style="font-size:12.5px;margin-top:1px">${esc(q.why)}</div></div></div>`).join('');
     const lf=it=> it?`<b>${esc(it.employee_name||'')}</b> <span class="muted">· ${it.date.split('-').reverse().join('/')}</span>`:'<span class="muted">ninguém ainda</span>';
-    const monFri=`<div style="display:flex;gap:10px;flex-wrap:wrap">
-      <div style="flex:1;min-width:190px;border:1px solid var(--line);border-radius:10px;padding:10px 12px"><div class="muted" style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em">Última folga · segunda</div><div style="margin-top:3px">${lf(lastMon)}</div></div>
-      <div style="flex:1;min-width:190px;border:1px solid var(--line);border-radius:10px;padding:10px 12px"><div class="muted" style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em">Última folga · sexta</div><div style="margin-top:3px">${lf(lastFri)}</div></div></div>`;
+    const monFri=`<div style="display:flex;flex-direction:column;gap:8px">
+      <div style="border:1px solid var(--line);border-radius:10px;padding:10px 12px"><div class="muted" style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em">Segunda</div><div style="margin-top:3px">${lf(lastMon)}</div></div>
+      <div style="border:1px solid var(--line);border-radius:10px;padding:10px 12px"><div class="muted" style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em">Sexta</div><div style="margin-top:3px">${lf(lastFri)}</div></div></div>`;
     $('#folgaOut').innerHTML=`
-      <div class="panel" style="margin-bottom:12px"><div class="ph"><h3>🗓️ Última folga em segunda e sexta</h3></div><div class="pb">${monFri}
-        <div class="reason">Ajuda no rodízio — evita repetir a mesma pessoa na segunda/sexta em semanas seguidas.</div></div></div>
-      <details class="panel" style="margin-bottom:12px" open><summary style="cursor:pointer;padding:13px 16px;font-weight:700">📋 Fila de justiça — quem está na frente p/ folgar <span class="muted" style="font-weight:500">(${queue.filter(q=>q.elig).length} com saldo)</span></summary>
-        <div class="pb" style="padding-top:4px">${queueHtml||'<span class="muted">Sem funcionárias ativas.</span>'}
-        <div class="reason">Ordem por <b>banco de horas</b>, depois <b>tempo sem folgar</b> e justiça do histórico. Quem está sem saldo aparece no fim (em dia, sem horas a compensar).</div></div></details>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start;margin-bottom:12px">
+        <details class="panel" open style="flex:1.5 1 340px;min-width:300px;margin:0"><summary style="cursor:pointer;padding:13px 16px;font-weight:700">📋 Fila de justiça — quem está na frente p/ folgar <span class="muted" style="font-weight:500">(${queue.filter(q=>q.elig).length} com saldo)</span></summary>
+          <div class="pb" style="padding-top:4px">${queueHtml||'<span class="muted">Sem funcionárias ativas.</span>'}
+          <div class="reason">Ordem por <b>banco de horas</b>, depois <b>tempo sem folgar</b> e justiça do histórico. Quem está sem saldo aparece no fim (em dia, sem horas a compensar).</div></div></details>
+        <div class="panel" style="flex:1 1 240px;min-width:230px;margin:0"><div class="ph"><h3>🗓️ Última folga · seg / sex</h3></div><div class="pb">${monFri}
+          <div class="reason">Evita repetir a mesma pessoa na segunda/sexta em semanas seguidas.</div></div></div>
+      </div>
       ${out.suggestions.length?'':box('warn','Nenhuma folga sugerida nesta semana — veja o porquê no log de decisão abaixo.')}
       <div class="panel"><div class="ph"><h3>Sugestões da semana</h3>
         <div style="display:flex;align-items:center;gap:10px"><span class="muted">${out.suggestions.length} folga(s)</span>
