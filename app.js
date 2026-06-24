@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v28 (fila de justiça desconta folgas já aprovadas + rotação 'passou a vez')
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v29 (botão Ajustar na sugestão: muda dia/horário antes de aprovar)
 // ============================================================
 (function(){
 "use strict";
@@ -631,7 +631,7 @@ ROUTES.folgas=async function(){
             <div style="font-size:14px;font-weight:600;margin-top:3px">${TYPE_LABEL[s.type]||s.type} <span class="muted" style="font-weight:500">(${SHIFT_LABEL[s.shift]||s.shift}) · ${s.hours}h${hora}</span></div>
           </div>
           ${(s.tags&&s.tags.length)?`<div style="display:flex;gap:5px;flex-wrap:wrap">${s.tags.map(t=>`<span style="font-size:11px;font-weight:600;${tagColor(t)};padding:2px 9px;border-radius:20px">${esc(t)}</span>`).join('')}</div>`:''}
-          <div class="row-actions" id="act${i}" style="margin-top:auto;padding-top:2px">${isGestor()?`<button class="btn sm" data-ap="${i}">Aprovar</button><button class="btn sec sm" data-rf="${i}">Recusar</button>`:'<span class="muted">—</span>'}</div>
+          <div class="row-actions" id="act${i}" style="margin-top:auto;padding-top:2px">${isGestor()?`<button class="btn sm" data-ap="${i}">Aprovar</button><button class="btn ghost sm" data-aj="${i}">✏️ Ajustar</button><button class="btn sec sm" data-rf="${i}">Recusar</button>`:'<span class="muted">—</span>'}</div>
         </div>`;
       }).join('');
       return `<div style="margin-bottom:16px">
@@ -666,6 +666,9 @@ ROUTES.folgas=async function(){
     $$('[data-ap]').forEach(b=>b.onclick=async()=>{ if(!gate())return; const i=+b.dataset.ap; b.disabled=true;
       await saveApproval(out.suggestions[i]);
       $('#act'+i).innerHTML='<span class="pill ativa">✓ Aprovado</span>'; toast('Folga aprovada — veja em Folgas aprovadas.'); });
+    $$('[data-aj]').forEach(b=>b.onclick=()=>{ if(!gate())return; const s=out.suggestions[+b.dataset.aj];
+      // abre o formulário já preenchido com a sugestão — mude dia/horário/tipo e salve (aprova com o ajuste)
+      folgaModal({employee_id:s.employee_id,employee_name:s.employee_name,date:s.date,type:s.type,shift:s.shift,hours:s.hours},emps,rules); });
     $('#apAll')?.addEventListener('click',async()=>{ if(!gate())return; if(!out.suggestions.length)return;
       if(!confirm(`Aprovar todas as ${out.suggestions.length} folgas sugeridas desta semana?`))return;
       const btn=$('#apAll'); btn.disabled=true; btn.textContent='Aprovando…';
