@@ -469,33 +469,41 @@ window.Engine = (function () {
   ];
 
   // FILA DE JUSTIÇA: ordena quem está na frente para folgar e explica o porquê.
-  // Critérios (na ordem): elegível (banco ≥ mínimo) → maior banco → mais tempo sem folgar → menos folgas "boas".
-  function dayoffQueue(employees, rules, history={}){
+  // Considera as folgas JÁ APROVADAS: desconta do banco previsto e quem já tem folga marcada
+  // "passa a vez" (desce na fila) — assim a ordem gira a cada semana.
+  // Critérios: elegível (banco previsto ≥ mínimo) → ainda sem folga marcada → maior banco previsto
+  //            → mais tempo sem folgar → menos folgas "boas".
+  function dayoffQueue(employees, rules, history={}, existing=[]){
     const fH = v=>{ v=+v||0; const neg=v<0; let m=Math.round(Math.abs(v)*60); const h=Math.floor(m/60); m=m%60; return (neg?'-':'')+h+'h'+(m?String(m).padStart(2,'0'):''); };
     const minBank = rules.min_time_bank_for_dayoff ?? 6;
     const active = employees.filter(e=>e.status==='ativa');
-    const maxBank = Math.max(0, ...active.map(e=>+e.time_bank_balance||0));
+    // folgas já aprovadas (futuras): horas a descontar e quantas marcadas por pessoa
+    const futH={}, futN={};
+    (existing||[]).forEach(it=>{ if(!it||!it.employee_id) return; futH[it.employee_id]=(futH[it.employee_id]||0)+(+it.hours||0); futN[it.employee_id]=(futN[it.employee_id]||0)+1; });
     const good = x => x.fri*2 + x.mon + x.integral*2;   // folgas "boas" no histórico
-    const rows = active.map(e=>{ const h=history[e.id]||{}; const bank=+e.time_bank_balance||0;
-      return { id:e.id, name:e.name, bank, elig:bank>=minBank,
+    const rows = active.map(e=>{ const h=history[e.id]||{}; const bank=+e.time_bank_balance||0; const proj=bank-(futH[e.id]||0);
+      return { id:e.id, name:e.name, bank, proj, marcadas:futN[e.id]||0, elig:proj>=minBank,
         last:(h.lastDayOffDays==null?null:h.lastDayOffDays), fri:h.fridaysOff||0, mon:h.mondaysOff||0,
         integral:h.integral||0, dayoffs:h.dayoffs||0 }; });
+    const maxProj = Math.max(0, ...rows.map(r=>r.proj));
     rows.sort((a,b)=>{
       if(a.elig!==b.elig) return a.elig?-1:1;
-      if(b.bank!==a.bank) return b.bank-a.bank;
+      if((a.marcadas>0)!==(b.marcadas>0)) return a.marcadas>0?1:-1;   // quem já tem folga marcada passa a vez
+      if(b.proj!==a.proj) return b.proj-a.proj;                       // maior banco previsto
       const la=a.last==null?99999:a.last, lb=b.last==null?99999:b.last;
       if(lb!==la) return lb-la;
       if(good(a)!==good(b)) return good(a)-good(b);
       return (a.name||'').localeCompare(b.name||'');
     });
     rows.forEach((x,i)=>{ x.position=i+1; const w=[];
-      if(!x.elig){ w.push(`sem saldo p/ folga (banco ${fH(x.bank)} abaixo do mínimo ${fH(minBank)})`); }
+      if(!x.elig){ w.push(`sem saldo p/ folga (previsto ${fH(x.proj)}${x.marcadas>0?', já descontada folga marcada':''} abaixo do mínimo ${fH(minBank)})`); }
       else {
-        w.push(x.bank>0&&x.bank>=maxBank ? `maior banco de horas (${fH(x.bank)})` : `banco de ${fH(x.bank)}`);
+        if(x.marcadas>0) w.push(`já tem ${x.marcadas} folga(s) marcada(s) — passou a vez`);
+        w.push((x.proj>0&&x.proj>=maxProj) ? `maior banco${x.marcadas>0?' previsto':''} (${fH(x.proj)})` : `banco${x.marcadas>0?' previsto':''} de ${fH(x.proj)}`);
         if(x.last==null) w.push('ainda não folgou no período');
         else if(x.last>=14) w.push(`há ${x.last} dias sem folgar`);
         else w.push(`última folga há ${x.last} dia(s)`);
-        if(good(x)===0 && x.dayoffs>0) w.push('poucas folgas boas (sexta/segunda)');
+        if(good(x)===0 && x.dayoffs>0 && x.marcadas===0) w.push('poucas folgas boas (sexta/segunda)');
       }
       x.why = w.join(' · ');
     });

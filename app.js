@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v27 (motor enche por ordem da fila dia a dia + blocos lado a lado)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v28 (fila de justiça desconta folgas já aprovadas + rotação 'passou a vez')
 // ============================================================
 (function(){
 "use strict";
@@ -573,7 +573,6 @@ ROUTES.folgas=async function(){
   // folgas já aprovadas (a partir de hoje) para a engine não sugerir quem já tem folga programada
   const scheds=await getAll('schedules',b=>b.eq('is_simulation',S.sim));
   const schedIds=new Set(scheds.map(s=>s.id));
-  const existing=(await getAll('schedule_items',b=>b.eq('status','aprovado').gte('date',todayStr()))).filter(it=>schedIds.has(it.schedule_id));
   // última folga que já aconteceu numa segunda e numa sexta (para o rodízio)
   const pastF=(await getAll('schedule_items',b=>b.eq('status','aprovado').lte('date',todayStr()).order('date',{ascending:false}))).filter(it=>schedIds.has(it.schedule_id));
   const lastDow=dw=>pastF.find(it=>Engine.parse(it.date).getDay()===dw);
@@ -602,6 +601,10 @@ ROUTES.folgas=async function(){
     const bd=Engine.parse(base); const wd=bd.getDay(); bd.setDate(bd.getDate()+(wd===0?1:1-wd)+weekOffset*7); // segunda-feira da semana escolhida
     const weekStart=Engine.fmt(bd);
     const history=await buildHistory(weekStart); // recência/justiça relativas à semana planejada (conta folgas anteriores a ela)
+    // folgas já aprovadas (atualizadas a cada cálculo — reflete o que você acabou de aprovar)
+    const fScheds=await getAll('schedules',b=>b.eq('is_simulation',S.sim));
+    const fSchedIds=new Set(fScheds.map(s=>s.id));
+    const existing=(await getAll('schedule_items',b=>b.eq('status','aprovado').gte('date',todayStr()))).filter(it=>fSchedIds.has(it.schedule_id));
     const out=Engine.suggestDayOffs({employees:emps,rules,vacations:vacs,requests:reqs,refusals,blockedDates:blk,year,month,horizonDays:4,startDate:weekStart,history,existing,weekdays:selDays});
     const wEnd=Engine.parse(weekStart); wEnd.setDate(wEnd.getDate()+4);
     const wlabel=`${weekStart.split('-').reverse().slice(0,2).join('/')} a ${Engine.fmt(wEnd).split('-').reverse().slice(0,2).join('/')}`;
@@ -637,7 +640,7 @@ ROUTES.folgas=async function(){
     }).join('');
     const logRows=out.logs.map(l=>`<div class="reason" style="font-size:12.5px;border-left-color:${l.type==='bloqueio'?'var(--red)':l.type==='rodizio'?'var(--purple)':'var(--brand)'}">${l.type==='bloqueio'?'🚫':l.type==='rodizio'?'🔁':'✅'} ${esc(l.message)}</div>`).join('');
     // FILA DE JUSTIÇA — quem está na frente para folgar e por quê
-    const queue=Engine.dayoffQueue(emps,rules,history);
+    const queue=Engine.dayoffQueue(emps,rules,history,existing);
     const queueHtml=queue.map(q=>`<div style="display:flex;align-items:center;gap:11px;padding:8px 10px;border:1px solid var(--line);border-radius:10px;margin-bottom:6px;background:${q.elig?'#fff':'#f6f8fb'}">
         <div style="min-width:30px;height:30px;border-radius:50%;display:grid;place-items:center;font-weight:800;font-size:13px;flex:none;background:${(q.elig&&q.position<=3)?'var(--brand)':'#eef1f8'};color:${(q.elig&&q.position<=3)?'#fff':'var(--muted)'}">${q.position}º</div>
         <div style="flex:1;min-width:0"><div style="font-weight:700">${esc(q.name)}</div><div class="muted" style="font-size:12.5px;margin-top:1px">${esc(q.why)}</div></div></div>`).join('');
