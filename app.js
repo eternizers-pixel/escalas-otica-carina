@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v39 (falta/atestado/afastamento + indisponíveis hoje no dashboard)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v40 (exceções falta/atestado/afastamento afetam disponibilidade + edição de exceções)
 // ============================================================
 (function(){
 "use strict";
@@ -234,11 +234,12 @@ ROUTES.config=function(){
 // ---------- DASHBOARD ----------
 ROUTES.dashboard=async function(){
   const now=new Date(), year=now.getFullYear(), month=now.getMonth()+1; const todayISO=todayStr();
-  const [emps,rules,dscheds,vacs]=await Promise.all([
+  const [emps,rules,dscheds,vacs,dreqs]=await Promise.all([
     getAll('employees',b=>b.eq('is_simulation',S.sim)),
     T('store_rules').select('*').eq('id',1).maybeSingle().then(r=>r.data||{}),
     getAll('schedules',b=>b.eq('is_simulation',S.sim)),
-    getAll('vacation_periods')]);
+    getAll('vacation_periods'),
+    getAll('dayoff_requests')]);
   const dschedIds=new Set(dscheds.map(s=>s.id));
   const wkItems=(await getAll('schedule_items',b=>b.eq('status','aprovado').gte('date',todayISO))).filter(it=>dschedIds.has(it.schedule_id));
   const active=emps.filter(e=>e.status==='ativa');
@@ -252,6 +253,8 @@ ROUTES.dashboard=async function(){
   (vacs||[]).forEach(v=>{ if(v.employee_id && todayISO>=v.start_date && todayISO<=v.end_date && !reasonsOut[v.employee_id]) reasonsOut[v.employee_id]='Férias'; });
   const todayItems=wkItems.filter(it=>it.date===todayISO);
   todayItems.forEach(it=>{ if((FULLDAY_OUT.includes(it.type)||it.shift==='dia_inteiro') && !reasonsOut[it.employee_id]) reasonsOut[it.employee_id]=TYPE_LABEL[it.type]||'Folga integral'; });
+  // exceções registradas (falta/atestado/afastamento) também tiram a pessoa do dia
+  (dreqs||[]).forEach(r=>{ if(['falta','atestado','afastamento'].includes(r.request_type) && r.date===todayISO && (r.status==='aprovado'||!r.status) && !reasonsOut[r.employee_id]) reasonsOut[r.employee_id]=TYPE_LABEL[r.request_type]||reqTypeLabel(r.request_type); });
   const meioToday=todayItems.filter(it=>it.type==='meio_turno' && !reasonsOut[it.employee_id]);
   const outIds=Object.keys(reasonsOut);
   const outList=outIds.map(id=>`${esc(nmById[id]||'')} (${reasonsOut[id]})`).concat(meioToday.map(it=>`${esc(nmById[it.employee_id]||'')} (Meio turno)`));
@@ -1137,7 +1140,7 @@ ROUTES.pedidos=async function(){
   $('#view').innerHTML=`
   <div class="toolbar"><button class="btn" id="addFolga" ${isGestor()?'':'disabled'}>+ Lançar folga</button>
     <button class="btn sec" id="addReq" ${isGestor()?'':'disabled'}>+ Registrar exceção (falta, atestado…)</button></div>
-  ${box('info','<b>Lançar folga</b> registra uma folga <b>já aprovada</b> (você escolhe integral, meio turno ou o horário de sair/entrar) — o <b>motor de folgas já considera</b> essa folga: conta o horário ocupado e não oferece o mesmo horário para outra pessoa no dia. Férias (em Funcionárias) também entram automaticamente na conta. As <b>exceções</b> abaixo (falta, atestado, atraso, troca) são só registro de histórico.')}
+  ${box('info','<b>Lançar folga</b> registra uma folga <b>já aprovada</b> (você escolhe integral, meio turno ou o horário de sair/entrar) — o <b>motor de folgas já considera</b> essa folga: conta o horário ocupado e não oferece o mesmo horário para outra pessoa no dia. Férias (em Funcionárias) também entram automaticamente na conta. As <b>exceções de falta, atestado e afastamento</b> também tiram a funcionária do dia inteiro (o painel e o motor já consideram, <b>sem descontar banco</b>). <b>Atraso</b> e <b>troca</b> são só registro de histórico.')}
   <div class="panel"><div class="ph"><h3>Folgas lançadas (a partir deste mês)</h3><span class="muted">${folgas.length} folga(s)</span></div>
     <div class="pb">${folgas.map(it=>`<div class="card" style="margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
       <div style="min-width:0">
@@ -1146,29 +1149,35 @@ ROUTES.pedidos=async function(){
       </div>
       <div class="row-actions">${isGestor()?`<button class="btn ghost sm" data-edf="${it.id}">Editar</button><button class="btn ghost sm" style="color:var(--red)" data-delf="${it.id}">Remover</button>`:''}</div>
     </div>`).join('')||'<p class="muted" style="margin:0">Nenhuma folga lançada. Use “+ Lançar folga”.</p>'}</div></div>
-  <div class="section panel"><div class="ph"><h3>Exceções (falta, atestado, atraso, troca)</h3></div><div class="pb" style="padding:0"><table>
+  <div class="section panel"><div class="ph"><h3>Exceções (falta, atestado, afastamento, atraso, troca)</h3></div><div class="pb" style="padding:0"><table>
     <thead><tr><th>Funcionária</th><th>Data</th><th>Tipo</th><th>Motivo</th><th>Status</th><th></th></tr></thead>
     <tbody>${reqs.map(r=>`<tr><td><b>${esc(r.employee_name||map[r.employee_id]||'—')}</b></td><td>${r.date||'—'}</td><td>${reqTypeLabel(r.request_type)}</td><td class="muted">${esc(r.reason||'')}</td>
       <td><span class="pill ${r.status==='aprovado'?'ativa':r.status==='recusado'?'afastada':'ferias'}">${r.status}</span></td>
-      <td class="row-actions">${isGestor()&&r.status==='pendente'?`<button class="btn sm" data-ap="${r.id}">Aprovar</button><button class="btn sec sm" data-rf="${r.id}">Recusar</button>`:''}</td></tr>`).join('')||'<tr><td colspan=6 class="muted" style="padding:16px">Nenhum pedido registrado.</td></tr>'}
+      <td class="row-actions">${isGestor()?`${r.status==='pendente'?`<button class="btn sm" data-ap="${r.id}">Aprovar</button><button class="btn sec sm" data-rf="${r.id}">Recusar</button>`:''}<button class="btn ghost sm" data-edexc="${r.id}">Editar</button><button class="btn ghost sm" style="color:var(--red)" data-delexc="${r.id}">Remover</button>`:''}</td></tr>`).join('')||'<tr><td colspan=6 class="muted" style="padding:16px">Nenhum pedido registrado.</td></tr>'}
     </tbody></table></div></div>`;
   $('#addFolga')?.addEventListener('click',()=>folgaModal(null,emps,rules));
   $$('[data-edf]').forEach(b=>b.onclick=()=>folgaModal(folgas.find(x=>x.id===b.dataset.edf),emps,rules));
   $$('[data-delf]').forEach(b=>b.onclick=async()=>{ if(!gate())return; if(!confirm('Remover esta folga?'))return; await T('schedule_items').delete().eq('id',b.dataset.delf); toast('Folga removida.'); route(); });
-  $('#addReq')?.addEventListener('click',()=>{
-    openModal('Registrar exceção',`
-      <div class="field"><label>Funcionária</label><select id="q_emp">${emps.map(e=>`<option value="${e.id}">${esc(e.name)}</option>`).join('')}</select></div>
-      <div class="grid2"><div class="field"><label>Data</label><input id="q_date" type="date" value="${todayStr()}"/></div>
-        <div class="field"><label>Tipo</label><select id="q_type"><option value="falta">Falta</option><option value="atestado">Atestado</option><option value="atraso">Atraso</option><option value="troca_folga">Troca de folga</option></select></div></div>
-      <div class="field"><label>Motivo</label><input id="q_reason"/></div>`,
+  function reqModal(r){
+    const types=[['falta','Falta'],['atestado','Atestado'],['afastamento','Afastamento'],['atraso','Atraso'],['troca_folga','Troca de folga']];
+    openModal(r?'Editar exceção':'Registrar exceção',`
+      <div class="field"><label>Funcionária</label><select id="q_emp">${emps.map(e=>`<option value="${e.id}" ${r&&r.employee_id===e.id?'selected':''}>${esc(e.name)}</option>`).join('')}</select></div>
+      <div class="grid2"><div class="field"><label>Data</label><input id="q_date" type="date" value="${r&&r.date?r.date:todayStr()}"/></div>
+        <div class="field"><label>Tipo</label><select id="q_type">${types.map(([v,l])=>`<option value="${v}" ${r&&r.request_type===v?'selected':''}>${l}</option>`).join('')}</select></div></div>
+      <div class="field"><label>Motivo</label><input id="q_reason" value="${r?esc(r.reason||''):''}"/></div>
+      ${box('info','<b>Falta, atestado e afastamento</b> tiram a funcionária do dia inteiro — o painel e o motor de folgas já consideram (sem descontar banco). <b>Atraso</b> e <b>troca</b> são só registro.')}`,
       async()=>{ if(!gate())return false; const emp=emps.find(e=>e.id===$('#q_emp').value);
-        const res=await T('dayoff_requests').insert({employee_id:emp.id,employee_name:emp.name,date:$('#q_date').value,request_type:$('#q_type').value,reason:$('#q_reason').value,status:'aprovado'});
-        if(res.error){toast(res.error.message);return false;} toast('Exceção registrada.'); route(); return true; });
-  });
+        const data={employee_id:emp.id,employee_name:emp.name,date:$('#q_date').value,request_type:$('#q_type').value,reason:$('#q_reason').value,status:'aprovado'};
+        const res= r ? await T('dayoff_requests').update(data).eq('id',r.id) : await T('dayoff_requests').insert(data);
+        if(res.error){toast(res.error.message);return false;} toast(r?'Exceção atualizada.':'Exceção registrada.'); route(); return true; });
+  }
+  $('#addReq')?.addEventListener('click',()=>reqModal(null));
+  $$('[data-edexc]').forEach(b=>b.onclick=()=>reqModal(reqs.find(x=>x.id===b.dataset.edexc)));
+  $$('[data-delexc]').forEach(b=>b.onclick=async()=>{ if(!gate())return; if(!confirm('Remover esta exceção?'))return; await T('dayoff_requests').delete().eq('id',b.dataset.delexc); toast('Exceção removida.'); route(); });
   $$('[data-ap]').forEach(b=>b.onclick=async()=>{ if(!gate())return; await T('dayoff_requests').update({status:'aprovado'}).eq('id',b.dataset.ap); toast('Aprovado.'); route(); });
   $$('[data-rf]').forEach(b=>b.onclick=async()=>{ if(!gate())return; await T('dayoff_requests').update({status:'recusado'}).eq('id',b.dataset.rf); toast('Recusado.'); route(); });
 };
-function reqTypeLabel(t){return {pedido_folga:'Pedido de folga',recusa_folga:'Recusa de folga',falta:'Falta',atestado:'Atestado',saida_antecipada:'Saída antecipada',atraso:'Atraso',troca_folga:'Troca de folga'}[t]||t;}
+function reqTypeLabel(t){return {pedido_folga:'Pedido de folga',recusa_folga:'Recusa de folga',falta:'Falta',atestado:'Atestado',afastamento:'Afastamento',saida_antecipada:'Saída antecipada',atraso:'Atraso',troca_folga:'Troca de folga'}[t]||t;}
 
 // ---------- RELATÓRIOS ----------
 ROUTES.relatorios=async function(){

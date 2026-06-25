@@ -305,6 +305,10 @@ window.Engine = (function () {
     };
     const leadDays = rules.high_traffic_lead_days ?? 7;
 
+    // exceções registradas (falta/atestado/afastamento) tiram a pessoa do dia, igual a uma folga integral
+    const reqAbsentByDate={};
+    requests.filter(r=>['falta','atestado','afastamento'].includes(r.request_type) && (r.status==='aprovado'||!r.status) && r.date)
+      .forEach(r=>{ (reqAbsentByDate[r.date]=reqAbsentByDate[r.date]||new Set()).add(r.employee_id); });
     // monta os dias úteis abertos da janela já com a cobertura das folgas JÁ aprovadas
     const openDays=[];
     for (let i=0;i<=horizonDays;i++){
@@ -316,7 +320,8 @@ window.Engine = (function () {
       const existToday = existing.filter(it=>it.date===dStr);
       // dia inteiro fora: folga integral, falta, atestado, afastamento (qualquer um tira a pessoa do dia)
       const FULLDAY_OUT=['integral','falta','atestado','afastamento'];
-      const integralToday = existToday.filter(it=>FULLDAY_OUT.includes(it.type) || it.shift==='dia_inteiro').map(it=>it.employee_id);
+      const reqOut = reqAbsentByDate[dStr] || new Set();
+      const integralToday = existToday.filter(it=>FULLDAY_OUT.includes(it.type) || it.shift==='dia_inteiro').map(it=>it.employee_id).concat([...reqOut]);
       const availDay = active.filter(e=>!onVac(e,dStr) && !integralToday.includes(e.id));
       if (availDay.length < minPer){ logs.push({type:'bloqueio', message:`${DIAS[dow]} (${dStr}): só ${availDay.length} pessoa(s) disponível(is) e o mínimo da loja é ${minPer}.`}); continue; }
       const absent={}; existToday.forEach(it=>slotsOf(it).forEach(sl=>{ absent[sl]=(absent[sl]||0)+1; }));
@@ -324,7 +329,7 @@ window.Engine = (function () {
       const expertsAvail = availDay.filter(e=>expertIds.has(e.id)).length;
       const expertOff = existToday.filter(it=>expertIds.has(it.employee_id)).length;
       // o teto de folgas por dia JÁ CONTA as folgas aprovadas neste dia (não oferece mais que o limite)
-      openDays.push({dStr,dow,availDay,absent,doneToday:new Set(existToday.map(it=>it.employee_id)),count:existToday.length,expertsAvail,expertOff});
+      openDays.push({dStr,dow,availDay,absent,doneToday:new Set([...existToday.map(it=>it.employee_id),...reqOut]),count:existToday.length,expertsAvail,expertOff});
     }
     // SEXTA primeiro SÓ quando há rodízio de sexta em jogo (alguém da fila tirou sexta recentemente e
     // seria bloqueada). Sem esse histórico, segue a ordem normal de data — a fila pega o primeiro dia liberado.
