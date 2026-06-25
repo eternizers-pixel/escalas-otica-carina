@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v48 (resolver troca de sábado + ajustes UI funcionária: relógio, data, chips 2 colunas)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v49 (preferência da funcionária mostra horário real calculado das regras)
 // ============================================================
 (function(){
 "use strict";
@@ -246,7 +246,9 @@ async function renderFuncionaria(){
   ]);
   const me=emps[0]||{};
   const first=(me.name||'').trim().split(' ')[0]||'você';
-  const PREF=[['manha_entrar','Entrar + tarde · manhã'],['manha_sair','Sair + cedo · manhã'],['tarde_entrar','Entrar + tarde · tarde'],['tarde_sair','Sair + cedo · tarde']];
+  // horários reais calculados das regras da loja (duração = horas de folga definida pelo gestor)
+  const fh=+rules.early_leave_hours||3, hm=t=>t.replace(':','h');
+  const PREF=[['manha_entrar','Entrar '+hm(addHM(rules.open_morning||'09:00',fh))],['manha_sair','Sair '+hm(addHM(rules.close_morning||'12:00',-fh))],['tarde_entrar','Entrar '+hm(addHM(rules.open_afternoon||'14:00',fh))],['tarde_sair','Sair '+hm(addHM(rules.close_afternoon||'18:00',-fh))]];
   const PL=Object.fromEntries(PREF);
   const myPref=String(me.dayoff_pref||'').split(',').map(s=>s.trim()).filter(Boolean);
   const dataBR=d=>(d||'').split('-').reverse().slice(0,2).join('/');
@@ -551,7 +553,7 @@ ROUTES.regras=async function(){
     <div class="panel"><div class="ph"><h3>🌴 Regras de folga</h3></div><div class="pb">
       <div class="grid2">
         <div class="field"><label>Tipo liberado</label><select id="r_mode"><option value="saida_antecipada" ${(r.dayoff_mode||'saida_antecipada')==='saida_antecipada'?'selected':''}>Só sair mais cedo</option><option value="completa" ${r.dayoff_mode==='completa'?'selected':''}>Integral / meio turno</option></select></div>
-        <div class="field" style="margin:0"><label>Horas de saída antecipada</label><input id="r_early" type="number" value="${r.early_leave_hours??3}"/></div></div>
+        <div class="field" style="margin:0"><label>Horas de saída antecipada / entrada mais tarde</label><input id="r_early" type="number" step="0.5" min="0.5" value="${r.early_leave_hours??3}"/></div></div>
       <div class="field" style="margin:13px 0 0"><label>Folga: mín–máx (h)</label><div style="display:flex;gap:6px"><input id="r_dmin" type="number" value="${r.min_dayoff_hours||3}"/><input id="r_dmax" type="number" value="${r.max_dayoff_hours||8}"/></div></div>
       <label style="margin:13px 0 7px">Opções que a loja permite</label>
       <div class="chip-row">
