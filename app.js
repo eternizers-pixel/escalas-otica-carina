@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v44 (relatório por funcionária: sábados trabalhados vs programados)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v45 (relatório: remove bloco 'Véspera de feriado' da tela; fator segue no índice)
 // ============================================================
 (function(){
 "use strict";
@@ -1252,7 +1252,6 @@ ROUTES.relatorios=async function(){
             ${stat('Segundas folgadas',p.segundas,p.segundas>0)}
             ${stat('Folgas de dia inteiro',p.integral,p.integral>0)}
             ${stat('Folgas de meio turno',p.meio)}
-            ${stat('Véspera de feriado',p.vesp,p.vesp>0)}
             ${stat('Sábados trabalhados',p.sabPast)}
             ${stat('Sábados programados',p.sabFut)}
             ${stat('Recusas de folga',p.recusas)}
