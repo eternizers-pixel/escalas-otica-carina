@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v42 (remover férias volta status p/ ativa)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v43 (relatório: total de sábados conta datas distintas, não soma de pessoas)
 // ============================================================
 (function(){
 "use strict";
@@ -1225,11 +1225,14 @@ ROUTES.relatorios=async function(){
     if (p.vantagem < avgV*0.7) return {t:'prejudicada',c:'var(--green)'}; // tem saldo e recebeu poucas folgas boas
     return {t:'equilibrada',c:'var(--muted)'};
   };
+  // sábados (card geral): contar DATAS distintas, não a soma de pessoas por sábado
+  const satDates=new Set(rot.filter(r=>r.worked!==false && r.saturday_date).map(r=>r.saturday_date));
+  const satPast=[...satDates].filter(d=>d<=hoje).length, satFut=satDates.size-satPast;
   $('#view').innerHTML=`
   <div class="cards">
     <div class="card"><h3>Índice de justiça</h3><div class="fair" style="font-size:20px"><span class="ball" style="background:${ballColor}"></span>${fair.status} · ${fair.score}</div><div class="reason">${esc(fair.reason)}</div></div>
     <div class="card"><h3>Folgas aprovadas</h3><div class="kpi">${appr.length}</div></div>
-    <div class="card"><h3>Sábados trabalhados</h3><div class="kpi">${rot.filter(r=>r.worked!==false).length}</div></div>
+    <div class="card"><h3>Total de sábados</h3><div class="kpi">${satDates.size}</div>${satDates.size?`<div class="reason">${satPast} trabalhado${satPast===1?'':'s'}${satFut?` · ${satFut} programado${satFut===1?'':'s'}`:''}</div>`:''}</div>
     <div class="card"><h3>Em férias</h3><div class="kpi">${emps.filter(e=>e.status==='ferias').length}</div></div>
   </div>
   <div class="section"><div class="ph" style="padding:0 4px 8px"><h3>Justiça por funcionária</h3><span class="muted">todos os fatores</span></div>
