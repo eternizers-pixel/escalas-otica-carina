@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v38 (horário alternativo quando o preferido lota + preserva preferidos + tag sexta só em rodízio)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v39 (falta/atestado/afastamento + indisponíveis hoje no dashboard)
 // ============================================================
 (function(){
 "use strict";
@@ -30,6 +30,7 @@ function folgaTimeLabel(it,r){
   if(it.type==='entrada_tarde')    return 'Entrada '+addHM(it.shift==='manha'?oM:oT, h);
   if(it.type==='integral')         return 'Folga o dia todo';
   if(it.type==='meio_turno')       return 'Meio turno '+(it.shift==='manha'?'manhã':'tarde');
+  if(['falta','atestado','afastamento'].includes(it.type)) return 'Dia inteiro fora';
   return TYPE_LABEL[it.type]||'Folga';
 }
 // chave de ordenação por horário: manhã antes da tarde (integral primeiro)
@@ -46,7 +47,8 @@ async function getOrCreateSchedule(year,month){
   if(!s) s=(await T('schedules').insert({year,month,status:'aprovada',is_simulation:S.sim,created_by:S.user.id}).select().single()).data;
   return s;
 }
-const TYPE_LABEL={integral:'Folga integral',meio_turno:'Meio turno',entrada_tarde:'Entrada mais tarde',saida_antecipada:'Saída antecipada'};
+const TYPE_LABEL={integral:'Folga integral',meio_turno:'Meio turno',entrada_tarde:'Entrada mais tarde',saida_antecipada:'Saída antecipada',falta:'Falta',atestado:'Atestado',afastamento:'Afastamento'};
+const ABSENCE_TYPES=['falta','atestado','afastamento']; // ausências de dia inteiro que NÃO usam banco de horas
 function box(kind,msg){ return `<div class="alert ${kind}"><span>${kind==='err'?'⚠️':kind==='ok'?'✅':kind==='warn'?'🔔':'ℹ️'}</span><div>${msg}</div></div>`; }
 
 // ---------- DB ----------
@@ -80,6 +82,7 @@ async function buildHistory(refISO){
     const d=new Date(it.date+'T00:00:00'); const dow=d.getDay();
     const days=Math.floor((ref-d)/86400000);
     if(days<=0) continue; // só folgas ANTES da semana de referência contam para a justiça/recência
+    if(ABSENCE_TYPES.includes(it.type)) continue; // falta/atestado/afastamento não são folgas — não entram na justiça
     const r=get(it.employee_id); r.dayoffs++;
     if(dow===5){ r.fridaysOff++; if(!r.lastFridayISO||it.date>r.lastFridayISO) r.lastFridayISO=it.date; }
     if(dow===1){ r.mondaysOff++; if(!r.lastMondayISO||it.date>r.lastMondayISO) r.lastMondayISO=it.date; }
@@ -230,27 +233,42 @@ ROUTES.config=function(){
 
 // ---------- DASHBOARD ----------
 ROUTES.dashboard=async function(){
-  const now=new Date(), year=now.getFullYear(), month=now.getMonth()+1;
-  const [emps,rules]=await Promise.all([
+  const now=new Date(), year=now.getFullYear(), month=now.getMonth()+1; const todayISO=todayStr();
+  const [emps,rules,dscheds,vacs]=await Promise.all([
     getAll('employees',b=>b.eq('is_simulation',S.sim)),
-    T('store_rules').select('*').eq('id',1).maybeSingle().then(r=>r.data||{})]);
+    T('store_rules').select('*').eq('id',1).maybeSingle().then(r=>r.data||{}),
+    getAll('schedules',b=>b.eq('is_simulation',S.sim)),
+    getAll('vacation_periods')]);
+  const dschedIds=new Set(dscheds.map(s=>s.id));
+  const wkItems=(await getAll('schedule_items',b=>b.eq('status','aprovado').gte('date',todayISO))).filter(it=>dschedIds.has(it.schedule_id));
   const active=emps.filter(e=>e.status==='ativa');
-  const onVac=emps.filter(e=>e.status==='ferias');
+  const nmById=Object.fromEntries(emps.map(e=>[e.id,e.name]));
   const cap=Engine.operationalCapacity(emps,rules);
+  const minPer=rules.min_per_shift||4;
+  // INDISPONÍVEIS HOJE (dia inteiro fora): status (férias/licença/afastada) + período de férias + folga integral / falta / atestado / afastamento de hoje
+  const FULLDAY_OUT=['integral','falta','atestado','afastamento'];
+  const reasonsOut={};
+  emps.forEach(e=>{ if(e.status==='ferias') reasonsOut[e.id]='Férias'; else if(e.status==='licenca') reasonsOut[e.id]='Licença'; else if(e.status==='afastada') reasonsOut[e.id]='Afastada'; });
+  (vacs||[]).forEach(v=>{ if(v.employee_id && todayISO>=v.start_date && todayISO<=v.end_date && !reasonsOut[v.employee_id]) reasonsOut[v.employee_id]='Férias'; });
+  const todayItems=wkItems.filter(it=>it.date===todayISO);
+  todayItems.forEach(it=>{ if((FULLDAY_OUT.includes(it.type)||it.shift==='dia_inteiro') && !reasonsOut[it.employee_id]) reasonsOut[it.employee_id]=TYPE_LABEL[it.type]||'Folga integral'; });
+  const meioToday=todayItems.filter(it=>it.type==='meio_turno' && !reasonsOut[it.employee_id]);
+  const outIds=Object.keys(reasonsOut);
+  const outList=outIds.map(id=>`${esc(nmById[id]||'')} (${reasonsOut[id]})`).concat(meioToday.map(it=>`${esc(nmById[it.employee_id]||'')} (Meio turno)`));
+  const availToday=active.filter(e=>!reasonsOut[e.id]).length;
   const tCrit=rules.bank_alert_critico??20, tMax=rules.bank_alert_maxima??16, tAlta=rules.bank_alert_alta??12;
-  const critBank=emps.filter(e=>(e.time_bank_balance||0)>=tCrit);   // crítico
-  const altaBank=emps.filter(e=>(e.time_bank_balance||0)>=tAlta && (e.time_bank_balance||0)<tCrit); // alta/máxima
+  const critBank=emps.filter(e=>(e.time_bank_balance||0)>=tCrit);
+  const altaBank=emps.filter(e=>(e.time_bank_balance||0)>=tAlta && (e.time_bank_balance||0)<tCrit);
   const totalBank=emps.reduce((s,e)=>s+(+e.time_bank_balance||0),0);
+  const dataBRhoje=todayISO.split('-').reverse().slice(0,2).join('/');
   let alerts='';
-  if(cap.availableForShift<=cap.minPerShift) alerts+=box('err',`<b>Cobertura mínima em risco:</b> ${cap.availableForShift} ativa(s) para mínimo de ${cap.minPerShift} por turno.`);
-  if(onVac.length>=1) alerts+=box('warn',`<b>Equipe reduzida:</b> ${onVac.length} funcionária(s) em férias.`);
+  if(availToday<=minPer) alerts+=box('err',`<b>Cobertura mínima em risco hoje:</b> só ${availToday} disponível(is) para o mínimo de ${minPer} por turno — sem margem para folga.`);
+  else if(availToday<=minPer+1) alerts+=box('warn',`<b>Equipe no limite hoje:</b> ${availToday} disponível(is) (mínimo ${minPer}) — pouca margem para folga.`);
+  if(outList.length) alerts+=box('warn',`<b>Indisponíveis hoje (${dataBRhoje}):</b> ${outList.join(' · ')}.`);
   if(critBank.length) alerts+=box('err',`<b>Banco de horas CRÍTICO (≥ ${fmtH(tCrit)}):</b> ${critBank.map(e=>e.name+' ('+fmtH(e.time_bank_balance)+')').join(', ')}. Prioridade máxima para compensar com folga.`);
   if(altaBank.length) alerts+=box('warn',`<b>Banco de horas alto (≥ ${fmtH(tAlta)}):</b> ${altaBank.map(e=>e.name+' ('+fmtH(e.time_bank_balance)+')').join(', ')}. Priorize folgas para estas.`);
   if(!alerts) alerts=box('ok','Tudo sob controle: cobertura adequada e banco dentro do limite.');
-  // banco previsto: desconta TODAS as folgas aprovadas a partir de hoje (qualquer semana já planejada)
-  const dscheds=await getAll('schedules',b=>b.eq('is_simulation',S.sim));
-  const dschedIds=new Set(dscheds.map(s=>s.id));
-  const wkItems=(await getAll('schedule_items',b=>b.eq('status','aprovado').gte('date',todayStr()))).filter(it=>dschedIds.has(it.schedule_id));
+  // banco previsto: desconta TODAS as folgas aprovadas a partir de hoje (ausências têm 0h, não descontam)
   const folgaH={}; const folgaDates={};
   wkItems.forEach(it=>{ folgaH[it.employee_id]=(folgaH[it.employee_id]||0)+(+it.hours||0); (folgaDates[it.employee_id]=folgaDates[it.employee_id]||[]).push(it.date); });
   const totalFolga=Object.values(folgaH).reduce((s,h)=>s+h,0);
@@ -262,8 +280,8 @@ ROUTES.dashboard=async function(){
   $('#view').innerHTML=`
   ${fresh}
   <div class="cards">
-    <div class="card"><h3>Funcionárias ativas</h3><div class="kpi">${active.length}<small> / ${emps.length}</small></div></div>
-    <div class="card"><h3>Em férias</h3><div class="kpi">${onVac.length}</div></div>
+    <div class="card"><h3>Disponíveis hoje</h3><div class="kpi">${availToday}<small> / ${active.length} ativas</small></div></div>
+    <div class="card"><h3>Indisponíveis hoje</h3><div class="kpi">${outIds.length}${meioToday.length?`<small> + ${meioToday.length} meio turno</small>`:''}</div></div>
     <div class="card"><h3>Capacidade operacional</h3><div class="kpi" style="font-size:17px;text-transform:capitalize">${cap.level.replace('_',' ')}</div></div>
   </div>
   <div class="cards section">
@@ -801,8 +819,9 @@ function folgaModal(it,emps,rules){
   else if(it.type==='saida_antecipada') sel0='saida_antecipada|'+(it.shift==='manha'?'manha':'tarde');
   else if(it.type==='meio_turno') sel0='meio_turno|'+(it.shift==='manha'?'manha':'tarde');
   else if(it.type==='integral') sel0='integral|dia_inteiro';
+  else if(ABSENCE_TYPES.includes(it.type)) sel0=it.type+'|dia_inteiro';
   const chipR=(val,label)=>`<label class="chk-chip"><input type="radio" name="ff_act" value="${val}" ${sel0===val?'checked':''}/> ${label}</label>`;
-  openModal(it.id?'Editar folga':'Lançar folga',`
+  openModal(it.id?'Editar lançamento':'Lançar folga / ausência',`
     <div class="field"><label>Funcionária</label><select id="ff_emp">${emps.map(e=>`<option value="${e.id}" ${it.employee_id===e.id?'selected':''}>${esc(e.name)}</option>`).join('')}</select></div>
     <div class="field"><label>O que vai acontecer — marque uma opção</label>
       <div class="chip-row">
@@ -814,7 +833,13 @@ function folgaModal(it,emps,rules){
       <div class="chip-row" style="margin-top:7px">
         ${chipR('meio_turno|manha','Meio turno (manhã)')}
         ${chipR('meio_turno|tarde','Meio turno (tarde)')}
-        ${chipR('integral|dia_inteiro','Dia inteiro')}
+        ${chipR('integral|dia_inteiro','Folga dia inteiro')}
+      </div>
+      <label style="margin:11px 0 6px">Ou registre uma ausência (dia inteiro fora · não desconta banco)</label>
+      <div class="chip-row">
+        ${chipR('falta|dia_inteiro','Falta')}
+        ${chipR('atestado|dia_inteiro','Atestado')}
+        ${chipR('afastamento|dia_inteiro','Afastamento')}
       </div></div>
     <div class="grid2">
       <div class="field"><label>Data</label><input id="ff_date" type="date" value="${it.date||todayStr()}"/></div>
@@ -824,18 +849,20 @@ function folgaModal(it,emps,rules){
     if(!gate())return false;
     const emp=emps.find(e=>e.id===$('#ff_emp').value);
     const date=$('#ff_date').value; if(!date){toast('Informe a data.');return false;}
-    const selEl=$$('input[name=ff_act]').find(r=>r.checked); if(!selEl){toast('Escolha uma opção de folga.');return false;}
+    const selEl=$$('input[name=ff_act]').find(r=>r.checked); if(!selEl){toast('Escolha uma opção.');return false;}
     const [type,shift]=selEl.value.split('|');
+    const ausencia=ABSENCE_TYPES.includes(type);
     let hours;
     if(type==='meio_turno') hours = shift==='manha'?mh:ah;
     else if(type==='integral') hours = mh+ah;
+    else if(ausencia) hours = 0; // ausência (falta/atestado/afastamento) não desconta banco
     else hours = +$('#ff_hours').value||1;
     const d=Engine.parse(date);
     const sched=await getOrCreateSchedule(d.getFullYear(), d.getMonth()+1);
-    const payload={schedule_id:sched.id, employee_id:emp.id, employee_name:emp.name, date, shift, type, hours:Math.round(hours*100)/100, status:'aprovado', reason:'Lançada manualmente pelo gestor'};
+    const payload={schedule_id:sched.id, employee_id:emp.id, employee_name:emp.name, date, shift, type, hours:Math.round(hours*100)/100, status:'aprovado', reason:ausencia?(TYPE_LABEL[type]+' registrada pelo gestor'):'Lançada manualmente pelo gestor'};
     const r = it.id ? await T('schedule_items').update(payload).eq('id',it.id) : await T('schedule_items').insert(payload);
     if(r.error){toast(r.error.message);return false;}
-    toast('Folga salva.'); route(); return true;
+    toast(ausencia?'Ausência registrada.':'Folga salva.'); route(); return true;
   });
   const upd=()=>{
     const sel=($$('input[name=ff_act]').find(r=>r.checked)||{}).value||'saida_antecipada|tarde';
@@ -843,7 +870,8 @@ function folgaModal(it,emps,rules){
     const partial=(type==='saida_antecipada'||type==='entrada_tarde');
     $('#ff_hoursWrap').style.display=partial?'':'none';
     let txt;
-    if(type==='meio_turno') txt=`Meio turno ${shift==='manha'?'manhã':'tarde'} · ${fmtHrs(shift==='manha'?mh:ah)} (das ${shift==='manha'?oM+' às '+cM:oA+' às '+cA})`;
+    if(ABSENCE_TYPES.includes(type)) txt=`${TYPE_LABEL[type]} · dia inteiro fora — não desconta banco de horas`;
+    else if(type==='meio_turno') txt=`Meio turno ${shift==='manha'?'manhã':'tarde'} · ${fmtHrs(shift==='manha'?mh:ah)} (das ${shift==='manha'?oM+' às '+cM:oA+' às '+cA})`;
     else if(type==='integral') txt=`Folga o dia todo · ${fmtHrs(mh+ah)}`;
     else { const prev={type,shift,hours:+$('#ff_hours').value||1}; txt=folgaTimeLabel(prev,rules)+' · '+prev.hours+'h'; }
     $('#ff_preview').textContent='Vai aparecer como: '+txt;

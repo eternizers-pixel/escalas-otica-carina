@@ -314,7 +314,9 @@ window.Engine = (function () {
       const comm = (rules.block_commemorative!==false) ? commemorativeBlock(dStr, leadDays) : null;
       if (comm){ logs.push({type:'bloqueio', message:`${DIAS[dow]} (${dStr}): sem folga — semana de ${comm} (alto movimento). As folgas ficam para depois da data.`}); continue; }
       const existToday = existing.filter(it=>it.date===dStr);
-      const integralToday = existToday.filter(it=>it.type==='integral' || it.shift==='dia_inteiro').map(it=>it.employee_id);
+      // dia inteiro fora: folga integral, falta, atestado, afastamento (qualquer um tira a pessoa do dia)
+      const FULLDAY_OUT=['integral','falta','atestado','afastamento'];
+      const integralToday = existToday.filter(it=>FULLDAY_OUT.includes(it.type) || it.shift==='dia_inteiro').map(it=>it.employee_id);
       const availDay = active.filter(e=>!onVac(e,dStr) && !integralToday.includes(e.id));
       if (availDay.length < minPer){ logs.push({type:'bloqueio', message:`${DIAS[dow]} (${dStr}): só ${availDay.length} pessoa(s) disponível(is) e o mínimo da loja é ${minPer}.`}); continue; }
       const absent={}; existToday.forEach(it=>slotsOf(it).forEach(sl=>{ absent[sl]=(absent[sl]||0)+1; }));
