@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v37 (sem colisão de horário no mesmo dia + sexta-primeiro só com rodízio + texto do banco)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v38 (horário alternativo quando o preferido lota + preserva preferidos + tag sexta só em rodízio)
 // ============================================================
 (function(){
 "use strict";
