@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v47 (área funcionária mobile + banco + próximo sábado/troca + notificações do gestor)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v48 (resolver troca de sábado + ajustes UI funcionária: relógio, data, chips 2 colunas)
 // ============================================================
 (function(){
 "use strict";
@@ -246,7 +246,7 @@ async function renderFuncionaria(){
   ]);
   const me=emps[0]||{};
   const first=(me.name||'').trim().split(' ')[0]||'você';
-  const PREF=[['manha_entrar','Entrar mais tarde (manhã)'],['manha_sair','Sair mais cedo (manhã)'],['tarde_entrar','Entrar mais tarde (tarde)'],['tarde_sair','Sair mais cedo (tarde)']];
+  const PREF=[['manha_entrar','Entrar + tarde · manhã'],['manha_sair','Sair + cedo · manhã'],['tarde_entrar','Entrar + tarde · tarde'],['tarde_sair','Sair + cedo · tarde']];
   const PL=Object.fromEntries(PREF);
   const myPref=String(me.dayoff_pref||'').split(',').map(s=>s.trim()).filter(Boolean);
   const dataBR=d=>(d||'').split('-').reverse().slice(0,2).join('/');
@@ -274,7 +274,7 @@ async function renderFuncionaria(){
     : '<p class="muted" style="margin:0">Você ainda não fez pedidos.</p>';
   $('#view').innerHTML=`<div class="fnc">
     <div class="fnc-hi"><h2>Olá, ${esc(first)}! 👋</h2><p>Acompanhe aqui seu banco de horas, suas folgas e sua posição na fila.</p></div>
-    <div class="panel"><div class="ph"><h3>💰 Seu banco de horas</h3></div><div class="pb"><div class="kpi">${fmtH(me.time_bank_balance||0)}</div><div class="reason">${bankUpd}</div></div></div>
+    <div class="panel"><div class="ph"><h3>⏰ Seu banco de horas</h3></div><div class="pb"><div class="kpi">${fmtH(me.time_bank_balance||0)}</div><div class="reason">${bankUpd}</div></div></div>
     <div class="panel section"><div class="ph"><h3>📊 Sua posição na fila</h3></div><div class="pb">${posBlock}</div></div>
     <div class="panel section"><div class="ph"><h3>📅 Próximas folgas</h3></div><div class="pb">${folgaList}</div></div>
     <div class="panel section"><div class="ph"><h3>🗓️ Próximo sábado de trabalho</h3></div><div class="pb">${satBlock}</div></div>
@@ -1292,7 +1292,7 @@ ROUTES.pedidos=async function(){
     <thead><tr><th>Funcionária</th><th>Data</th><th>Tipo</th><th>Motivo</th><th>Status</th><th></th></tr></thead>
     <tbody>${reqs.map(r=>`<tr><td><b>${esc(r.employee_name||map[r.employee_id]||'—')}</b></td><td>${r.date||'—'}</td><td>${reqTypeLabel(r.request_type)}</td><td class="muted">${esc(r.reason||'')}</td>
       <td><span class="pill ${r.status==='aprovado'?'ativa':r.status==='recusado'?'afastada':'ferias'}">${r.status}</span></td>
-      <td class="row-actions">${isGestor()?`${r.status==='pendente'?`<button class="btn sm" data-ap="${r.id}">Aprovar</button><button class="btn sec sm" data-rf="${r.id}">Recusar</button>`:''}<button class="btn ghost sm" data-edexc="${r.id}">Editar</button><button class="btn ghost sm" style="color:var(--red)" data-delexc="${r.id}">Remover</button>`:''}</td></tr>`).join('')||'<tr><td colspan=6 class="muted" style="padding:16px">Nenhum pedido registrado.</td></tr>'}
+      <td class="row-actions">${isGestor()?`${r.status==='pendente'?`${r.request_type==='troca_folga'?`<button class="btn sm" data-troca="${r.id}">🔁 Resolver troca</button>`:`<button class="btn sm" data-ap="${r.id}">Aprovar</button>`}<button class="btn sec sm" data-rf="${r.id}">Recusar</button>`:''}<button class="btn ghost sm" data-edexc="${r.id}">Editar</button><button class="btn ghost sm" style="color:var(--red)" data-delexc="${r.id}">Remover</button>`:''}</td></tr>`).join('')||'<tr><td colspan=6 class="muted" style="padding:16px">Nenhum pedido registrado.</td></tr>'}
     </tbody></table></div></div>`;
   $('#addFolga')?.addEventListener('click',()=>folgaModal(null,emps,rules));
   $$('[data-edf]').forEach(b=>b.onclick=()=>folgaModal(folgas.find(x=>x.id===b.dataset.edf),emps,rules));
@@ -1313,9 +1313,31 @@ ROUTES.pedidos=async function(){
   $('#addReq')?.addEventListener('click',()=>reqModal(null));
   $$('[data-edexc]').forEach(b=>b.onclick=()=>reqModal(reqs.find(x=>x.id===b.dataset.edexc)));
   $$('[data-delexc]').forEach(b=>b.onclick=async()=>{ if(!gate())return; if(!confirm('Remover esta exceção?'))return; await T('dayoff_requests').delete().eq('id',b.dataset.delexc); toast('Exceção removida.'); route(); });
+  $$('[data-troca]').forEach(b=>b.onclick=()=>satSwapModal(reqs.find(x=>x.id===b.dataset.troca)));
   $$('[data-ap]').forEach(b=>b.onclick=async()=>{ if(!gate())return; await T('dayoff_requests').update({status:'aprovado'}).eq('id',b.dataset.ap); toast('Aprovado.'); route(); });
   $$('[data-rf]').forEach(b=>b.onclick=async()=>{ if(!gate())return; await T('dayoff_requests').update({status:'recusado'}).eq('id',b.dataset.rf); toast('Recusado.'); route(); });
 };
+// resolve uma troca de sábado: escolhe a colega e troca os dois no rodízio (atualiza tudo)
+async function satSwapModal(req){
+  if(!req||!req.date){ toast('Pedido sem data de sábado.'); return; }
+  const d=Engine.parse(req.date); const yy=d.getFullYear(), mm=d.getMonth()+1;
+  const rows=await getAll('saturday_rotation',b=>b.eq('year',yy).eq('month',mm));
+  const br=x=>(x||'').split('-').reverse().slice(0,2).join('/');
+  const mine=rows.find(r=>r.employee_id===req.employee_id && r.saturday_date===req.date) || rows.find(r=>r.employee_id===req.employee_id);
+  if(!mine){ toast('Não encontrei o sábado dela no rodízio deste mês. Salve o rodízio primeiro.'); return; }
+  const cands=rows.filter(r=>r.saturday_date && r.saturday_date!==mine.saturday_date);
+  const body=`<p style="margin-top:0"><b>${esc(req.employee_name||'A funcionária')}</b> está no sábado <b>${br(mine.saturday_date)}</b> e pediu troca.</p>
+    <p class="muted">Escolha com quem trocar — ela vai para o sábado da colega e a colega vem para o dela. O rodízio é atualizado na hora.</p>
+    ${cands.length? cands.map(c=>`<div class="card" style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px"><span><b>${esc(c.employee_name||'')}</b> <span class="muted">· trabalha ${br(c.saturday_date)}</span></span><button class="btn sm" data-swap="${c.id}">Trocar</button></div>`).join('') : box('warn','Não há colega escalada em outro sábado deste mês para trocar.')}`;
+  openModal('Resolver troca de sábado', body, ()=>true);
+  $('#mSave')?.remove(); const cancel=$('#mCancel'); if(cancel) cancel.textContent='Fechar';
+  $$('[data-swap]').forEach(b=>b.onclick=async()=>{ if(!gate())return; const c=cands.find(x=>String(x.id)===b.dataset.swap); if(!c)return; b.disabled=true; b.textContent='Trocando…';
+    const r1=await T('saturday_rotation').update({saturday_number:c.saturday_number, saturday_date:c.saturday_date}).eq('id',mine.id);
+    const r2=await T('saturday_rotation').update({saturday_number:mine.saturday_number, saturday_date:mine.saturday_date}).eq('id',c.id);
+    if((r1&&r1.error)||(r2&&r2.error)){ toast(((r1&&r1.error)||(r2&&r2.error)).message); return; }
+    await T('dayoff_requests').update({status:'aprovado', reason:((req.reason?req.reason+' · ':'')+'Trocou com '+(c.employee_name||''))}).eq('id',req.id);
+    $('#modalRoot').innerHTML=''; toast('Troca efetivada! Rodízio de sábados atualizado.'); route(); });
+}
 function reqTypeLabel(t){return {pedido_folga:'Pedido de folga',recusa_folga:'Recusa de folga',falta:'Falta',atestado:'Atestado',afastamento:'Afastamento',saida_antecipada:'Saída antecipada',atraso:'Atraso',troca_folga:'Troca de folga'}[t]||t;}
 
 // ---------- RELATÓRIOS ----------

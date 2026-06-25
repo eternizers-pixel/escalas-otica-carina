@@ -92,6 +92,7 @@ tr:last-child td{border-bottom:none}
 .btn:disabled{opacity:.45;cursor:not-allowed}
 input,select,textarea{width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:10px;font-size:14px;font-family:inherit;background:#fff;color:var(--ink)}
 input[type=checkbox],input[type=radio]{width:auto;padding:0;margin:0;border:0;border-radius:0;flex:0 0 auto}
+input[type=date],input[type=time]{-webkit-appearance:none;appearance:none;min-width:0}
 input:focus,select:focus,textarea:focus{outline:none;border-color:var(--brand)}
 label{display:block;font-size:12.5px;color:var(--muted);margin:0 0 5px;font-weight:600}
 .field{margin-bottom:13px}
@@ -111,6 +112,8 @@ label{display:block;font-size:12.5px;color:var(--muted);margin:0 0 5px;font-weig
 .fnc-hi p{margin:5px 0 0;color:var(--muted);font-size:14px}
 .fnc .kpi{font-size:30px}
 .fnc .btn{border-radius:12px}
+.fnc .chip-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.fnc .chk-chip{width:100%;border-radius:12px;justify-content:flex-start}
 /* notificações (gestor) */
 .notif-bell{position:relative;background:none;border:0;cursor:pointer;font-size:19px;line-height:1;padding:4px 6px}
 .notif-badge{position:absolute;top:-3px;right:-3px;background:var(--red);color:#fff;font-size:10px;font-weight:800;min-width:16px;height:16px;border-radius:9px;display:flex;align-items:center;justify-content:center;padding:0 3px}
