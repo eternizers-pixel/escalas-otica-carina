@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v35 (folgas aprovadas em blocos por dia, 2 por linha)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v36 (tag de preferência da funcionária no motor de folgas)
 // ============================================================
 (function(){
 "use strict";
@@ -623,6 +623,14 @@ ROUTES.folgas=async function(){
       if(s.includes('sexta')) return 'background:var(--purple-soft);color:var(--purple)';
       if(s.includes('prioridade')) return 'background:var(--amber-soft);color:var(--amber)';
       return 'background:#eef0f4;color:#5b6577';};
+    // tag com a preferência que a funcionária escolheu (ou "sem preferência · aleatório")
+    const PREF_LABEL={manha_entrar:'Entrar +tarde · manhã',manha_sair:'Sair +cedo · manhã',tarde_entrar:'Entrar +tarde · tarde',tarde_sair:'Sair +cedo · tarde'};
+    const prefBadge=(empId)=>{
+      const e=emps.find(x=>x.id===empId);
+      const codes=String((e&&e.dayoff_pref)||'').split(',').map(x=>x.trim()).filter(c=>PREF_LABEL[c]);
+      if(!codes.length || codes.length>=4) return `<span style="font-size:11px;font-weight:600;background:#eef0f4;color:#5b6577;padding:2px 9px;border-radius:20px">🎲 Sem preferência · aleatório</span>`;
+      return `<span style="font-size:11px;font-weight:600;background:var(--purple-soft);color:var(--purple);padding:2px 9px;border-radius:20px">🙋 Prefere: ${esc(codes.map(c=>PREF_LABEL[c]).join(' / '))}</span>`;
+    };
     const dayBlocks=Object.keys(byDay).sort().map(date=>{
       const dia=Engine.DOW[Engine.parse(date).getDay()]; const dataBR=date.split('-').reverse().slice(0,2).join('/');
       const cards=byDay[date].map(s=>{
@@ -633,6 +641,7 @@ ROUTES.folgas=async function(){
             <div style="font-weight:700;font-size:15px">${esc(s.employee_name)}</div>
             <div style="font-size:14px;font-weight:600;margin-top:3px">${TYPE_LABEL[s.type]||s.type} <span class="muted" style="font-weight:500">(${SHIFT_LABEL[s.shift]||s.shift}) · ${s.hours}h${hora}</span></div>
           </div>
+          <div style="display:flex;gap:5px;flex-wrap:wrap">${prefBadge(s.employee_id)}</div>
           ${(s.tags&&s.tags.length)?`<div style="display:flex;gap:5px;flex-wrap:wrap">${s.tags.map(t=>`<span style="font-size:11px;font-weight:600;${tagColor(t)};padding:2px 9px;border-radius:20px">${esc(t)}</span>`).join('')}</div>`:''}
           <div class="row-actions" id="act${i}" style="margin-top:auto;padding-top:2px">${isGestor()?`<button class="btn sm" data-ap="${i}">Aprovar</button><button class="btn sm" data-aj="${i}" style="background:var(--amber-soft);color:var(--amber)">✏️ Ajustar</button><button class="btn sec sm" data-rf="${i}">Recusar</button>`:'<span class="muted">—</span>'}</div>
         </div>`;
