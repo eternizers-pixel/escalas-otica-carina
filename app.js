@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v43 (relatório: total de sábados conta datas distintas, não soma de pessoas)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v44 (relatório por funcionária: sábados trabalhados vs programados)
 // ============================================================
 (function(){
 "use strict";
@@ -1204,7 +1204,8 @@ ROUTES.relatorios=async function(){
       integral:mine.filter(i=>i.type==='integral').length,
       meio:mine.filter(i=>i.type==='meio_turno').length,
       vesp:mine.filter(i=>nearHoliday(i.date)).length,
-      sabados:rot.filter(x=>x.employee_id===e.id && x.worked!==false).length,
+      sabPast:rot.filter(x=>x.employee_id===e.id && x.worked!==false && x.saturday_date && x.saturday_date<=hoje).length,
+      sabFut:rot.filter(x=>x.employee_id===e.id && x.worked!==false && x.saturday_date && x.saturday_date>hoje).length,
       recusas:reqs.filter(x=>x.employee_id===e.id&&x.request_type==='recusa_folga').length,
       faltas:reqs.filter(x=>x.employee_id===e.id&&x.request_type==='falta').length,
       pedidos:reqs.filter(x=>x.employee_id===e.id&&['troca_folga','pedido_folga'].includes(x.request_type)).length + mine.filter(i=>/manual/i.test(i.reason||'')).length,
@@ -1252,7 +1253,8 @@ ROUTES.relatorios=async function(){
             ${stat('Folgas de dia inteiro',p.integral,p.integral>0)}
             ${stat('Folgas de meio turno',p.meio)}
             ${stat('Véspera de feriado',p.vesp,p.vesp>0)}
-            ${stat('Sábados trabalhados',p.sabados)}
+            ${stat('Sábados trabalhados',p.sabPast)}
+            ${stat('Sábados programados',p.sabFut)}
             ${stat('Recusas de folga',p.recusas)}
             ${stat('Faltas',p.faltas)}
             ${stat('Pedidos / trocas',p.pedidos)}
