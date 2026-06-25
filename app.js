@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v46 (login de funcionária: área restrita + tela de Acessos + posição na fila)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v47 (área funcionária mobile + banco + próximo sábado/troca + notificações do gestor)
 // ============================================================
 (function(){
 "use strict";
@@ -197,6 +197,7 @@ function route(){
   const k=(location.hash||'#home').slice(1);
   updateSimBanner();
   if(S.role==='funcionaria'){ $('#backBtn').classList.add('hidden'); $('#pageTitle').textContent='Minha área'; renderFuncionaria(); return; }
+  if(S.role==='gestor') setupNotifs();
   if(k==='home'){ $('#backBtn').classList.add('hidden'); $('#pageTitle').textContent=''; renderHome(); return; }
   const def=NAV.find(n=>n[0]===k);
   $('#pageTitle').textContent=def?def[3]:'';
@@ -233,20 +234,26 @@ function renderHome(){
 async function renderFuncionaria(){
   const eid=S.profile&&S.profile.employee_id;
   if(!eid){ $('#view').innerHTML=box('warn','Seu acesso ainda não foi vinculado a uma funcionária. Peça à gestão para liberar você em <b>Configurações → Acessos</b>.'); return; }
-  $('#view').innerHTML='<p class="muted">Carregando…</p>';
+  $('#view').innerHTML='<div class="fnc"><p class="muted">Carregando…</p></div>';
   const today=todayStr();
-  const [emps,items,reqs,rules]=await Promise.all([
+  const [emps,items,reqs,sats,imp,rules]=await Promise.all([
     getAll('employees',b=>b.eq('id',eid)),
     getAll('schedule_items',b=>b.eq('employee_id',eid).gte('date',today).eq('status','aprovado').order('date')),
     getAll('dayoff_requests',b=>b.eq('employee_id',eid).order('created_at',{ascending:false}).limit(20)),
+    getAll('saturday_rotation',b=>b.eq('employee_id',eid).gte('saturday_date',today).order('saturday_date').limit(1)),
+    T('time_bank_imports').select('imported_at').eq('source','planilha').order('imported_at',{ascending:false}).limit(1).maybeSingle().then(r=>r.data).catch(()=>null),
     T('store_rules').select('*').eq('id',1).maybeSingle().then(r=>r.data||{})
   ]);
   const me=emps[0]||{};
+  const first=(me.name||'').trim().split(' ')[0]||'você';
   const PREF=[['manha_entrar','Entrar mais tarde (manhã)'],['manha_sair','Sair mais cedo (manhã)'],['tarde_entrar','Entrar mais tarde (tarde)'],['tarde_sair','Sair mais cedo (tarde)']];
   const PL=Object.fromEntries(PREF);
   const myPref=String(me.dayoff_pref||'').split(',').map(s=>s.trim()).filter(Boolean);
   const dataBR=d=>(d||'').split('-').reverse().slice(0,2).join('/');
   const codeOf=r=>((r.shift==='manha'?'manha':'tarde')+'_'+(r.type==='entrada_tarde'?'entrar':'sair'));
+  // banco + última atualização
+  let bankUpd='Atualizado pela gestão.';
+  if(imp&&imp.imported_at){ const dt=new Date(imp.imported_at); const sd=x=>{const z=new Date(x);z.setHours(0,0,0,0);return z.getTime();}; const dias=Math.round((sd(Date.now())-sd(dt))/86400000); bankUpd=`Última atualização: ${dt.toLocaleDateString('pt-BR')} ${dias<=0?'(hoje)':dias===1?'(ontem)':`(há ${dias} dias)`}`; }
   const pos=me.queue_position, tot=me.queue_total;
   const posBlock = pos
     ? `<div class="kpi">${pos}º<small> de ${tot} na fila</small></div>${me.queue_reason?`<div class="reason">${esc(me.queue_reason)}</div>`:''}`
@@ -254,23 +261,33 @@ async function renderFuncionaria(){
   const folgaList = items.length
     ? items.map(it=>`<div class="card" style="margin-bottom:8px"><b>${dataBR(it.date)}</b> <span class="muted">(${Engine.DOW[Engine.parse(it.date).getDay()]})</span><div style="font-weight:600;margin-top:2px">${folgaTimeLabel(it,rules)}</div></div>`).join('')
     : '<p class="muted" style="margin:0">Nenhuma folga agendada por enquanto.</p>';
-  const myReqs=reqs.filter(r=>r.request_type==='pedido_folga');
+  const nextSat=sats[0];
+  const satBlock = nextSat
+    ? `<div style="font-weight:700;font-size:17px">${dataBR(nextSat.saturday_date)} <span class="muted" style="font-weight:500;font-size:13px">· sábado</span></div>
+       <p class="muted" style="margin:6px 0 0;font-size:13px">Quer trocar com uma colega? Peça aqui — a gestão organiza.</p>
+       <button class="btn sec" id="swapSat" style="margin-top:10px;width:100%">🔁 Solicitar troca</button>`
+    : '<p class="muted" style="margin:0">Nenhum sábado agendado para você por enquanto.</p>';
+  const myReqs=reqs.filter(r=>['pedido_folga','troca_folga'].includes(r.request_type));
+  const reqLbl=r=> r.request_type==='troca_folga'?'Troca de sábado':(PL[codeOf(r)]||TYPE_LABEL[r.type]||'folga');
   const reqList = myReqs.length
-    ? myReqs.map(r=>`<div class="card" style="margin-bottom:8px;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center"><span><b>${dataBR(r.date)}</b> <span class="muted">· ${esc(PL[codeOf(r)]||TYPE_LABEL[r.type]||'folga')}</span></span><span class="pill ${r.status==='aprovado'?'ativa':r.status==='recusado'?'afastada':'ferias'}">${r.status}</span></div>`).join('')
+    ? myReqs.map(r=>`<div class="card" style="margin-bottom:8px;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center"><span><b>${dataBR(r.date)}</b> <span class="muted">· ${esc(reqLbl(r))}</span></span><span class="pill ${r.status==='aprovado'?'ativa':r.status==='recusado'?'afastada':'ferias'}">${r.status}</span></div>`).join('')
     : '<p class="muted" style="margin:0">Você ainda não fez pedidos.</p>';
-  $('#view').innerHTML=`
-    ${box('info','Aqui você acompanha sua <b>posição na fila</b>, vê suas <b>próximas folgas</b>, ajusta sua <b>preferência</b> e <b>pede folga</b>. Os pedidos vão para a gestão aprovar.')}
-    <div class="panel"><div class="ph"><h3>📊 Sua posição na fila de folgas</h3></div><div class="pb">${posBlock}</div></div>
-    <div class="panel section"><div class="ph"><h3>📅 Suas próximas folgas</h3></div><div class="pb">${folgaList}</div></div>
-    <div class="panel section"><div class="ph"><h3>🙋 Minha preferência de folga</h3><button class="btn sm" id="savePref">Salvar</button></div>
-      <div class="pb"><p class="muted" style="margin:0 0 8px">Marque como você prefere folgar. A gestão tenta seguir quando dá — não é garantido.</p>
+  $('#view').innerHTML=`<div class="fnc">
+    <div class="fnc-hi"><h2>Olá, ${esc(first)}! 👋</h2><p>Acompanhe aqui seu banco de horas, suas folgas e sua posição na fila.</p></div>
+    <div class="panel"><div class="ph"><h3>💰 Seu banco de horas</h3></div><div class="pb"><div class="kpi">${fmtH(me.time_bank_balance||0)}</div><div class="reason">${bankUpd}</div></div></div>
+    <div class="panel section"><div class="ph"><h3>📊 Sua posição na fila</h3></div><div class="pb">${posBlock}</div></div>
+    <div class="panel section"><div class="ph"><h3>📅 Próximas folgas</h3></div><div class="pb">${folgaList}</div></div>
+    <div class="panel section"><div class="ph"><h3>🗓️ Próximo sábado de trabalho</h3></div><div class="pb">${satBlock}</div></div>
+    <div class="panel section"><div class="ph"><h3>🙋 Minha preferência</h3><button class="btn sm" id="savePref">Salvar</button></div>
+      <div class="pb"><p class="muted" style="margin:0 0 8px">Como você prefere folgar. A gestão tenta seguir quando dá — não é garantido.</p>
       <div class="chip-row">${PREF.map(([v,l])=>`<label class="chk-chip"><input type="checkbox" class="myp" value="${v}" ${myPref.includes(v)?'checked':''}/> ${l}</label>`).join('')}</div></div></div>
     <div class="panel section"><div class="ph"><h3>✉️ Pedir uma folga</h3></div><div class="pb">
-      <div class="grid2"><div class="field"><label>Dia</label><input id="rq_date" type="date" min="${today}" value="${today}"/></div>
-        <div class="field"><label>Como prefere</label><select id="rq_code">${PREF.map(([v,l])=>`<option value="${v}">${l}</option>`).join('')}</select></div></div>
+      <div class="field"><label>Dia</label><input id="rq_date" type="date" min="${today}" value="${today}"/></div>
+      <div class="field"><label>Como prefere</label><select id="rq_code">${PREF.map(([v,l])=>`<option value="${v}">${l}</option>`).join('')}</select></div>
       <div class="field"><label>Motivo (opcional)</label><input id="rq_reason" placeholder="ex.: consulta médica"/></div>
-      <button class="btn" id="sendReq">Enviar pedido</button>
-      <div class="section"><h3 style="font-size:13px;color:var(--muted);margin:0 0 8px">Seus pedidos</h3>${reqList}</div></div></div>`;
+      <button class="btn" id="sendReq" style="width:100%">Enviar pedido</button>
+      <div class="section"><h3 style="font-size:13px;color:var(--muted);margin:0 0 8px">Seus pedidos</h3>${reqList}</div></div></div>
+  </div>`;
   $('#savePref').onclick=async()=>{ const codes=$$('.myp').filter(c=>c.checked).map(c=>c.value).join(',');
     const {error}=await sb.rpc('esc_set_my_dayoff_pref',{p_codes:codes});
     if(error){toast(error.message);return;} toast('Preferência salva! A gestão já passa a considerar.'); };
@@ -278,6 +295,45 @@ async function renderFuncionaria(){
     if(!d){toast('Escolha o dia.');return;}
     const {error}=await sb.rpc('esc_request_my_dayoff',{p_date:d,p_code:code,p_reason:reason});
     if(error){toast(error.message);return;} toast('Pedido enviado para a gestão!'); renderFuncionaria(); };
+  $('#swapSat')?.addEventListener('click',async()=>{ if(!nextSat)return;
+    if(!confirm('Pedir troca do sábado '+dataBR(nextSat.saturday_date)+'? A gestão vai organizar a troca com outra colega.'))return;
+    const {error}=await sb.rpc('esc_request_saturday_swap',{p_date:nextSat.saturday_date,p_reason:''});
+    if(error){toast(error.message);return;} toast('Pedido de troca enviado para a gestão!'); renderFuncionaria(); });
+}
+
+// ---------- NOTIFICAÇÕES (gestor) ----------
+function setupNotifs(){
+  if(S.role!=='gestor') return;
+  if(!$('#notifBell')){
+    const hr=document.querySelector('.head-right'); if(!hr) return;
+    const bell=document.createElement('button'); bell.id='notifBell'; bell.className='notif-bell'; bell.title='Notificações';
+    bell.innerHTML='🔔<span id="notifBadge" class="notif-badge" style="display:none">0</span>';
+    hr.insertBefore(bell, $('#logoutBtn'));
+    const ov=document.createElement('div'); ov.id='notifOverlay'; ov.className='notif-overlay';
+    const dr=document.createElement('div'); dr.id='notifDrawer'; dr.className='notif-drawer';
+    dr.innerHTML='<div class="notif-head"><b>🔔 Notificações</b><button id="notifClose" class="linkbtn" style="font-size:18px">✕</button></div><div id="notifBody" class="notif-body"></div>';
+    document.body.appendChild(ov); document.body.appendChild(dr);
+    const close=()=>{dr.classList.remove('open');ov.classList.remove('open');};
+    bell.onclick=()=>{dr.classList.add('open');ov.classList.add('open');};
+    ov.onclick=close; $('#notifClose').onclick=close;
+  }
+  refreshNotifs();
+}
+async function refreshNotifs(){
+  if(S.role!=='gestor' || !$('#notifBadge')) return;
+  const [pend,imp]=await Promise.all([
+    getAll('dayoff_requests',b=>b.eq('status','pendente').order('created_at',{ascending:false})),
+    T('time_bank_imports').select('imported_at').eq('source','planilha').order('imported_at',{ascending:false}).limit(1).maybeSingle().then(r=>r.data).catch(()=>null)
+  ]);
+  const sd=x=>{const z=new Date(x);z.setHours(0,0,0,0);return z.getTime();};
+  const upToday = imp && imp.imported_at && sd(imp.imported_at)===sd(Date.now());
+  const out=[];
+  if(!upToday) out.push(`<div class="notif-item warn"><div>📥 <b>Atualize o banco de horas</b><div class="muted" style="font-size:12.5px">Lembrete diário — sincronize a planilha do TiqueTaque.</div></div><a class="btn sm ntf-go" href="#tiquetaque">Atualizar</a></div>`);
+  pend.forEach(r=>{ const dt=r.date?(' · '+r.date.split('-').reverse().slice(0,2).join('/')):''; out.push(`<div class="notif-item"><div>📩 <b>${esc(r.employee_name||'Funcionária')}</b> <span class="muted">— ${esc(reqTypeLabel(r.request_type))}${dt}</span><div class="muted" style="font-size:12.5px">${esc(r.reason||'aguardando sua aprovação')}</div></div><a class="btn sm ntf-go" href="#pedidos">Ver</a></div>`); });
+  const count=(upToday?0:1)+pend.length;
+  const badge=$('#notifBadge'); badge.textContent=count; badge.style.display=count?'':'none';
+  $('#notifBody').innerHTML=out.length?out.join(''):'<p class="muted" style="padding:16px;text-align:center">Tudo em dia! ✅<br>Sem pendências.</p>';
+  $$('.ntf-go').forEach(a=>a.addEventListener('click',()=>{ $('#notifDrawer').classList.remove('open'); $('#notifOverlay').classList.remove('open'); }));
 }
 ROUTES.config=function(){
   $('#view').innerHTML=`${box('info','Aqui ficam os ajustes e cadastros. As telas do dia a dia (folgas, sábados, calendário) estão na tela inicial.')}${cardsFor(CONFIG_KEYS)}`;
