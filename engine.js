@@ -324,9 +324,11 @@ window.Engine = (function () {
       // o teto de folgas por dia JÁ CONTA as folgas aprovadas neste dia (não oferece mais que o limite)
       openDays.push({dStr,dow,availDay,absent,doneToday:new Set(existToday.map(it=>it.employee_id)),count:existToday.length,expertsAvail,expertOff});
     }
-    // SEXTA primeiro: garante o rodízio justo de sexta (reserva quem não pegou sexta recentemente);
-    // os demais dias seguem em ordem de data.
-    openDays.sort((a,b)=> (b.dow===5?1:0)-(a.dow===5?1:0) || (a.dStr<b.dStr?-1:1));
+    // SEXTA primeiro SÓ quando há rodízio de sexta em jogo (alguém da fila tirou sexta recentemente e
+    // seria bloqueada). Sem esse histórico, segue a ordem normal de data — a fila pega o primeiro dia liberado.
+    const friDay = openDays.find(d=>d.dow===5);
+    const fridayRotationNeeded = !!friDay && pool.some(e=>{ const iso=history[e.id]&&history[e.id].lastFridayISO; return iso && Math.round((parse(friDay.dStr)-parse(iso))/86400000) <= 10; });
+    openDays.sort((a,b)=> fridayRotationNeeded ? ((b.dow===5?1:0)-(a.dow===5?1:0) || (a.dStr<b.dStr?-1:1)) : (a.dStr<b.dStr?-1:1));
     // bloqueia repetir a MESMA pessoa na segunda/sexta em semanas seguidas (pegou esse dia na ~última semana)
     const recentSameDow = (e, day)=>{
       const iso = day.dow===5 ? (history[e.id]&&history[e.id].lastFridayISO) : day.dow===1 ? (history[e.id]&&history[e.id].lastMondayISO) : null;
@@ -413,8 +415,9 @@ window.Engine = (function () {
             let allowed=String(e.dayoff_pref||'').split(',').map(s=>s.trim()).filter(c=>ALL.includes(c));
             if(!allowed.length) allowed=STORE.slice(); else allowed=allowed.filter(c=>STORE.includes(c));
             if(!allowed.length) allowed=STORE.slice();
-            // só horários que mantêm o mínimo na loja
-            const validos=allowed.filter(code=> (day.availDay.length-((day.absent[SLOT[code]]||0)+1)) >= minPer);
+            // cada HORÁRIO (slot) só pode ter UMA folga no dia: duas pessoas no mesmo dia, mas NUNCA no mesmo horário.
+            // Se o horário que ela faz já está ocupado, ela não folga nesse dia — vai para outro dia.
+            const validos=allowed.filter(code=> (day.absent[SLOT[code]]||0)===0 && (day.availDay.length-1) >= minPer);
             if(!validos.length) continue;
             // rodízio entrar/sair: se já teve "entrar mais tarde" nesta semana, a próxima é "sair mais cedo" (e vice-versa)
             const jaUsou = usedKind[e.id] || new Set();
@@ -514,7 +517,7 @@ window.Engine = (function () {
       return (a.name||'').localeCompare(b.name||'');
     });
     rows.forEach((x,i)=>{ x.position=i+1; const w=[];
-      if(!x.elig){ w.push(`sem saldo p/ folga (previsto ${fH(x.proj)}${x.marcadas>0?', já descontada folga marcada':''} abaixo do mínimo ${fH(minBank)})`); }
+      if(!x.elig){ const falta=Math.max(0, minBank - x.proj); w.push(`sem saldo p/ folga · banco ${x.marcadas>0?'previsto ':''}de ${fH(x.proj)}${falta>0?` — faltam ${fH(falta)} pro mínimo de ${fH(minBank)}`:''}`); }
       else {
         if(x.marcadas>0) w.push(`já tem ${x.marcadas} folga(s) marcada(s) — passou a vez`);
         w.push((x.proj>0&&x.proj>=maxProj) ? `maior banco${x.marcadas>0?' previsto':''} (${fH(x.proj)})` : `banco${x.marcadas>0?' previsto':''} de ${fH(x.proj)}`);

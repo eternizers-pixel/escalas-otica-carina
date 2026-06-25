@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v36 (tag de preferência da funcionária no motor de folgas)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v37 (sem colisão de horário no mesmo dia + sexta-primeiro só com rodízio + texto do banco)
 // ============================================================
 (function(){
 "use strict";
