@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v41 (ausências só em Pedidos & exceções; enum esc_request_type ganhou afastamento)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v42 (remover férias volta status p/ ativa)
 // ============================================================
 (function(){
 "use strict";
@@ -581,7 +581,15 @@ ROUTES.ferias=async function(){
         if(res.error){toast(res.error.message);return false;}
         await T('employees').update({status:'ferias'}).eq('id',emp); toast('Férias cadastradas.'); route(); return true; });
   });
-  $$('[data-delv]').forEach(b=>b.onclick=async()=>{ if(!gate())return; await T('vacation_periods').delete().eq('id',b.dataset.delv); route(); });
+  $$('[data-delv]').forEach(b=>b.onclick=async()=>{ if(!gate())return;
+    const v=vacs.find(x=>String(x.id)===String(b.dataset.delv));
+    await T('vacation_periods').delete().eq('id',b.dataset.delv);
+    // ao remover o período, se a funcionária estava 'ferias' e não tem outro período, volta para 'ativa'
+    if(v){ const emp=emps.find(e=>String(e.id)===String(v.employee_id));
+      const outros=vacs.filter(x=>String(x.employee_id)===String(v.employee_id) && String(x.id)!==String(b.dataset.delv));
+      if(emp && emp.status==='ferias' && !outros.length) await T('employees').update({status:'ativa'}).eq('id',v.employee_id);
+    }
+    toast('Férias removidas.'); route(); });
 };
 
 // ---------- MOTOR DE FOLGAS ----------
