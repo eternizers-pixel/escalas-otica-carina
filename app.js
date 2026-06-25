@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v45 (relatório: remove bloco 'Véspera de feriado' da tela; fator segue no índice)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v46 (login de funcionária: área restrita + tela de Acessos + posição na fila)
 // ============================================================
 (function(){
 "use strict";
@@ -161,7 +161,7 @@ async function boot(){
   $('#login').style.display='none'; $('#app').style.display='block';
   const nm=(S.profile.full_name && S.profile.full_name!==user.email)?S.profile.full_name:user.email.split('@')[0];
   $('#uName').textContent=nm;
-  $('#uRole').innerHTML=`<span class="badge ${S.role}">${S.role==='gestor'?'Gestor':'Visualização'}</span>`;
+  $('#uRole').innerHTML=`<span class="badge ${S.role}">${S.role==='gestor'?'Gestor':S.role==='funcionaria'?'Funcionária':'Visualização'}</span>`;
   if(!location.hash) location.hash='#home';
   route();
 }
@@ -175,6 +175,7 @@ const NAV=[
   ['calendario','🗓️','b','Calendário','Visão mensal de folgas e férias'],
   ['config','⚙️','p','Configurações','Funcionárias, regras, TiqueTaque e mais'],
   ['funcionarias','👥','g','Funcionárias','Cadastro, cargos e banco de horas'],
+  ['acessos','🔑','k','Acessos','Logins das funcionárias e permissões'],
   ['ferias','✈️','a','Férias','Períodos e impacto na escala'],
   ['pedidos','📨','k','Pedidos & exceções','Folgas, faltas, atestados, trocas'],
   ['tiquetaque','🔄','t','TiqueTaque','Sincronizar banco de horas'],
@@ -186,7 +187,7 @@ const NAV=[
 const HOME_TOP=['dashboard','folgas','escala','relatorios'];
 const HOME_BOTTOM=['sabados','calendario','pedidos','config'];
 const HOME_KEYS=[...HOME_TOP,...HOME_BOTTOM];
-const CONFIG_KEYS=['funcionarias','ferias','tiquetaque','regras','simulacao'];
+const CONFIG_KEYS=['funcionarias','acessos','ferias','tiquetaque','regras','simulacao'];
 
 function updateSimBanner(){ $('#simBanner').innerHTML = S.sim ? `<div class="simbanner">🧪 MODO SIMULAÇÃO — dados fictícios. Nada aqui afeta os dados reais.</div>`:''; }
 
@@ -195,6 +196,7 @@ const ROUTES={};
 function route(){
   const k=(location.hash||'#home').slice(1);
   updateSimBanner();
+  if(S.role==='funcionaria'){ $('#backBtn').classList.add('hidden'); $('#pageTitle').textContent='Minha área'; renderFuncionaria(); return; }
   if(k==='home'){ $('#backBtn').classList.add('hidden'); $('#pageTitle').textContent=''; renderHome(); return; }
   const def=NAV.find(n=>n[0]===k);
   $('#pageTitle').textContent=def?def[3]:'';
@@ -226,9 +228,88 @@ function renderHome(){
   ${cardsFor(HOME_TOP,'cols4')}${cardsFor(HOME_BOTTOM,'cols4')}`;
   $$('[data-go]').forEach(el=>el.onclick=()=>location.hash='#'+el.dataset.go);
 }
+
+// ---------- ÁREA DA FUNCIONÁRIA (login restrito) ----------
+async function renderFuncionaria(){
+  const eid=S.profile&&S.profile.employee_id;
+  if(!eid){ $('#view').innerHTML=box('warn','Seu acesso ainda não foi vinculado a uma funcionária. Peça à gestão para liberar você em <b>Configurações → Acessos</b>.'); return; }
+  $('#view').innerHTML='<p class="muted">Carregando…</p>';
+  const today=todayStr();
+  const [emps,items,reqs,rules]=await Promise.all([
+    getAll('employees',b=>b.eq('id',eid)),
+    getAll('schedule_items',b=>b.eq('employee_id',eid).gte('date',today).eq('status','aprovado').order('date')),
+    getAll('dayoff_requests',b=>b.eq('employee_id',eid).order('created_at',{ascending:false}).limit(20)),
+    T('store_rules').select('*').eq('id',1).maybeSingle().then(r=>r.data||{})
+  ]);
+  const me=emps[0]||{};
+  const PREF=[['manha_entrar','Entrar mais tarde (manhã)'],['manha_sair','Sair mais cedo (manhã)'],['tarde_entrar','Entrar mais tarde (tarde)'],['tarde_sair','Sair mais cedo (tarde)']];
+  const PL=Object.fromEntries(PREF);
+  const myPref=String(me.dayoff_pref||'').split(',').map(s=>s.trim()).filter(Boolean);
+  const dataBR=d=>(d||'').split('-').reverse().slice(0,2).join('/');
+  const codeOf=r=>((r.shift==='manha'?'manha':'tarde')+'_'+(r.type==='entrada_tarde'?'entrar':'sair'));
+  const pos=me.queue_position, tot=me.queue_total;
+  const posBlock = pos
+    ? `<div class="kpi">${pos}º<small> de ${tot} na fila</small></div>${me.queue_reason?`<div class="reason">${esc(me.queue_reason)}</div>`:''}`
+    : '<p class="muted" style="margin:0">Sua posição ainda não foi calculada. Assim que a gestão abrir o motor de folgas, ela aparece aqui.</p>';
+  const folgaList = items.length
+    ? items.map(it=>`<div class="card" style="margin-bottom:8px"><b>${dataBR(it.date)}</b> <span class="muted">(${Engine.DOW[Engine.parse(it.date).getDay()]})</span><div style="font-weight:600;margin-top:2px">${folgaTimeLabel(it,rules)}</div></div>`).join('')
+    : '<p class="muted" style="margin:0">Nenhuma folga agendada por enquanto.</p>';
+  const myReqs=reqs.filter(r=>r.request_type==='pedido_folga');
+  const reqList = myReqs.length
+    ? myReqs.map(r=>`<div class="card" style="margin-bottom:8px;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center"><span><b>${dataBR(r.date)}</b> <span class="muted">· ${esc(PL[codeOf(r)]||TYPE_LABEL[r.type]||'folga')}</span></span><span class="pill ${r.status==='aprovado'?'ativa':r.status==='recusado'?'afastada':'ferias'}">${r.status}</span></div>`).join('')
+    : '<p class="muted" style="margin:0">Você ainda não fez pedidos.</p>';
+  $('#view').innerHTML=`
+    ${box('info','Aqui você acompanha sua <b>posição na fila</b>, vê suas <b>próximas folgas</b>, ajusta sua <b>preferência</b> e <b>pede folga</b>. Os pedidos vão para a gestão aprovar.')}
+    <div class="panel"><div class="ph"><h3>📊 Sua posição na fila de folgas</h3></div><div class="pb">${posBlock}</div></div>
+    <div class="panel section"><div class="ph"><h3>📅 Suas próximas folgas</h3></div><div class="pb">${folgaList}</div></div>
+    <div class="panel section"><div class="ph"><h3>🙋 Minha preferência de folga</h3><button class="btn sm" id="savePref">Salvar</button></div>
+      <div class="pb"><p class="muted" style="margin:0 0 8px">Marque como você prefere folgar. A gestão tenta seguir quando dá — não é garantido.</p>
+      <div class="chip-row">${PREF.map(([v,l])=>`<label class="chk-chip"><input type="checkbox" class="myp" value="${v}" ${myPref.includes(v)?'checked':''}/> ${l}</label>`).join('')}</div></div></div>
+    <div class="panel section"><div class="ph"><h3>✉️ Pedir uma folga</h3></div><div class="pb">
+      <div class="grid2"><div class="field"><label>Dia</label><input id="rq_date" type="date" min="${today}" value="${today}"/></div>
+        <div class="field"><label>Como prefere</label><select id="rq_code">${PREF.map(([v,l])=>`<option value="${v}">${l}</option>`).join('')}</select></div></div>
+      <div class="field"><label>Motivo (opcional)</label><input id="rq_reason" placeholder="ex.: consulta médica"/></div>
+      <button class="btn" id="sendReq">Enviar pedido</button>
+      <div class="section"><h3 style="font-size:13px;color:var(--muted);margin:0 0 8px">Seus pedidos</h3>${reqList}</div></div></div>`;
+  $('#savePref').onclick=async()=>{ const codes=$$('.myp').filter(c=>c.checked).map(c=>c.value).join(',');
+    const {error}=await sb.rpc('esc_set_my_dayoff_pref',{p_codes:codes});
+    if(error){toast(error.message);return;} toast('Preferência salva! A gestão já passa a considerar.'); };
+  $('#sendReq').onclick=async()=>{ const d=$('#rq_date').value, code=$('#rq_code').value, reason=$('#rq_reason').value;
+    if(!d){toast('Escolha o dia.');return;}
+    const {error}=await sb.rpc('esc_request_my_dayoff',{p_date:d,p_code:code,p_reason:reason});
+    if(error){toast(error.message);return;} toast('Pedido enviado para a gestão!'); renderFuncionaria(); };
+}
 ROUTES.config=function(){
   $('#view').innerHTML=`${box('info','Aqui ficam os ajustes e cadastros. As telas do dia a dia (folgas, sábados, calendário) estão na tela inicial.')}${cardsFor(CONFIG_KEYS)}`;
   $$('[data-go]').forEach(el=>el.onclick=()=>location.hash='#'+el.dataset.go);
+};
+
+// ---------- ACESSOS (vincular logins às funcionárias) ----------
+ROUTES.acessos=async function(){
+  if(!isGestor()){ $('#view').innerHTML=box('warn','Apenas a gestão acessa esta tela.'); return; }
+  const [profs,emps]=await Promise.all([
+    getAll('profiles',b=>b.order('email')),
+    getAll('employees',b=>b.eq('is_simulation',false).order('name'))
+  ]);
+  const empOpts=(sel)=>`<option value="">— nenhuma —</option>`+emps.map(e=>`<option value="${e.id}" ${sel===e.id?'selected':''}>${esc(e.name)}</option>`).join('');
+  const roleOpts=(sel)=>['funcionaria','viewer','gestor'].map(r=>`<option value="${r}" ${sel===r?'selected':''}>${r==='gestor'?'Gestor':r==='viewer'?'Visualização':'Funcionária'}</option>`).join('');
+  $('#view').innerHTML=`
+    ${box('info','Cada funcionária cria a conta dela na tela de login (e-mail + senha). Aqui você <b>vincula</b> o login ao cadastro dela e define o <b>tipo de acesso</b>: <b>Funcionária</b> só vê a área dela (posição, folgas, preferência, pedidos); <b>Visualização</b> vê tudo sem alterar; <b>Gestor</b> tem acesso total.')}
+    <div class="panel"><div class="pb" style="padding:0;overflow-x:auto"><table>
+      <thead><tr><th>Login (e-mail)</th><th>Tipo de acesso</th><th>Vinculado a</th><th></th></tr></thead>
+      <tbody>${profs.map(p=>`<tr>
+        <td><b>${esc(p.email||'—')}</b>${p.id===S.user.id?' <span class="muted">(você)</span>':''}</td>
+        <td><select class="ac_role" data-id="${p.id}">${roleOpts(p.role)}</select></td>
+        <td><select class="ac_emp" data-id="${p.id}">${empOpts(p.employee_id)}</select></td>
+        <td><button class="btn sm" data-save="${p.id}">Salvar</button></td></tr>`).join('')||'<tr><td colspan=4 class="muted" style="padding:16px">Nenhum login criado ainda. Peça às funcionárias para criar a conta na tela de login.</td></tr>'}
+      </tbody></table></div></div>
+    ${box('info','Dica: o tipo <b>Funcionária</b> só funciona depois de vincular a uma pessoa em "Vinculado a". Sem vínculo, ela não vê nada.')}`;
+  $$('[data-save]').forEach(b=>b.onclick=async()=>{ if(!gate())return; const id=b.dataset.save;
+    const role=$(`.ac_role[data-id="${id}"]`).value;
+    const emp=$(`.ac_emp[data-id="${id}"]`).value||null;
+    if(role==='funcionaria' && !emp){ toast('Para "Funcionária", escolha a pessoa em "Vinculado a".'); return; }
+    const {error}=await T('profiles').update({role, employee_id:emp}).eq('id',id);
+    if(error){toast(error.message);return;} toast('Acesso atualizado.'); route(); });
 };
 
 // ---------- DASHBOARD ----------
@@ -682,6 +763,9 @@ ROUTES.folgas=async function(){
     const logRows=out.logs.map(l=>`<div class="reason" style="font-size:12.5px;border-left-color:${l.type==='bloqueio'?'var(--red)':l.type==='rodizio'?'var(--purple)':'var(--brand)'}">${l.type==='bloqueio'?'🚫':l.type==='rodizio'?'🔁':'✅'} ${esc(l.message)}</div>`).join('');
     // FILA DE JUSTIÇA — quem está na frente para folgar e por quê
     const queue=Engine.dayoffQueue(emps,rules,history,existing);
+    // grava a posição na fila no cadastro (a funcionária lê só a dela na área dela) — só gestor, semana atual real
+    if(isGestor() && !S.sim && weekOffset===0){ const _tot=queue.length;
+      Promise.all(queue.map(q=>T('employees').update({queue_position:q.position,queue_total:_tot,queue_reason:q.why||'',queue_updated_at:new Date().toISOString()}).eq('id',q.id))).catch(()=>{}); }
     const queueHtml=queue.map(q=>`<div style="display:flex;align-items:center;gap:11px;padding:8px 10px;border:1px solid var(--line);border-radius:10px;margin-bottom:6px;background:${q.elig?'#fff':'#f6f8fb'}">
         <div style="min-width:30px;height:30px;border-radius:50%;display:grid;place-items:center;font-weight:800;font-size:13px;flex:none;background:${(q.elig&&q.position<=3)?'var(--brand)':'#eef1f8'};color:${(q.elig&&q.position<=3)?'#fff':'var(--muted)'}">${q.position}º</div>
         <div style="flex:1;min-width:0"><div style="font-weight:700">${esc(q.name)}</div><div class="muted" style="font-size:12.5px;margin-top:1px">${esc(q.why)}</div></div></div>`).join('');
