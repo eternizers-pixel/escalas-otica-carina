@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v56 (funcionária: folgas/sábado mais visuais, aviso de fila, opção Outro no pedido, ver/editar pedido)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v57 (card de folga em linha, preferência salva sozinha, correção do botão Voltar)
 // ============================================================
 (function(){
 "use strict";
@@ -199,13 +199,14 @@ function route(){
   if(S.role==='funcionaria'){ $('#backBtn').classList.add('hidden'); $('#pageTitle').textContent='Minha área'; renderFuncionaria(); return; }
   if(S.role==='gestor') setupNotifs();
   if(k==='home'){ $('#backBtn').classList.add('hidden'); $('#pageTitle').textContent=''; renderHome(); return; }
+  const fn=ROUTES[k];
+  if(!fn){ location.hash='#home'; return; } // rota desconhecida → volta pra home (evita o Voltar bagunçado)
   const def=NAV.find(n=>n[0]===k);
   $('#pageTitle').textContent=def?def[3]:'';
-  $('#backBtn').classList.remove('hidden');
   const inConfig=CONFIG_KEYS.includes(k);
   $('#backBtn').textContent = inConfig ? '← Configurações' : '← Início';
   $('#backBtn').onclick=()=>{ location.hash = inConfig ? '#config' : '#home'; };
-  const fn=ROUTES[k]||renderHome;
+  $('#backBtn').classList.remove('hidden');
   $('#view').innerHTML='<p class="muted">Carregando…</p>';
   fn();
 }
@@ -262,7 +263,7 @@ async function renderFuncionaria(){
        <p class="muted" style="margin:8px 0 0;font-size:12.5px">ℹ️ A ordem pode variar uma posição ou outra para tentar respeitar o horário de preferência de cada uma.</p>`
     : '<p class="muted" style="margin:0">Sua posição ainda não foi calculada. Assim que a gestão abrir o motor de folgas, ela aparece aqui.</p>';
   const folgaList = items.length
-    ? items.map(it=>`<div class="folga-card"><div class="fc-date">${dataBR(it.date)} <span>· ${Engine.DOW[Engine.parse(it.date).getDay()]}</span></div><div class="fc-time">${folgaTimeLabel(it,rules)}</div></div>`).join('')
+    ? items.map(it=>`<div class="folga-card"><div class="fc-day"><div class="fc-date">${dataBR(it.date)}</div><div class="fc-dow">${Engine.DOW[Engine.parse(it.date).getDay()]}</div></div><div class="fc-time">${folgaTimeLabel(it,rules)}</div></div>`).join('')
     : '<p class="muted" style="margin:0">Nenhuma folga agendada por enquanto.</p>';
   const nextSat=sats[0];
   const satBlock = nextSat
@@ -282,8 +283,8 @@ async function renderFuncionaria(){
     <div class="panel section"><div class="ph"><h3>📊 Sua posição na fila</h3></div><div class="pb">${posBlock}</div></div>
     <div class="panel section"><div class="ph"><h3>📅 Próximas folgas</h3></div><div class="pb">${folgaList}</div></div>
     <div class="panel section"><div class="ph"><h3>🗓️ Próximo sábado de trabalho</h3></div><div class="pb">${satBlock}</div></div>
-    <div class="panel section"><div class="ph"><h3>🙋 Minha preferência</h3><button class="btn sm" id="savePref">Salvar</button></div>
-      <div class="pb"><p class="muted" style="margin:0 0 8px">Como você prefere folgar. A gestão tenta seguir quando dá — não é garantido.</p>
+    <div class="panel section"><div class="ph"><h3>🙋 Minha preferência</h3></div>
+      <div class="pb"><p class="muted" style="margin:0 0 8px">Marque como você prefere folgar — <b>salva sozinho</b>. A gestão tenta seguir quando dá, não é garantido.</p>
       <div class="chip-row">${PREF.map(([v,l])=>`<label class="chk-chip"><input type="checkbox" class="myp" value="${v}" ${myPref.includes(v)?'checked':''}/> ${l}</label>`).join('')}</div></div></div>
     <div class="panel section"><div class="ph"><h3>✉️ Pedir uma folga</h3></div><div class="pb">
       <div class="field"><label>Dia</label><input id="rq_date" type="date" min="${today}" value="${today}"/></div>
@@ -293,9 +294,9 @@ async function renderFuncionaria(){
       <button class="btn" id="sendReq" style="width:100%">Enviar pedido</button>
       <div class="section"><h3 style="font-size:13px;color:var(--muted);margin:0 0 8px">Seus pedidos</h3>${reqList}</div></div></div>
   </div>`;
-  $('#savePref').onclick=async()=>{ const codes=$$('.myp').filter(c=>c.checked).map(c=>c.value).join(',');
+  $$('.myp').forEach(c=>c.onchange=async()=>{ const codes=$$('.myp').filter(x=>x.checked).map(x=>x.value).join(',');
     const {error}=await sb.rpc('esc_set_my_dayoff_pref',{p_codes:codes});
-    if(error){toast(error.message);return;} toast('Preferência salva! A gestão já passa a considerar.'); };
+    if(error){toast(error.message);return;} toast('Preferência salva ✓'); });
   $('#rq_code').onchange=function(){ $('#rq_outroWrap').style.display=this.value==='outro'?'':'none'; };
   $('#sendReq').onclick=async()=>{ const d=$('#rq_date').value; let code=$('#rq_code').value; let reason=($('#rq_reason').value||'').trim();
     if(!d){toast('Escolha o dia.');return;}

@@ -37,9 +37,9 @@ button{font-family:inherit;cursor:pointer}
 #app{display:none;min-height:100vh}
 .apphead{display:flex;align-items:center;justify-content:space-between;padding:14px 26px;max-width:1180px;margin:0 auto;width:100%}
 .head-left{display:flex;align-items:center;gap:14px;min-width:0}
-.backbtn{background:#fff;border:1px solid var(--line);color:var(--ink);padding:8px 14px;border-radius:10px;font-size:13.5px;font-weight:600;box-shadow:var(--shadow)}
+.backbtn{background:#fff;border:1px solid var(--line);color:var(--ink);padding:8px 14px;border-radius:10px;font-size:13.5px;font-weight:600;box-shadow:var(--shadow);flex:none;white-space:nowrap}
 .backbtn:hover{background:#f3f6fc}
-.pagetitle{font-size:18px;font-weight:700}
+.pagetitle{font-size:18px;font-weight:700;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .head-right{display:flex;align-items:center;gap:12px;font-size:13.5px;color:var(--muted);flex-wrap:wrap;justify-content:flex-end}
 .head-right b{color:var(--ink)}
 .linkbtn{background:none;border:none;color:var(--brand);font-weight:600;display:inline-flex;align-items:center;gap:5px;font-size:13.5px}
@@ -115,10 +115,10 @@ label{display:block;font-size:12.5px;color:var(--muted);margin:0 0 5px;font-weig
 .fnc .chip-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .fnc .chk-chip{width:100%;border-radius:12px;justify-content:flex-start}
 /* funcionária — folgas, sábado e pedidos mais visuais */
-.fnc .folga-card{background:#fff;border:1.6px solid var(--line);border-radius:14px;padding:14px 16px;margin-bottom:10px}
-.fnc .folga-card .fc-date{font-size:23px;font-weight:800;color:var(--ink);line-height:1.15}
-.fnc .folga-card .fc-date span{font-size:14px;font-weight:600;color:var(--muted);text-transform:capitalize}
-.fnc .folga-card .fc-time{font-size:18px;font-weight:700;color:var(--ink);margin-top:6px}
+.fnc .folga-card{display:flex;align-items:center;justify-content:space-between;gap:12px;background:#fff;border:1.6px solid var(--line);border-radius:14px;padding:13px 16px;margin-bottom:10px}
+.fnc .folga-card .fc-date{font-size:22px;font-weight:800;color:var(--ink);line-height:1.1}
+.fnc .folga-card .fc-dow{font-size:13px;font-weight:600;color:var(--muted);text-transform:capitalize;margin-top:1px}
+.fnc .folga-card .fc-time{font-size:17px;font-weight:700;color:var(--brand-d);text-align:right;flex:none}
 .fnc .sat-date{font-size:26px;font-weight:800;color:var(--ink);line-height:1.15}
 .fnc .sat-date span{font-size:14px;font-weight:600;color:var(--muted)}
 .fnc .preq{background:#fff;border:1.6px solid var(--line);border-radius:14px;padding:12px 14px;margin-bottom:10px}
