@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v58 (fila: última folga + próximas; sábado à tarde; Pedidos só pedidos/exceções; aprovar pedido vira folga aprovada)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v59 (fila da funcionária: texto curto "já tem X marcadas · banco previsto de Y", sem "passou a vez")
 // ============================================================
 (function(){
 "use strict";
@@ -865,7 +865,7 @@ ROUTES.folgas=async function(){
     const queue=Engine.dayoffQueue(emps,rules,history,existing);
     // grava a posição na fila no cadastro (a funcionária lê só a dela na área dela) — só gestor, semana atual real
     if(isGestor() && !S.sim && weekOffset===0){ const _tot=queue.length;
-      Promise.all(queue.map(q=>T('employees').update({queue_position:q.position,queue_total:_tot,queue_reason:q.why||'',queue_updated_at:new Date().toISOString()}).eq('id',q.id))).catch(()=>{}); }
+      Promise.all(queue.map(q=>T('employees').update({queue_position:q.position,queue_total:_tot,queue_reason:q.whyShort||q.why||'',queue_updated_at:new Date().toISOString()}).eq('id',q.id))).catch(()=>{}); }
     const queueHtml=queue.map(q=>`<div style="display:flex;align-items:center;gap:11px;padding:8px 10px;border:1px solid var(--line);border-radius:10px;margin-bottom:6px;background:${q.elig?'#fff':'#f6f8fb'}">
         <div style="min-width:30px;height:30px;border-radius:50%;display:grid;place-items:center;font-weight:800;font-size:13px;flex:none;background:${(q.elig&&q.position<=3)?'var(--brand)':'#eef1f8'};color:${(q.elig&&q.position<=3)?'#fff':'var(--muted)'}">${q.position}º</div>
         <div style="flex:1;min-width:0"><div style="font-weight:700">${esc(q.name)}</div><div class="muted" style="font-size:12.5px;margin-top:1px">${esc(q.why)}</div></div></div>`).join('');

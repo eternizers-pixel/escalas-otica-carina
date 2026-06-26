@@ -545,6 +545,12 @@ window.Engine = (function () {
         if(good(x)===0 && x.dayoffs>0 && x.marcadas===0) w.push('poucas folgas boas (sexta/segunda)');
       }
       x.why = w.join(' · ');
+      // versão curta para a funcionária (sem "passou a vez"/recência): só folgas marcadas + banco previsto
+      const ws=[];
+      if(x.elig){ if(x.marcadas>0) ws.push(`já tem ${x.marcadas} folga${x.marcadas>1?'s':''} marcada${x.marcadas>1?'s':''}`);
+        ws.push(`banco${x.marcadas>0?' previsto':''} de ${fH(x.proj)}`); }
+      else ws.push(`sem saldo p/ folga · banco de ${fH(x.proj)}`);
+      x.whyShort = ws.join(' · ');
     });
     return rows;
   }
