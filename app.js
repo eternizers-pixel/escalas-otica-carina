@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v54 (notificação e tela da funcionária também reconhecem import do robô)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v55 (notificação do banco só aparece quando a atualização automática falha: >26h sem atualizar)
 // ============================================================
 (function(){
 "use strict";
@@ -327,16 +327,18 @@ async function refreshNotifs(){
     getAll('dayoff_requests',b=>b.eq('status','pendente').order('created_at',{ascending:false})),
     T('time_bank_imports').select('imported_at').neq('source','api').order('imported_at',{ascending:false}).limit(1).maybeSingle().then(r=>r.data).catch(()=>null)
   ]);
-  const sd=x=>{const z=new Date(x);z.setHours(0,0,0,0);return z.getTime();};
-  const upToday = imp && imp.imported_at && sd(imp.imported_at)===sd(Date.now());
+  // "Desatualizado" = passou de ~1 dia sem atualizar, ou seja, a atualização automática diária não rodou
+  // (PC desligado no horário, erro de login, etc.). Em dia normal o robô atualiza e isto NÃO aparece.
+  const hrsSince = (imp && imp.imported_at) ? (Date.now()-new Date(imp.imported_at).getTime())/3600000 : Infinity;
+  const stale = hrsSince > 26;
   const out=[];
-  if(!upToday) out.push(`<div class="notif-item warn"><div>📥 <b>Atualize o banco de horas</b><div class="muted" style="font-size:12.5px">Toque em <b>Atualizar</b> — o robô puxa do TiqueTaque sozinho. <a href="#tiquetaque" class="ntf-go" style="color:var(--brand);font-weight:600">ou importar manual</a></div></div><button class="btn sm" data-syncreq>Atualizar</button></div>`);
+  if(stale) out.push(`<div class="notif-item warn"><div>📥 <b>Banco de horas desatualizado</b><div class="muted" style="font-size:12.5px">A atualização automática não rodou (PC desligado no horário?). Toque em <b>Atualizar</b> que o robô puxa do TiqueTaque na hora. <a href="#tiquetaque" class="ntf-go" style="color:var(--brand);font-weight:600">ou importar manual</a></div></div><button class="btn sm" data-syncreq>Atualizar</button></div>`);
   pend.forEach(r=>{ const dt=r.date?(' · '+r.date.split('-').reverse().slice(0,2).join('/')):''; out.push(`<div class="notif-item"><div>📩 <b>${esc(r.employee_name||'Funcionária')}</b> <span class="muted">— ${esc(reqTypeLabel(r.request_type))}${dt}</span><div class="muted" style="font-size:12.5px">${esc(r.reason||'aguardando sua aprovação')}</div></div><a class="btn sm ntf-go" href="#pedidos">Ver</a></div>`); });
-  const count=(upToday?0:1)+pend.length;
+  const count=(stale?1:0)+pend.length;
   const badge=$('#notifBadge'); badge.textContent=count; badge.style.display=count?'':'none';
   $('#notifBody').innerHTML=out.length?out.join(''):'<p class="muted" style="padding:16px;text-align:center">Tudo em dia! ✅<br>Sem pendências.</p>';
   $$('.ntf-go').forEach(a=>a.addEventListener('click',()=>{ $('#notifDrawer').classList.remove('open'); $('#notifOverlay').classList.remove('open'); }));
-  $$('[data-syncreq]').forEach(b=>b.onclick=async()=>{ b.disabled=true; b.textContent='Enviando…'; const r=await T('sync_requests').insert({status:'pendente',requested_by:S.user.id}); if(r.error){ toast(r.error.message); b.disabled=false; b.textContent='Atualizar'; return; } toast('Pedido enviado! O robô vai importar do TiqueTaque em instantes.'); b.textContent='✓ Enviado'; });
+  $$('[data-syncreq]').forEach(b=>b.onclick=async()=>{ b.disabled=true; b.textContent='Enviando…'; const r=await T('sync_requests').insert({status:'pendente',requested_by:S.user.id}); if(r.error){ toast(r.error.message); b.disabled=false; b.textContent='Atualizar'; return; } toast('Pedido enviado! Em até ~2 min o robô abre o TiqueTaque, baixa e atualiza sozinho.'); b.textContent='✓ Enviado'; });
 }
 ROUTES.config=function(){
   $('#view').innerHTML=`${box('info','Aqui ficam os ajustes e cadastros. As telas do dia a dia (folgas, sábados, calendário) estão na tela inicial.')}${cardsFor(CONFIG_KEYS)}`;
