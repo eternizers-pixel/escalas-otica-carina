@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v50 (Regras em cards expansíveis + duração da folga em menu (sem erro de formato))
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v51 (cards de regras abrem em par + nomenclatura 'entrar mais tarde / sair mais cedo')
 // ============================================================
 (function(){
 "use strict";
@@ -555,7 +555,7 @@ ROUTES.regras=async function(){
 
     <details class="acc"><summary><span class="acc-ic">🌴</span><span class="acc-tt"><b>Regras de folga</b><small>Duração, horários permitidos e tipo</small></span><span class="acc-ar">▾</span></summary><div class="acc-body">
       <div class="grid2">
-        <div class="field"><label>Tipo liberado</label><select id="r_mode"><option value="saida_antecipada" ${(r.dayoff_mode||'saida_antecipada')==='saida_antecipada'?'selected':''}>Só sair mais cedo</option><option value="completa" ${r.dayoff_mode==='completa'?'selected':''}>Integral / meio turno</option></select></div>
+        <div class="field"><label>Tipo liberado</label><select id="r_mode"><option value="saida_antecipada" ${(r.dayoff_mode||'saida_antecipada')==='saida_antecipada'?'selected':''}>Só entrar mais tarde / sair mais cedo</option><option value="completa" ${r.dayoff_mode==='completa'?'selected':''}>Integral / meio turno</option></select></div>
         <div class="field" style="margin:0"><label>Duração da folga (sair cedo / entrar tarde)</label><select id="r_early">${earlyOpts.map(h=>`<option value="${h}" ${curEarly===h?'selected':''}>${durLabel(h)}</option>`).join('')}</select></div></div>
       <div class="field" style="margin:13px 0 0"><label>Folga: mín–máx (h)</label><div style="display:flex;gap:6px"><input id="r_dmin" type="number" value="${r.min_dayoff_hours||3}"/><input id="r_dmax" type="number" value="${r.max_dayoff_hours||8}"/></div></div>
       <label style="margin:13px 0 7px">Opções que a loja permite</label>
@@ -593,6 +593,8 @@ ROUTES.regras=async function(){
     </div></details>
 
   </div>`;
+  // abre/fecha os dois cards da mesma linha juntos (evita o buraco na coluna ao lado)
+  (()=>{ const accs=$$('.acc-list .acc'); accs.forEach((d,i)=>d.addEventListener('toggle',()=>{ const p=(i%2===0)?accs[i+1]:accs[i-1]; if(p && p.open!==d.open) p.open=d.open; })); })();
   $('#saveRules')?.addEventListener('click',async()=>{ if(!gate())return;
     const payload={id:1,open_morning:$('#r_om').value,close_morning:$('#r_cm').value,open_afternoon:$('#r_oa').value,close_afternoon:$('#r_ca').value,
       open_time:$('#r_om').value,close_time:$('#r_ca').value,
