@@ -115,7 +115,9 @@ label{display:block;font-size:12.5px;color:var(--muted);margin:0 0 5px;font-weig
 .fnc .chip-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .fnc .chk-chip{width:100%;border-radius:12px;justify-content:flex-start}
 /* cards expansíveis (acordeão) — usado nas Regras da loja */
-.acc{background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);margin-bottom:10px;overflow:hidden}
+.acc-list{display:grid;grid-template-columns:1fr 1fr;gap:10px;align-items:start}
+@media(max-width:680px){.acc-list{grid-template-columns:1fr}}
+.acc{background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);overflow:hidden}
 .acc>summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:12px;padding:15px 16px}
 .acc>summary::-webkit-details-marker{display:none}
 .acc-ic{font-size:20px;flex:none}
