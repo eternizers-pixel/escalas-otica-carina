@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v62 (removida a Simulação)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v63 (novo visual minimalista: fundo lavanda, roxo, cantos arredondados, sombras suaves)
 // ============================================================
 (function(){
 "use strict";
