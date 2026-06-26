@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v57 (card de folga em linha, preferência salva sozinha, correção do botão Voltar)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v58 (fila: última folga + próximas; sábado à tarde; Pedidos só pedidos/exceções; aprovar pedido vira folga aprovada)
 // ============================================================
 (function(){
 "use strict";
@@ -237,9 +237,10 @@ async function renderFuncionaria(){
   if(!eid){ $('#view').innerHTML=box('warn','Seu acesso ainda não foi vinculado a uma funcionária. Peça à gestão para liberar você em <b>Configurações → Acessos</b>.'); return; }
   $('#view').innerHTML='<div class="fnc"><p class="muted">Carregando…</p></div>';
   const today=todayStr();
-  const [emps,items,reqs,sats,imp,rules]=await Promise.all([
+  const [emps,items,pastItems,reqs,sats,imp,rules]=await Promise.all([
     getAll('employees',b=>b.eq('id',eid)),
     getAll('schedule_items',b=>b.eq('employee_id',eid).gte('date',today).eq('status','aprovado').order('date')),
+    getAll('schedule_items',b=>b.eq('employee_id',eid).lt('date',today).eq('status','aprovado').order('date',{ascending:false}).limit(8)),
     getAll('dayoff_requests',b=>b.eq('employee_id',eid).order('created_at',{ascending:false}).limit(20)),
     getAll('saturday_rotation',b=>b.eq('employee_id',eid).gte('saturday_date',today).order('saturday_date').limit(1)),
     T('time_bank_imports').select('imported_at').neq('source','api').order('imported_at',{ascending:false}).limit(1).maybeSingle().then(r=>r.data).catch(()=>null),
@@ -258,16 +259,23 @@ async function renderFuncionaria(){
   let bankUpd='Atualizado pela gestão.';
   if(imp&&imp.imported_at){ const dt=new Date(imp.imported_at); const sd=x=>{const z=new Date(x);z.setHours(0,0,0,0);return z.getTime();}; const dias=Math.round((sd(Date.now())-sd(dt))/86400000); bankUpd=`Última atualização: ${dt.toLocaleDateString('pt-BR')} ${dias<=0?'(hoje)':dias===1?'(ontem)':`(há ${dias} dias)`}`; }
   const pos=me.queue_position, tot=me.queue_total;
+  const lastFolga=(pastItems||[]).find(it=>!ABSENCE_TYPES.includes(it.type));
+  let ultimaTxt='ainda sem registro';
+  if(lastFolga){ const dias=Math.floor((new Date(today+'T00:00:00')-Engine.parse(lastFolga.date))/86400000); ultimaTxt = dias<=0?'hoje':dias===1?'ontem':`há ${dias} dias`; }
+  const lastLine=`<div class="last-folga">🌴 Sua última folga: <b>${ultimaTxt}</b></div>`;
   const posBlock = pos
-    ? `<div class="kpi">${pos}º<small> de ${tot} na fila</small></div>${me.queue_reason?`<div class="reason">${esc(me.queue_reason)}</div>`:''}
+    ? `<div class="kpi">${pos}º<small> de ${tot} na fila</small></div>
+       ${(pos<=2)?`<div class="next-up">🎯 Você é uma das próximas da fila!</div>`:''}
+       ${me.queue_reason?`<div class="reason">${esc(me.queue_reason)}</div>`:''}
+       ${lastLine}
        <p class="muted" style="margin:8px 0 0;font-size:12.5px">ℹ️ A ordem pode variar uma posição ou outra para tentar respeitar o horário de preferência de cada uma.</p>`
-    : '<p class="muted" style="margin:0">Sua posição ainda não foi calculada. Assim que a gestão abrir o motor de folgas, ela aparece aqui.</p>';
+    : `<p class="muted" style="margin:0 0 8px">Sua posição ainda não foi calculada. Assim que a gestão abrir o motor de folgas, ela aparece aqui.</p>${lastLine}`;
   const folgaList = items.length
     ? items.map(it=>`<div class="folga-card"><div class="fc-day"><div class="fc-date">${dataBR(it.date)}</div><div class="fc-dow">${Engine.DOW[Engine.parse(it.date).getDay()]}</div></div><div class="fc-time">${folgaTimeLabel(it,rules)}</div></div>`).join('')
     : '<p class="muted" style="margin:0">Nenhuma folga agendada por enquanto.</p>';
   const nextSat=sats[0];
   const satBlock = nextSat
-    ? `<div class="sat-date">${dataBR(nextSat.saturday_date)} <span>· sábado</span></div>
+    ? `<div class="sat-date">${dataBR(nextSat.saturday_date)} <span>· sábado à tarde</span></div>
        <p class="muted" style="margin:8px 0 0;font-size:13px">Quer trocar com uma colega? Solicite abaixo — pendente de aprovação.</p>
        <button class="btn sec" id="swapSat" style="margin-top:10px;width:100%">🔁 Solicitar troca</button>`
     : '<p class="muted" style="margin:0">Nenhum sábado agendado para você por enquanto.</p>';
@@ -282,7 +290,7 @@ async function renderFuncionaria(){
     <div class="panel"><div class="ph"><h3>⏰ Seu banco de horas</h3></div><div class="pb"><div class="kpi">${fmtH(me.time_bank_balance||0)}</div><div class="reason">${bankUpd}</div></div></div>
     <div class="panel section"><div class="ph"><h3>📊 Sua posição na fila</h3></div><div class="pb">${posBlock}</div></div>
     <div class="panel section"><div class="ph"><h3>📅 Próximas folgas</h3></div><div class="pb">${folgaList}</div></div>
-    <div class="panel section"><div class="ph"><h3>🗓️ Próximo sábado de trabalho</h3></div><div class="pb">${satBlock}</div></div>
+    <div class="panel section"><div class="ph"><h3>🗓️ Próximo sábado à tarde a trabalhar</h3></div><div class="pb">${satBlock}</div></div>
     <div class="panel section"><div class="ph"><h3>🙋 Minha preferência</h3></div>
       <div class="pb"><p class="muted" style="margin:0 0 8px">Marque como você prefere folgar — <b>salva sozinho</b>. A gestão tenta seguir quando dá, não é garantido.</p>
       <div class="chip-row">${PREF.map(([v,l])=>`<label class="chk-chip"><input type="checkbox" class="myp" value="${v}" ${myPref.includes(v)?'checked':''}/> ${l}</label>`).join('')}</div></div></div>
@@ -991,8 +999,8 @@ function swapModal(folga, items, emps, rules){
     if(ra.error||rb.error){ toast((ra.error||rb.error).message); return; }
     close(); toast('Folgas trocadas.'); route(); });
 }
-function folgaModal(it,emps,rules){
-  it=it||{};
+function folgaModal(it,emps,rules,opts){
+  it=it||{}; opts=opts||{};
   const toMin=s=>{const[h,m]=String(s||'').split(':').map(Number);return (h||0)*60+(m||0);};
   const diffH=(a,b)=>Math.max(0,(toMin(b)-toMin(a))/60);
   const mh=diffH(rules.open_morning||'09:00', rules.close_morning||'12:00');   // horas da manhã
@@ -1007,7 +1015,8 @@ function folgaModal(it,emps,rules){
   else if(it.type==='meio_turno') sel0='meio_turno|'+(it.shift==='manha'?'manha':'tarde');
   else if(it.type==='integral') sel0='integral|dia_inteiro';
   const chipR=(val,label)=>`<label class="chk-chip"><input type="radio" name="ff_act" value="${val}" ${sel0===val?'checked':''}/> ${label}</label>`;
-  openModal(it.id?'Editar lançamento':'Lançar folga',`
+  openModal(it.id?'Editar lançamento':(opts.reqId?'Aprovar e lançar folga':'Lançar folga'),`
+    ${opts.hint?box('info','Pedido da funcionária: <b>'+esc(opts.hint)+'</b>. Confirme o tipo de folga e salve para aprovar.'):''}
     <div class="field"><label>Funcionária</label><select id="ff_emp">${emps.map(e=>`<option value="${e.id}" ${it.employee_id===e.id?'selected':''}>${esc(e.name)}</option>`).join('')}</select></div>
     <div class="field"><label>O que vai acontecer — marque uma opção</label>
       <div class="chip-row">
@@ -1041,7 +1050,8 @@ function folgaModal(it,emps,rules){
     const payload={schedule_id:sched.id, employee_id:emp.id, employee_name:emp.name, date, shift, type, hours:Math.round(hours*100)/100, status:'aprovado', reason:'Lançada manualmente pelo gestor'};
     const r = it.id ? await T('schedule_items').update(payload).eq('id',it.id) : await T('schedule_items').insert(payload);
     if(r.error){toast(r.error.message);return false;}
-    toast('Folga salva.'); route(); return true;
+    if(opts.reqId) await T('dayoff_requests').update({status:'aprovado'}).eq('id',opts.reqId);
+    toast(opts.reqId?'Folga aprovada e lançada!':'Folga salva.'); route(); return true;
   });
   const upd=()=>{
     const sel=($$('input[name=ff_act]').find(r=>r.checked)||{}).value||'saida_antecipada|tarde';
@@ -1304,35 +1314,28 @@ ROUTES.calendario=async function(){
 // ---------- PEDIDOS ----------
 ROUTES.pedidos=async function(){
   const ini=todayStr().slice(0,8)+'01';
-  const [emps,reqs,rules,scheds]=await Promise.all([
+  const [emps,reqs,rules]=await Promise.all([
     getAll('employees',b=>b.eq('is_simulation',S.sim).order('name')),
     getAll('dayoff_requests',b=>b.order('created_at',{ascending:false}).limit(50)),
-    T('store_rules').select('*').eq('id',1).maybeSingle().then(r=>r.data||{}),
-    getAll('schedules',b=>b.eq('is_simulation',S.sim))]);
-  const schedIds=new Set(scheds.map(s=>s.id));
-  const folgas=(await getAll('schedule_items',b=>b.eq('status','aprovado').gte('date',ini).order('date'))).filter(it=>schedIds.has(it.schedule_id));
+    T('store_rules').select('*').eq('id',1).maybeSingle().then(r=>r.data||{})]);
   const map=Object.fromEntries(emps.map(e=>[e.id,e.name]));
   $('#view').innerHTML=`
-  <div class="toolbar"><button class="btn" id="addFolga" ${isGestor()?'':'disabled'}>+ Lançar folga</button>
-    <button class="btn sec" id="addReq" ${isGestor()?'':'disabled'}>+ Registrar exceção (falta, atestado…)</button></div>
-  ${box('info','<b>Lançar folga</b> registra uma folga <b>já aprovada</b> (você escolhe integral, meio turno ou o horário de sair/entrar) — o <b>motor de folgas já considera</b> essa folga: conta o horário ocupado e não oferece o mesmo horário para outra pessoa no dia. Férias (em Funcionárias) também entram automaticamente na conta. As <b>exceções de falta, atestado e afastamento</b> também tiram a funcionária do dia inteiro (o painel e o motor já consideram, <b>sem descontar banco</b>). <b>Atraso</b> e <b>troca</b> são só registro de histórico.')}
-  <div class="panel"><div class="ph"><h3>Folgas lançadas (a partir deste mês)</h3><span class="muted">${folgas.length} folga(s)</span></div>
-    <div class="pb">${folgas.map(it=>`<div class="card" style="margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
-      <div style="min-width:0">
-        <div style="font-weight:700">${esc(it.employee_name||map[it.employee_id]||'')} <span class="muted" style="font-weight:500;font-size:13px">· ${(it.date||'').split('-').reverse().slice(0,2).join('/')} (${it.date?Engine.DOW[Engine.parse(it.date).getDay()]:''})</span></div>
-        <div style="font-size:14px;font-weight:600;margin-top:2px">${folgaTimeLabel(it,rules)} <span class="muted" style="font-weight:500">(${TYPE_LABEL[it.type]||it.type}${it.hours?' · '+it.hours+'h':''})</span></div>
-      </div>
-      <div class="row-actions">${isGestor()?`<button class="btn ghost sm" data-edf="${it.id}">Editar</button><button class="btn ghost sm" style="color:var(--red)" data-delf="${it.id}">Remover</button>`:''}</div>
-    </div>`).join('')||'<p class="muted" style="margin:0">Nenhuma folga lançada. Use “+ Lançar folga”.</p>'}</div></div>
-  <div class="section panel"><div class="ph"><h3>Exceções (falta, atestado, afastamento, atraso, troca)</h3></div><div class="pb" style="padding:0"><table>
+  <div class="toolbar"><button class="btn sec" id="addReq" ${isGestor()?'':'disabled'}>+ Registrar exceção (falta, atestado…)</button></div>
+  ${box('info','Aqui ficam os <b>pedidos das funcionárias</b> (folga e troca de sábado) e as <b>exceções</b> (falta, atestado, afastamento, atraso). Ao <b>Aprovar</b> um pedido de folga, ele vira folga em <b>Folgas aprovadas</b> automaticamente. Falta, atestado e afastamento tiram a funcionária do dia inteiro (o painel e o motor já consideram, <b>sem descontar banco</b>).')}
+  <div class="section panel" style="margin-top:0"><div class="ph"><h3>Pedidos e exceções</h3></div><div class="pb" style="padding:0"><table>
     <thead><tr><th>Funcionária</th><th>Data</th><th>Tipo</th><th>Motivo</th><th>Status</th><th></th></tr></thead>
     <tbody>${reqs.map(r=>`<tr><td><b>${esc(r.employee_name||map[r.employee_id]||'—')}</b></td><td>${r.date||'—'}</td><td>${reqTypeLabel(r.request_type)}</td><td class="muted">${esc(r.reason||'')}</td>
       <td><span class="pill ${r.status==='aprovado'?'ativa':r.status==='recusado'?'afastada':'ferias'}">${r.status}</span></td>
       <td class="row-actions">${isGestor()?`${r.status==='pendente'?`${r.request_type==='troca_folga'?`<button class="btn sm" data-troca="${r.id}">🔁 Resolver troca</button>`:`<button class="btn sm" data-ap="${r.id}">Aprovar</button>`}<button class="btn sec sm" data-rf="${r.id}">Recusar</button>`:''}<button class="btn ghost sm" data-edexc="${r.id}">Editar</button><button class="btn ghost sm" style="color:var(--red)" data-delexc="${r.id}">Remover</button>`:''}</td></tr>`).join('')||'<tr><td colspan=6 class="muted" style="padding:16px">Nenhum pedido registrado.</td></tr>'}
     </tbody></table></div></div>`;
-  $('#addFolga')?.addEventListener('click',()=>folgaModal(null,emps,rules));
-  $$('[data-edf]').forEach(b=>b.onclick=()=>folgaModal(folgas.find(x=>x.id===b.dataset.edf),emps,rules));
-  $$('[data-delf]').forEach(b=>b.onclick=async()=>{ if(!gate())return; if(!confirm('Remover esta folga?'))return; await T('schedule_items').delete().eq('id',b.dataset.delf); toast('Folga removida.'); route(); });
+  async function aprovarPedido(r){ if(!r||!gate())return;
+    if((r.reason&&/^\s*outro:/i.test(r.reason)) || !r.type){ // "Outro" ou sem tipo → o gestor escolhe o tipo da folga
+      folgaModal({employee_id:r.employee_id,employee_name:r.employee_name,date:r.date},emps,rules,{reqId:r.id,hint:r.reason}); return; }
+    const d=Engine.parse(r.date); const sched=await getOrCreateSchedule(d.getFullYear(),d.getMonth()+1);
+    const ins=await T('schedule_items').insert({schedule_id:sched.id,employee_id:r.employee_id,employee_name:r.employee_name,date:r.date,shift:r.shift,type:r.type,hours:+rules.early_leave_hours||3,status:'aprovado',reason:'Pedido da funcionária aprovado'});
+    if(ins.error){toast(ins.error.message);return;}
+    await T('dayoff_requests').update({status:'aprovado'}).eq('id',r.id);
+    toast('Folga aprovada e lançada em Folgas aprovadas!'); route(); }
   function reqModal(r){
     const types=[['falta','Falta'],['atestado','Atestado'],['afastamento','Afastamento'],['atraso','Atraso'],['troca_folga','Troca de folga']];
     openModal(r?'Editar exceção':'Registrar exceção',`
@@ -1350,7 +1353,7 @@ ROUTES.pedidos=async function(){
   $$('[data-edexc]').forEach(b=>b.onclick=()=>reqModal(reqs.find(x=>x.id===b.dataset.edexc)));
   $$('[data-delexc]').forEach(b=>b.onclick=async()=>{ if(!gate())return; if(!confirm('Remover esta exceção?'))return; await T('dayoff_requests').delete().eq('id',b.dataset.delexc); toast('Exceção removida.'); route(); });
   $$('[data-troca]').forEach(b=>b.onclick=()=>satSwapModal(reqs.find(x=>x.id===b.dataset.troca)));
-  $$('[data-ap]').forEach(b=>b.onclick=async()=>{ if(!gate())return; await T('dayoff_requests').update({status:'aprovado'}).eq('id',b.dataset.ap); toast('Aprovado.'); route(); });
+  $$('[data-ap]').forEach(b=>b.onclick=()=>aprovarPedido(reqs.find(x=>x.id===b.dataset.ap)));
   $$('[data-rf]').forEach(b=>b.onclick=async()=>{ if(!gate())return; await T('dayoff_requests').update({status:'recusado'}).eq('id',b.dataset.rf); toast('Recusado.'); route(); });
 };
 // resolve uma troca de sábado: escolhe a colega e troca os dois no rodízio (atualiza tudo)
