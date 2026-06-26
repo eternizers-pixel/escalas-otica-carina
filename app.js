@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v55 (notificação do banco só aparece quando a atualização automática falha: >26h sem atualizar)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v56 (funcionária: folgas/sábado mais visuais, aviso de fila, opção Outro no pedido, ver/editar pedido)
 // ============================================================
 (function(){
 "use strict";
@@ -258,21 +258,23 @@ async function renderFuncionaria(){
   if(imp&&imp.imported_at){ const dt=new Date(imp.imported_at); const sd=x=>{const z=new Date(x);z.setHours(0,0,0,0);return z.getTime();}; const dias=Math.round((sd(Date.now())-sd(dt))/86400000); bankUpd=`Última atualização: ${dt.toLocaleDateString('pt-BR')} ${dias<=0?'(hoje)':dias===1?'(ontem)':`(há ${dias} dias)`}`; }
   const pos=me.queue_position, tot=me.queue_total;
   const posBlock = pos
-    ? `<div class="kpi">${pos}º<small> de ${tot} na fila</small></div>${me.queue_reason?`<div class="reason">${esc(me.queue_reason)}</div>`:''}`
+    ? `<div class="kpi">${pos}º<small> de ${tot} na fila</small></div>${me.queue_reason?`<div class="reason">${esc(me.queue_reason)}</div>`:''}
+       <p class="muted" style="margin:8px 0 0;font-size:12.5px">ℹ️ A ordem pode variar uma posição ou outra para tentar respeitar o horário de preferência de cada uma.</p>`
     : '<p class="muted" style="margin:0">Sua posição ainda não foi calculada. Assim que a gestão abrir o motor de folgas, ela aparece aqui.</p>';
   const folgaList = items.length
-    ? items.map(it=>`<div class="card" style="margin-bottom:8px"><b>${dataBR(it.date)}</b> <span class="muted">(${Engine.DOW[Engine.parse(it.date).getDay()]})</span><div style="font-weight:600;margin-top:2px">${folgaTimeLabel(it,rules)}</div></div>`).join('')
+    ? items.map(it=>`<div class="folga-card"><div class="fc-date">${dataBR(it.date)} <span>· ${Engine.DOW[Engine.parse(it.date).getDay()]}</span></div><div class="fc-time">${folgaTimeLabel(it,rules)}</div></div>`).join('')
     : '<p class="muted" style="margin:0">Nenhuma folga agendada por enquanto.</p>';
   const nextSat=sats[0];
   const satBlock = nextSat
-    ? `<div style="font-weight:700;font-size:17px">${dataBR(nextSat.saturday_date)} <span class="muted" style="font-weight:500;font-size:13px">· sábado</span></div>
-       <p class="muted" style="margin:6px 0 0;font-size:13px">Quer trocar com uma colega? Peça aqui — a gestão organiza.</p>
+    ? `<div class="sat-date">${dataBR(nextSat.saturday_date)} <span>· sábado</span></div>
+       <p class="muted" style="margin:8px 0 0;font-size:13px">Quer trocar com uma colega? Solicite abaixo — pendente de aprovação.</p>
        <button class="btn sec" id="swapSat" style="margin-top:10px;width:100%">🔁 Solicitar troca</button>`
     : '<p class="muted" style="margin:0">Nenhum sábado agendado para você por enquanto.</p>';
   const myReqs=reqs.filter(r=>['pedido_folga','troca_folga'].includes(r.request_type));
-  const reqLbl=r=> r.request_type==='troca_folga'?'Troca de sábado':(PL[codeOf(r)]||TYPE_LABEL[r.type]||'folga');
+  const reqLbl=r=> r.request_type==='troca_folga'?'Troca de sábado':((r.reason&&/^\s*outro:/i.test(r.reason))?'Outro':(PL[codeOf(r)]||TYPE_LABEL[r.type]||'folga'));
+  const stPill=s=> s==='aprovado'?'ativa':s==='recusado'?'afastada':'ferias';
   const reqList = myReqs.length
-    ? myReqs.map(r=>`<div class="card" style="margin-bottom:8px;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center"><span><b>${dataBR(r.date)}</b> <span class="muted">· ${esc(reqLbl(r))}</span></span><span class="pill ${r.status==='aprovado'?'ativa':r.status==='recusado'?'afastada':'ferias'}">${r.status}</span></div>`).join('')
+    ? myReqs.map(r=>`<div class="preq"><div class="preq-top"><div class="preq-date"><b>${dataBR(r.date)}</b> <span class="muted">· ${esc(reqLbl(r))}</span></div><span class="pill ${stPill(r.status)}">${r.status}</span></div>${r.reason?`<div class="preq-reason">${esc(r.reason)}</div>`:''}<button class="btn ghost sm preq-edit" data-req="${r.id}">${r.status==='pendente'?'Ver / editar':'Ver'}</button></div>`).join('')
     : '<p class="muted" style="margin:0">Você ainda não fez pedidos.</p>';
   $('#view').innerHTML=`<div class="fnc">
     <div class="fnc-hi"><h2>Olá, ${esc(first)}! 👋</h2><p>Acompanhe aqui seu banco de horas, suas folgas e sua posição na fila.</p></div>
@@ -285,7 +287,8 @@ async function renderFuncionaria(){
       <div class="chip-row">${PREF.map(([v,l])=>`<label class="chk-chip"><input type="checkbox" class="myp" value="${v}" ${myPref.includes(v)?'checked':''}/> ${l}</label>`).join('')}</div></div></div>
     <div class="panel section"><div class="ph"><h3>✉️ Pedir uma folga</h3></div><div class="pb">
       <div class="field"><label>Dia</label><input id="rq_date" type="date" min="${today}" value="${today}"/></div>
-      <div class="field"><label>Como prefere</label><select id="rq_code">${PREF.map(([v,l])=>`<option value="${v}">${l}</option>`).join('')}</select></div>
+      <div class="field"><label>Como prefere</label><select id="rq_code">${PREF.map(([v,l])=>`<option value="${v}">${l}</option>`).join('')}<option value="outro">Outro (escrever)…</option></select></div>
+      <div class="field" id="rq_outroWrap" style="display:none"><label>Que tipo de folga você precisa? <span style="color:var(--red)">*</span></label><input id="rq_outro" placeholder="ex.: meio turno, turno inteiro, dia inteiro…"/></div>
       <div class="field"><label>Motivo (opcional)</label><input id="rq_reason" placeholder="ex.: consulta médica"/></div>
       <button class="btn" id="sendReq" style="width:100%">Enviar pedido</button>
       <div class="section"><h3 style="font-size:13px;color:var(--muted);margin:0 0 8px">Seus pedidos</h3>${reqList}</div></div></div>
@@ -293,14 +296,35 @@ async function renderFuncionaria(){
   $('#savePref').onclick=async()=>{ const codes=$$('.myp').filter(c=>c.checked).map(c=>c.value).join(',');
     const {error}=await sb.rpc('esc_set_my_dayoff_pref',{p_codes:codes});
     if(error){toast(error.message);return;} toast('Preferência salva! A gestão já passa a considerar.'); };
-  $('#sendReq').onclick=async()=>{ const d=$('#rq_date').value, code=$('#rq_code').value, reason=$('#rq_reason').value;
+  $('#rq_code').onchange=function(){ $('#rq_outroWrap').style.display=this.value==='outro'?'':'none'; };
+  $('#sendReq').onclick=async()=>{ const d=$('#rq_date').value; let code=$('#rq_code').value; let reason=($('#rq_reason').value||'').trim();
     if(!d){toast('Escolha o dia.');return;}
+    if(code==='outro'){ const outro=($('#rq_outro').value||'').trim();
+      if(!outro){toast('Escreva que tipo de folga você precisa.'); $('#rq_outro').focus(); return;}
+      reason='Outro: '+outro+(reason?(' · '+reason):''); code='tarde_sair'; }
     const {error}=await sb.rpc('esc_request_my_dayoff',{p_date:d,p_code:code,p_reason:reason});
     if(error){toast(error.message);return;} toast('Pedido enviado para a gestão!'); renderFuncionaria(); };
   $('#swapSat')?.addEventListener('click',async()=>{ if(!nextSat)return;
     if(!confirm('Pedir troca do sábado '+dataBR(nextSat.saturday_date)+'? A gestão vai organizar a troca com outra colega.'))return;
     const {error}=await sb.rpc('esc_request_saturday_swap',{p_date:nextSat.saturday_date,p_reason:''});
     if(error){toast(error.message);return;} toast('Pedido de troca enviado para a gestão!'); renderFuncionaria(); });
+  $$('.preq-edit').forEach(b=>b.onclick=()=>{ const r=myReqs.find(x=>x.id===b.dataset.req); if(r) viewEditReq(r); });
+  function viewEditReq(r){
+    const pendente=r.status==='pendente';
+    const body=`<div class="field"><label>Pedido</label><div style="font-weight:700;font-size:16px">${dataBR(r.date)} · ${esc(reqLbl(r))}</div></div>
+      <div class="field"><label>Situação</label><div><span class="pill ${stPill(r.status)}">${r.status}</span></div></div>
+      <div class="field"><label>Motivo</label>${pendente
+        ? `<textarea id="ed_reason" rows="3" placeholder="ex.: consulta médica">${esc(r.reason||'')}</textarea>`
+        : `<div class="reason" style="margin-top:0">${esc(r.reason||'—')}</div>`}</div>
+      ${pendente?'':box('info','Este pedido já foi '+r.status+' pela gestão — não dá mais para editar o motivo.')}`;
+    openModal(pendente?'Ver / editar pedido':'Ver pedido', body, async()=>{
+      if(!pendente) return true;
+      const novo=($('#ed_reason').value||'').trim();
+      const {error}=await sb.rpc('esc_update_my_dayoff_reason',{p_id:r.id,p_reason:novo});
+      if(error){toast(error.message);return false;}
+      toast('Pedido atualizado!'); renderFuncionaria(); return true;
+    });
+  }
 }
 
 // ---------- NOTIFICAÇÕES (gestor) ----------
