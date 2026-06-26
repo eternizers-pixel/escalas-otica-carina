@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v60 (motor não sugere folga para dia/turno já passado — horário de Brasília)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v61 (motor: removido o "Log de decisão" — a fila de justiça já explica)
 // ============================================================
 (function(){
 "use strict";
@@ -871,7 +871,7 @@ ROUTES.folgas=async function(){
         <div style="font-weight:800;font-size:17px;padding:8px 14px;background:var(--brand-soft);color:var(--brand-d);border-radius:10px;margin-bottom:10px;text-transform:capitalize">${dia} · ${dataBR}</div>
         <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:10px">${cards}</div></div>`;
     }).join('');
-    const logRows=out.logs.map(l=>`<div class="reason" style="font-size:12.5px;border-left-color:${l.type==='bloqueio'?'var(--red)':l.type==='rodizio'?'var(--purple)':'var(--brand)'}">${l.type==='bloqueio'?'🚫':l.type==='rodizio'?'🔁':'✅'} ${esc(l.message)}</div>`).join('');
+    // (log de decisão removido — a fila de justiça já explica o porquê de cada folga)
     // FILA DE JUSTIÇA — quem está na frente para folgar e por quê
     const queue=Engine.dayoffQueue(emps,rules,history,existing);
     // grava a posição na fila no cadastro (a funcionária lê só a dela na área dela) — só gestor, semana atual real
@@ -898,10 +898,8 @@ ROUTES.folgas=async function(){
         <div class="panel" style="flex:2 1 440px;min-width:300px;margin:0"><div class="ph"><h3>Sugestões da semana</h3>
           <div style="display:flex;align-items:center;gap:10px"><span class="muted">${out.suggestions.length} folga(s)</span>
           ${(isGestor()&&out.suggestions.length)?`<button class="btn sm" id="apAll">✓ Aprovar todos</button>`:''}</div></div>
-          <div class="pb">${out.suggestions.length?'':box('warn',(weekOffset===0&&weekOver)?'Esta semana já terminou (horário de Brasília). Use <b>→</b> para planejar a próxima semana.':'Nenhuma folga sugerida nesta semana — veja o porquê no log abaixo.')}${dayBlocks||'<span class="muted">Sem sugestões nesta semana.</span>'}</div></div>
-      </div>
-      <details class="panel section" style="margin-top:12px"><summary style="cursor:pointer;padding:13px 16px;font-weight:700">🧠 Log de decisão <span class="muted" style="font-weight:500">— toque para ver o porquê</span></summary>
-        <div class="pb" style="padding-top:4px">${logRows||'<span class="muted">Sem registros.</span>'}</div></details>`;
+          <div class="pb">${out.suggestions.length?'':box('warn',(weekOffset===0&&weekOver)?'Esta semana já terminou (horário de Brasília). Use <b>→</b> para planejar a próxima semana.':'Nenhuma folga sugerida nesta semana — a fila de justiça mostra o porquê de cada uma.')}${dayBlocks||'<span class="muted">Sem sugestões nesta semana.</span>'}</div></div>
+      </div>`;
     $$('[data-ap]').forEach(b=>b.onclick=async()=>{ if(!gate())return; const i=+b.dataset.ap; b.disabled=true;
       await saveApproval(out.suggestions[i]);
       $('#act'+i).innerHTML='<span class="pill ativa">✓ Aprovado</span>'; toast('Folga aprovada — veja em Folgas aprovadas.'); });
