@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v52 (botão Atualizar grava pedido de sincronização p/ o robô do PC)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v53 (aviso de banco reconhece importação do robô, não só 'planilha')
 // ============================================================
 (function(){
 "use strict";
@@ -57,7 +57,7 @@ async function getAll(name, q){ let b=T(name).select('*'); if(q) b=q(b); const {
 
 // Lembrete: quando o banco de horas foi atualizado pela última vez (via planilha)
 async function bankFreshnessBanner(){
-  const {data}=await T('time_bank_imports').select('imported_at,file_name').eq('source','planilha').order('imported_at',{ascending:false}).limit(1).maybeSingle();
+  const {data}=await T('time_bank_imports').select('imported_at,file_name').neq('source','api').order('imported_at',{ascending:false}).limit(1).maybeSingle();
   if(!data) return box('warn','<b>Banco de horas ainda não foi importado por planilha.</b> Antes de planejar folgas, importe a planilha (coluna <b>Total</b>) do TiqueTaque em <b>TiqueTaque → Banco de horas</b>.');
   const dt=new Date(data.imported_at);
   const startOfDay=d=>{const x=new Date(d);x.setHours(0,0,0,0);return x.getTime();};
@@ -96,7 +96,7 @@ async function buildHistory(refISO){
 // Reconciliação automática do banco: compara as 2 últimas importações de planilha.
 // Se o banco de alguém caiu, ela usou horas → confere com a folga programada ou registra como saída avulsa.
 async function reconcileBank(){
-  const imps=await getAll('time_bank_imports',b=>b.eq('source','planilha').order('imported_at',{ascending:false}).limit(2));
+  const imps=await getAll('time_bank_imports',b=>b.neq('source','api').order('imported_at',{ascending:false}).limit(2));
   if(imps.length<2) return [];
   const cur=imps[0], prev=imps[1];
   if(cur.reconciled) return []; // já processado
