@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v61 (motor: removido o "Log de decisão" — a fila de justiça já explica)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v62 (removida a Simulação)
 // ============================================================
 (function(){
 "use strict";
@@ -186,13 +186,12 @@ const NAV=[
   ['tiquetaque','🔄','t','TiqueTaque','Sincronizar banco de horas'],
   ['regras','🏪','p','Regras da loja','Horários, turnos e limites'],
   ['relatorios','📈','g','Relatórios','Resumo e índice de justiça'],
-  ['simulacao','🧪','r','Simulação','Teste cenários sem risco'],
   ['relsemana','📋','t','Relatório da semana','Texto pronto para o grupo'],
 ];
 const HOME_TOP=['dashboard','folgas','escala','relatorios'];
 const HOME_BOTTOM=['sabados','calendario','pedidos','config'];
 const HOME_KEYS=[...HOME_TOP,...HOME_BOTTOM];
-const CONFIG_KEYS=['funcionarias','acessos','ferias','tiquetaque','regras','simulacao'];
+const CONFIG_KEYS=['funcionarias','acessos','ferias','tiquetaque','regras'];
 
 function updateSimBanner(){ $('#simBanner').innerHTML = S.sim ? `<div class="simbanner">🧪 MODO SIMULAÇÃO — dados fictícios. Nada aqui afeta os dados reais.</div>`:''; }
 
@@ -1475,8 +1474,8 @@ ROUTES.relatorios=async function(){
   ${box('info','<b>Como o balanço é calculado:</b> o sistema soma as folgas "boas" de cada uma (sextas, segundas, dia inteiro, véspera de feriado, total de folgas) e compara com a média da equipe — <b>mas só entre quem tem banco de horas para folgar</b>. <b>Favorecida</b>: recebeu mais folgas boas que a média (perde prioridade). <b>Prejudicada</b>: tem banco para compensar mas recebeu poucas folgas boas (ganha prioridade). <b>Em dia (banco baixo)</b>: já compensou as horas e não tem saldo para mais folgas — não é prejuízo. Os números em <span style="color:var(--amber);font-weight:700">laranja</span> destacam as folgas mais disputadas. Tudo já entra automaticamente no motor.')}`;
 };
 
-// ---------- SIMULAÇÃO ----------
-ROUTES.simulacao=async function(){
+// ---------- SIMULAÇÃO (removida — tela desativada, redireciona para Início) ----------
+ROUTES.simulacao=async function(){ location.hash='#home'; return;
   $('#view').innerHTML=`
   ${box('info','<b>Modo simulação.</b> Crie funcionárias fictícias e teste cenários sem tocar nos dados reais. Com o modo ativo, todo o sistema passa a mostrar os dados fictícios (uma faixa roxa avisa no topo).')}
   <div class="toolbar">
