@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v51 (cards de regras abrem em par + nomenclatura 'entrar mais tarde / sair mais cedo')
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v52 (botão Atualizar grava pedido de sincronização p/ o robô do PC)
 // ============================================================
 (function(){
 "use strict";
@@ -330,12 +330,13 @@ async function refreshNotifs(){
   const sd=x=>{const z=new Date(x);z.setHours(0,0,0,0);return z.getTime();};
   const upToday = imp && imp.imported_at && sd(imp.imported_at)===sd(Date.now());
   const out=[];
-  if(!upToday) out.push(`<div class="notif-item warn"><div>📥 <b>Atualize o banco de horas</b><div class="muted" style="font-size:12.5px">Lembrete diário — sincronize a planilha do TiqueTaque.</div></div><a class="btn sm ntf-go" href="#tiquetaque">Atualizar</a></div>`);
+  if(!upToday) out.push(`<div class="notif-item warn"><div>📥 <b>Atualize o banco de horas</b><div class="muted" style="font-size:12.5px">Toque em <b>Atualizar</b> — o robô puxa do TiqueTaque sozinho. <a href="#tiquetaque" class="ntf-go" style="color:var(--brand);font-weight:600">ou importar manual</a></div></div><button class="btn sm" data-syncreq>Atualizar</button></div>`);
   pend.forEach(r=>{ const dt=r.date?(' · '+r.date.split('-').reverse().slice(0,2).join('/')):''; out.push(`<div class="notif-item"><div>📩 <b>${esc(r.employee_name||'Funcionária')}</b> <span class="muted">— ${esc(reqTypeLabel(r.request_type))}${dt}</span><div class="muted" style="font-size:12.5px">${esc(r.reason||'aguardando sua aprovação')}</div></div><a class="btn sm ntf-go" href="#pedidos">Ver</a></div>`); });
   const count=(upToday?0:1)+pend.length;
   const badge=$('#notifBadge'); badge.textContent=count; badge.style.display=count?'':'none';
   $('#notifBody').innerHTML=out.length?out.join(''):'<p class="muted" style="padding:16px;text-align:center">Tudo em dia! ✅<br>Sem pendências.</p>';
   $$('.ntf-go').forEach(a=>a.addEventListener('click',()=>{ $('#notifDrawer').classList.remove('open'); $('#notifOverlay').classList.remove('open'); }));
+  $$('[data-syncreq]').forEach(b=>b.onclick=async()=>{ b.disabled=true; b.textContent='Enviando…'; const r=await T('sync_requests').insert({status:'pendente',requested_by:S.user.id}); if(r.error){ toast(r.error.message); b.disabled=false; b.textContent='Atualizar'; return; } toast('Pedido enviado! O robô vai importar do TiqueTaque em instantes.'); b.textContent='✓ Enviado'; });
 }
 ROUTES.config=function(){
   $('#view').innerHTML=`${box('info','Aqui ficam os ajustes e cadastros. As telas do dia a dia (folgas, sábados, calendário) estão na tela inicial.')}${cardsFor(CONFIG_KEYS)}`;
