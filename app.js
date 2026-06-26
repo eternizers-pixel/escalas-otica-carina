@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v59 (fila da funcionária: texto curto "já tem X marcadas · banco previsto de Y", sem "passou a vez")
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v60 (motor não sugere folga para dia/turno já passado — horário de Brasília)
 // ============================================================
 (function(){
 "use strict";
@@ -16,6 +16,11 @@ const isGestor=()=>S.role==='gestor';
 function toast(msg){const t=$('#toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2800);}
 function gate(){ if(!isGestor()){ toast('Apenas o gestor pode alterar dados.'); return false;} return true; }
 const todayStr=()=>new Date().toISOString().slice(0,10);
+// data (YYYY-MM-DD) e minutos do dia no horário de Brasília, independente do fuso do aparelho
+function nowBrasilia(){ const d=new Date();
+  const date=d.toLocaleDateString('en-CA',{timeZone:'America/Sao_Paulo'});
+  const t=d.toLocaleTimeString('en-GB',{timeZone:'America/Sao_Paulo',hour:'2-digit',minute:'2-digit',hour12:false});
+  return { date, min:(+t.slice(0,2))*60+(+t.slice(3,5)) }; }
 const MONTHS=['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
 const SHIFT_LABEL={manha:'Manhã',tarde:'Tarde',sabado_tarde:'Sábado tarde',dia_inteiro:'Dia inteiro'};
 // formata horas decimais -> "2h10min" / "6h" / "-0h59min"
@@ -808,9 +813,11 @@ ROUTES.folgas=async function(){
     <span class="muted" style="font-size:12px">desmarque um dia para o motor não dar folga nele</span></div>
   <div id="folgaOut"><p class="muted">Carregando sugestões da semana…</p></div>`;
   async function run(){
+    const nb=nowBrasilia();   // hoje + agora no horário de Brasília
+    const hmMin=t=>{const[h,m]=String(t||'').split(':').map(Number);return (h||0)*60+(m||0);};
     // semana completa (segunda a sexta), a partir de 22/06/2026 ou da semana atual, mais o deslocamento escolhido
     const SYSTEM_START='2026-06-22';
-    const base = todayStr() < SYSTEM_START ? SYSTEM_START : todayStr();
+    const base = nb.date < SYSTEM_START ? SYSTEM_START : nb.date;
     const bd=Engine.parse(base); const wd=bd.getDay(); bd.setDate(bd.getDate()+(wd===0?1:1-wd)+weekOffset*7); // segunda-feira da semana escolhida
     const weekStart=Engine.fmt(bd);
     const history=await buildHistory(weekStart); // recência/justiça relativas à semana planejada (conta folgas anteriores a ela)
@@ -819,7 +826,11 @@ ROUTES.folgas=async function(){
     const fSchedIds=new Set(fScheds.map(s=>s.id));
     const existing=(await getAll('schedule_items',b=>b.eq('status','aprovado').gte('date',todayStr()))).filter(it=>fSchedIds.has(it.schedule_id));
     const out=Engine.suggestDayOffs({employees:emps,rules,vacations:vacs,requests:reqs,refusals,blockedDates:blk,year,month,horizonDays:4,startDate:weekStart,history,existing,weekdays:selDays});
+    // só sugere o que ainda dá tempo hoje: descarta dias e turnos que já passaram (horário de Brasília)
+    out.suggestions=(out.suggestions||[]).filter(s=> s.date>nb.date ? true : (s.date<nb.date ? false : nb.min < ((s.shift==='manha')?hmMin(rules.close_morning||'12:00'):hmMin(rules.close_afternoon||'18:00'))) );
     const wEnd=Engine.parse(weekStart); wEnd.setDate(wEnd.getDate()+4);
+    const friday=Engine.fmt(wEnd);
+    const weekOver=(nb.date>friday)||(nb.date===friday && nb.min>=hmMin(rules.close_afternoon||'18:00'));
     const wlabel=`${weekStart.split('-').reverse().slice(0,2).join('/')} a ${Engine.fmt(wEnd).split('-').reverse().slice(0,2).join('/')}`;
     $('#wkLabel').textContent = weekOffset===0?`Semana ${wlabel}`:`Semana ${wlabel} ${weekOffset>0?'(+'+weekOffset+')':'('+weekOffset+')'}`;
     $('#capInfo').textContent=`cobertura ${out.capacity.level.replace('_',' ')}${weekOffset!==0?' · simulação':''}`;
@@ -887,7 +898,7 @@ ROUTES.folgas=async function(){
         <div class="panel" style="flex:2 1 440px;min-width:300px;margin:0"><div class="ph"><h3>Sugestões da semana</h3>
           <div style="display:flex;align-items:center;gap:10px"><span class="muted">${out.suggestions.length} folga(s)</span>
           ${(isGestor()&&out.suggestions.length)?`<button class="btn sm" id="apAll">✓ Aprovar todos</button>`:''}</div></div>
-          <div class="pb">${out.suggestions.length?'':box('warn','Nenhuma folga sugerida nesta semana — veja o porquê no log abaixo.')}${dayBlocks||'<span class="muted">Sem sugestões nesta semana.</span>'}</div></div>
+          <div class="pb">${out.suggestions.length?'':box('warn',(weekOffset===0&&weekOver)?'Esta semana já terminou (horário de Brasília). Use <b>→</b> para planejar a próxima semana.':'Nenhuma folga sugerida nesta semana — veja o porquê no log abaixo.')}${dayBlocks||'<span class="muted">Sem sugestões nesta semana.</span>'}</div></div>
       </div>
       <details class="panel section" style="margin-top:12px"><summary style="cursor:pointer;padding:13px 16px;font-weight:700">🧠 Log de decisão <span class="muted" style="font-weight:500">— toque para ver o porquê</span></summary>
         <div class="pb" style="padding-top:4px">${logRows||'<span class="muted">Sem registros.</span>'}</div></details>`;
