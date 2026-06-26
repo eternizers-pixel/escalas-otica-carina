@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v53 (aviso de banco reconhece importação do robô, não só 'planilha')
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v54 (notificação e tela da funcionária também reconhecem import do robô)
 // ============================================================
 (function(){
 "use strict";
@@ -241,7 +241,7 @@ async function renderFuncionaria(){
     getAll('schedule_items',b=>b.eq('employee_id',eid).gte('date',today).eq('status','aprovado').order('date')),
     getAll('dayoff_requests',b=>b.eq('employee_id',eid).order('created_at',{ascending:false}).limit(20)),
     getAll('saturday_rotation',b=>b.eq('employee_id',eid).gte('saturday_date',today).order('saturday_date').limit(1)),
-    T('time_bank_imports').select('imported_at').eq('source','planilha').order('imported_at',{ascending:false}).limit(1).maybeSingle().then(r=>r.data).catch(()=>null),
+    T('time_bank_imports').select('imported_at').neq('source','api').order('imported_at',{ascending:false}).limit(1).maybeSingle().then(r=>r.data).catch(()=>null),
     T('store_rules').select('*').eq('id',1).maybeSingle().then(r=>r.data||{})
   ]);
   const me=emps[0]||{};
@@ -325,7 +325,7 @@ async function refreshNotifs(){
   if(S.role!=='gestor' || !$('#notifBadge')) return;
   const [pend,imp]=await Promise.all([
     getAll('dayoff_requests',b=>b.eq('status','pendente').order('created_at',{ascending:false})),
-    T('time_bank_imports').select('imported_at').eq('source','planilha').order('imported_at',{ascending:false}).limit(1).maybeSingle().then(r=>r.data).catch(()=>null)
+    T('time_bank_imports').select('imported_at').neq('source','api').order('imported_at',{ascending:false}).limit(1).maybeSingle().then(r=>r.data).catch(()=>null)
   ]);
   const sd=x=>{const z=new Date(x);z.setHours(0,0,0,0);return z.getTime();};
   const upToday = imp && imp.imported_at && sd(imp.imported_at)===sd(Date.now());
