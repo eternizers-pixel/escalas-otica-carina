@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v49 (preferência da funcionária mostra horário real calculado das regras)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v50 (Regras em cards expansíveis + duração da folga em menu (sem erro de formato))
 // ============================================================
 (function(){
 "use strict";
@@ -515,29 +515,32 @@ ROUTES.regras=async function(){
     return `<tr><td><b>${esc(c.name)}</b></td><td>${c.date.split('-').reverse().join('/')}</td><td class="muted">${ini.toLocaleDateString('pt-BR')} → ${d.toLocaleDateString('pt-BR')}</td></tr>`; }).join('');
   const adt=String(r.allowed_dayoff_types||'').split(',').map(s=>s.trim()).filter(Boolean);
   const chk=c=>(adt.length?adt.includes(c):true)?'checked':''; // sem config = todas marcadas
+  const durLabel=h=>{ const m=Math.round(h*60); const H=Math.floor(m/60), M=m%60; return H===0?M+' min':(H+'h'+(M?String(M).padStart(2,'0'):'')); };
+  const curEarly=+(r.early_leave_hours??3); const earlyOpts=[0.5,1,1.5,2,2.5,3,3.5,4]; if(!earlyOpts.includes(curEarly)) earlyOpts.push(curEarly); earlyOpts.sort((a,b)=>a-b);
   $('#view').innerHTML=`
-  <div class="toolbar"><b>Regras da loja</b><span class="muted" style="font-size:12.5px">— configure os blocos e salve</span><div class="spacer"></div><button class="btn" id="saveRules" ${isGestor()?'':'disabled'}>💾 Salvar regras</button></div>
-  <div class="masonry">
+  <div class="toolbar"><b>Regras da loja</b><span class="muted" style="font-size:12.5px">— toque num card pra abrir</span><div class="spacer"></div><button class="btn" id="saveRules" ${isGestor()?'':'disabled'}>💾 Salvar regras</button></div>
+  ${box('info','Toque em cada card para abrir e ajustar. No fim, clique em <b>Salvar regras</b> no topo — salva tudo de uma vez.')}
+  <div class="acc-list">
 
-    <div class="panel"><div class="ph"><h3>🕐 Horário de funcionamento</h3></div><div class="pb">
+    <details class="acc"><summary><span class="acc-ic">🕐</span><span class="acc-tt"><b>Horário de funcionamento</b><small>Abertura e fechamento — manhã e tarde</small></span><span class="acc-ar">▾</span></summary><div class="acc-body">
       <div class="grid2">
         <div class="field"><label>Manhã — abre</label><input id="r_om" type="time" value="${r.open_morning||'09:00'}"/></div>
         <div class="field"><label>Manhã — fecha</label><input id="r_cm" type="time" value="${r.close_morning||'12:00'}"/></div>
         <div class="field"><label>Tarde — abre</label><input id="r_oa" type="time" value="${r.open_afternoon||'14:00'}"/></div>
         <div class="field" style="margin:0"><label>Tarde — fecha</label><input id="r_ca" type="time" value="${r.close_afternoon||'18:00'}"/></div></div>
       <div class="reason">A loja fecha no almoço — por isso manhã e tarde têm horários separados.</div>
-    </div></div>
+    </div></details>
 
-    <div class="panel"><div class="ph"><h3>👥 Cobertura da loja</h3></div><div class="pb">
+    <details class="acc"><summary><span class="acc-ic">👥</span><span class="acc-tt"><b>Cobertura da loja</b><small>Mínimo por turno, limite de folgas e função essencial</small></span><span class="acc-ar">▾</span></summary><div class="acc-body">
       <div class="grid2">
         <div class="field"><label>Mínimo por turno</label><input id="r_min" type="number" value="${r.min_per_shift||4}"/></div>
         <div class="field" style="margin:0"><label>Máx. folgando no mesmo dia</label><input id="r_maxday" type="number" min="1" value="${r.max_dayoffs_per_day??2}"/></div></div>
       <div class="field" style="margin:13px 0 0"><label>Função essencial</label>
         <select id="r_expert"><option value="true" ${r.require_expert!==false?'selected':''}>Manter sempre 1 das mais experientes</option><option value="false" ${r.require_expert===false?'selected':''}>Não exigir</option></select></div>
       <div class="reason">O motor nunca passa do máximo por dia e (se ativado) nunca deixa a loja sem uma das mais experientes.</div>
-    </div></div>
+    </div></details>
 
-    <div class="panel"><div class="ph"><h3>🏦 Banco de horas</h3></div><div class="pb">
+    <details class="acc"><summary><span class="acc-ic">🏦</span><span class="acc-tt"><b>Banco de horas</b><small>Mínimo p/ folga, limite e alertas de banco alto</small></span><span class="acc-ar">▾</span></summary><div class="acc-body">
       <div class="grid2">
         <div class="field"><label>Mín. p/ sugerir folga (h)</label><input id="r_minbank" type="number" value="${r.min_time_bank_for_dayoff||6}"/></div>
         <div class="field" style="margin:0"><label>Limite recomendado (h)</label><input id="r_maxbank" type="number" value="${r.max_time_bank||20}"/></div></div>
@@ -548,12 +551,12 @@ ROUTES.regras=async function(){
         <div class="field" style="margin:0"><label>Máxima</label><input id="r_bk3" type="number" value="${r.bank_alert_maxima??16}"/></div>
         <div class="field" style="margin:0"><label>Crítico</label><input id="r_bk4" type="number" value="${r.bank_alert_critico??20}"/></div></div>
       <div class="reason">Quanto mais alto o banco, maior a prioridade p/ folga. Acima do crítico vira alerta no painel.</div>
-    </div></div>
+    </div></details>
 
-    <div class="panel"><div class="ph"><h3>🌴 Regras de folga</h3></div><div class="pb">
+    <details class="acc"><summary><span class="acc-ic">🌴</span><span class="acc-tt"><b>Regras de folga</b><small>Duração, horários permitidos e tipo</small></span><span class="acc-ar">▾</span></summary><div class="acc-body">
       <div class="grid2">
         <div class="field"><label>Tipo liberado</label><select id="r_mode"><option value="saida_antecipada" ${(r.dayoff_mode||'saida_antecipada')==='saida_antecipada'?'selected':''}>Só sair mais cedo</option><option value="completa" ${r.dayoff_mode==='completa'?'selected':''}>Integral / meio turno</option></select></div>
-        <div class="field" style="margin:0"><label>Horas de saída antecipada / entrada mais tarde</label><input id="r_early" type="number" step="0.5" min="0.5" value="${r.early_leave_hours??3}"/></div></div>
+        <div class="field" style="margin:0"><label>Duração da folga (sair cedo / entrar tarde)</label><select id="r_early">${earlyOpts.map(h=>`<option value="${h}" ${curEarly===h?'selected':''}>${durLabel(h)}</option>`).join('')}</select></div></div>
       <div class="field" style="margin:13px 0 0"><label>Folga: mín–máx (h)</label><div style="display:flex;gap:6px"><input id="r_dmin" type="number" value="${r.min_dayoff_hours||3}"/><input id="r_dmax" type="number" value="${r.max_dayoff_hours||8}"/></div></div>
       <label style="margin:13px 0 7px">Opções que a loja permite</label>
       <div class="chip-row">
@@ -562,9 +565,9 @@ ROUTES.regras=async function(){
         <label class="chk-chip"><input type="checkbox" class="r_dtype" value="tarde_entrar" ${chk('tarde_entrar')}/> Entrar tarde (tarde)</label>
         <label class="chk-chip"><input type="checkbox" class="r_dtype" value="tarde_sair" ${chk('tarde_sair')}/> Sair cedo (tarde)</label></div>
       <div class="reason">O motor só sugere os horários marcados. Para o rodízio justo, marque ao menos uma de <b>entrar</b> e uma de <b>sair</b>.</div>
-    </div></div>
+    </div></details>
 
-    <div class="panel"><div class="ph"><h3>📅 Sábados &amp; escala</h3></div><div class="pb">
+    <details class="acc"><summary><span class="acc-ic">📅</span><span class="acc-tt"><b>Sábados &amp; escala</b><small>Quantos sábados, horário e pessoas por sábado</small></span><span class="acc-ar">▾</span></summary><div class="acc-body">
       <div class="grid2">
         <div class="field"><label>Sábados abertos / mês</label><input id="r_satn" type="number" value="${r.saturday_open_count||2}"/></div>
         <div class="field"><label>Horário do sábado</label><div style="display:flex;gap:6px"><input id="r_sats" type="time" value="${r.saturday_start||'14:00'}"/><input id="r_sate" type="time" value="${r.saturday_end||'17:00'}"/></div></div>
@@ -573,20 +576,21 @@ ROUTES.regras=async function(){
         <div class="field"><label>Quais sábados (padrão)</label><select id="r_satmode"><option value="dois_primeiros" ${(r.saturday_open_mode||'dois_primeiros')==='dois_primeiros'?'selected':''}>Os dois primeiros</option><option value="primeiro_ultimo" ${r.saturday_open_mode==='primeiro_ultimo'?'selected':''}>1º e último</option><option value="todos" ${r.saturday_open_mode==='todos'?'selected':''}>Todos</option></select></div>
         <div class="field" style="margin:0"><label>Escala 5x2 (futura)</label><select id="r_5x2"><option value="false" ${!r.scale_5x2_enabled?'selected':''}>Desativada</option><option value="true" ${r.scale_5x2_enabled?'selected':''}>Ativada</option></select></div></div>
       <div class="reason">1º sábado tem mais movimento → mais gente; perto de feriado o reforço inverte sozinho. O modo de cada mês ajusta-se em <b>Rodízio de sábados</b>.</div>
-    </div></div>
+    </div></details>
 
-    <div class="panel"><div class="ph"><h3>🚫 Dias bloqueados</h3><button class="btn sm" id="addBlk" ${isGestor()?'':'disabled'}>+ Adicionar</button></div>
-      <div class="pb" style="padding:0"><table><thead><tr><th>Data</th><th>Tipo</th><th>Motivo</th><th></th></tr></thead>
+    <details class="acc"><summary><span class="acc-ic">🚫</span><span class="acc-tt"><b>Dias bloqueados</b><small>Datas em que o sistema não sugere folga</small></span><span class="acc-ar">▾</span></summary><div class="acc-body">
+      <div style="margin-bottom:11px"><button class="btn sm" id="addBlk" ${isGestor()?'':'disabled'}>+ Adicionar dia</button></div>
+      <table><thead><tr><th>Data</th><th>Tipo</th><th>Motivo</th><th></th></tr></thead>
       <tbody>${blocked.map(b=>`<tr><td>${b.date.split('-').reverse().join('/')}</td><td>${b.type}</td><td>${esc(b.reason||'')}</td><td>${isGestor()?`<button class="btn ghost sm" style="color:var(--red)" data-delblk="${b.id}">remover</button>`:''}</td></tr>`).join('')||'<tr><td colspan=4 class="muted" style="padding:16px">Nenhum dia bloqueado.</td></tr>'}
-      </tbody></table></div></div>
+      </tbody></table></div></details>
 
-    <div class="panel"><div class="ph"><h3>🎁 Datas comemorativas</h3></div><div class="pb">
+    <details class="acc"><summary><span class="acc-ic">🎁</span><span class="acc-tt"><b>Datas comemorativas</b><small>Proteção de folga perto de feriados e datas de varejo</small></span><span class="acc-ar">▾</span></summary><div class="acc-body">
       <div class="grid2">
         <div class="field"><label>Proteção</label><select id="r_comm"><option value="true" ${r.block_commemorative!==false?'selected':''}>Ativada</option><option value="false" ${r.block_commemorative===false?'selected':''}>Desativada</option></select></div>
         <div class="field" style="margin:0"><label>Dias antes a proteger</label><input id="r_lead" type="number" value="${lead}"/></div></div>
-      <div class="pb" style="padding:0;margin-top:12px"><table><thead><tr><th>Data</th><th>Quando</th><th>Sem folga</th></tr></thead><tbody>${commRows||'<tr><td colspan=3 class="muted">—</td></tr>'}</tbody></table></div>
+      <div style="margin-top:12px;overflow-x:auto"><table><thead><tr><th>Data</th><th>Quando</th><th>Sem folga</th></tr></thead><tbody>${commRows||'<tr><td colspan=3 class="muted">—</td></tr>'}</tbody></table></div>
       <div class="reason">Nessas datas e na semana anterior o sistema não sugere folga (o sábado também não). Datas fixas de varejo já vêm incluídas; extras vão em <b>Dias bloqueados</b>.</div>
-    </div></div>
+    </div></details>
 
   </div>`;
   $('#saveRules')?.addEventListener('click',async()=>{ if(!gate())return;
