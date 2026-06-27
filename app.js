@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v67 (mobile: cards soltos com respiro; 1º nome também na última folga e histórico de sábados)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v68 (feriados: calendário mostra a semana protegida + liberar folga por feriado nas Configurações)
 // ============================================================
 (function(){
 "use strict";
@@ -552,8 +552,9 @@ ROUTES.regras=async function(){
   const blocked=await getAll('blocked_dates',b=>b.order('date'));
   const cy=new Date().getFullYear(), lead=r.high_traffic_lead_days??7, todayS=todayStr();
   const comm=[...Engine.commemorativeDates(cy),...Engine.commemorativeDates(cy+1)].filter(c=>c.date>=todayS).slice(0,8);
+  const libHol=new Set(String(r.holidays_allowed||'').split(',').map(s=>s.trim()).filter(Boolean));
   const commRows=comm.map(c=>{ const d=new Date(c.date+'T00:00:00'); const ini=new Date(d); ini.setDate(ini.getDate()-lead);
-    return `<tr><td><b>${esc(c.name)}</b></td><td>${c.date.split('-').reverse().join('/')}</td><td class="muted">${ini.toLocaleDateString('pt-BR')} → ${d.toLocaleDateString('pt-BR')}</td></tr>`; }).join('');
+    return `<tr><td><b>${esc(c.name)}</b></td><td>${c.date.split('-').reverse().join('/')}</td><td class="muted">${ini.toLocaleDateString('pt-BR')} → ${d.toLocaleDateString('pt-BR')}</td><td><label class="chk-chip" style="font-size:11.5px;padding:5px 9px"><input type="checkbox" class="r_libhol" value="${c.date}" ${libHol.has(c.date)?'checked':''} ${isGestor()?'':'disabled'}/> Liberar folga</label></td></tr>`; }).join('');
   const adt=String(r.allowed_dayoff_types||'').split(',').map(s=>s.trim()).filter(Boolean);
   const chk=c=>(adt.length?adt.includes(c):true)?'checked':''; // sem config = todas marcadas
   const durLabel=h=>{ const m=Math.round(h*60); const H=Math.floor(m/60), M=m%60; return H===0?M+' min':(H+'h'+(M?String(M).padStart(2,'0'):'')); };
@@ -629,8 +630,8 @@ ROUTES.regras=async function(){
       <div class="grid2">
         <div class="field"><label>Proteção</label><select id="r_comm"><option value="true" ${r.block_commemorative!==false?'selected':''}>Ativada</option><option value="false" ${r.block_commemorative===false?'selected':''}>Desativada</option></select></div>
         <div class="field" style="margin:0"><label>Dias antes a proteger</label><input id="r_lead" type="number" value="${lead}"/></div></div>
-      <div style="margin-top:12px;overflow-x:auto"><table><thead><tr><th>Data</th><th>Quando</th><th>Sem folga</th></tr></thead><tbody>${commRows||'<tr><td colspan=3 class="muted">—</td></tr>'}</tbody></table></div>
-      <div class="reason">Nessas datas e na semana anterior o sistema não sugere folga (o sábado também não). Datas fixas de varejo já vêm incluídas; extras vão em <b>Dias bloqueados</b>.</div>
+      <div style="margin-top:12px;overflow-x:auto"><table><thead><tr><th>Feriado</th><th>Data</th><th>Semana protegida</th><th>Liberar folga?</th></tr></thead><tbody>${commRows||'<tr><td colspan=4 class="muted">—</td></tr>'}</tbody></table></div>
+      <div class="reason">O sistema <b>não sugere folga na semana que antecede</b> cada feriado (nem sábado). Quer dar folga numa dessas semanas? Marque <b>Liberar folga</b> nela e salve. Os feriados já vêm incluídos; bloqueios extras vão em <b>Dias bloqueados</b>.</div>
     </div></details>
 
   </div>`;
@@ -650,6 +651,7 @@ ROUTES.regras=async function(){
       saturday_first_count:+$('#r_sat1').value||3,saturday_second_count:+$('#r_sat2').value||2,
       saturday_open_mode:$('#r_satmode').value||'dois_primeiros',
       block_commemorative:$('#r_comm').value==='true', high_traffic_lead_days:+$('#r_lead').value||7,
+      holidays_allowed:$$('.r_libhol').filter(c=>c.checked).map(c=>c.value).join(','),
       scale_5x2_enabled:$('#r_5x2').value==='true',updated_at:new Date().toISOString()};
     const res=await T('store_rules').upsert(payload); if(res.error){toast('Erro: '+res.error.message);return;}
     toast('Regras salvas.'); });
@@ -1284,6 +1286,7 @@ ROUTES.calendario=async function(){
       getAll('saturday_rotation',b=>b.eq('year',year).eq('month',month))]);
     const mset=await T('month_settings').select('*').eq('year',year).eq('month',month).maybeSingle().then(r=>r.data||null);
     const nm=Object.fromEntries(emps.map(e=>[e.id,e.name]));
+    const calLibHol=new Set(String(rules.holidays_allowed||'').split(',').map(s=>s.trim()).filter(Boolean));
     const satMode=(mset&&mset.sat_mode)||rules.saturday_open_mode||'dois_primeiros';
     const sats=Engine.openSaturdays(year,month,satMode).map(Engine.fmt);
     const dowFull=['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];
@@ -1296,6 +1299,7 @@ ROUTES.calendario=async function(){
       rot.filter(r=>r.saturday_date===ds).forEach(r=>{ const fn=(r.employee_name||nm[r.employee_id]||'').split(' ')[0]; ev+=`<span class="ev sab" title="${esc(r.employee_name||'')}">${esc(fn)}</span>`; });
       if(sats.includes(ds) && !rot.some(r=>r.saturday_date===ds)) ev+=`<span class="ev sab">Sábado (definir)</span>`;
       if(blk.some(b=>b.date===ds)) ev+=`<span class="ev blk">Bloqueio</span>`;
+      else if(rules.block_commemorative!==false){ const cb=Engine.commemorativeBlock(ds,(rules.high_traffic_lead_days??7),calLibHol); if(cb) ev+=`<span class="ev blk">🎁 ${esc(cb)}</span>`; }
       dayEv[d]={ev,dow};
     }
     const mobile = window.innerWidth < 720;

@@ -45,11 +45,12 @@ window.Engine = (function () {
     return out.sort((a,b)=>a.date<b.date?-1:1);
   }
   // se a data está na própria data comemorativa ou na semana que a antecede, devolve o nome
-  function commemorativeBlock(dStr, leadDays){
+  function commemorativeBlock(dStr, leadDays, allowed){
     const y=+dStr.slice(0,4);
     const dates=[...commemorativeDates(y), ...commemorativeDates(y+1)];
     const target=parse(dStr);
     for(const c of dates){
+      if(allowed && allowed.has && allowed.has(c.date)) continue; // semana liberada nas Configurações
       const diff=Math.round((parse(c.date)-target)/86400000);
       if(diff>=0 && diff<=leadDays) return c.name; // alvo é a data ou até leadDays antes
     }
@@ -304,6 +305,7 @@ window.Engine = (function () {
       return [];
     };
     const leadDays = rules.high_traffic_lead_days ?? 7;
+    const allowedHol = new Set(String(rules.holidays_allowed||'').split(',').map(s=>s.trim()).filter(Boolean));
 
     // exceções registradas (falta/atestado/afastamento) tiram a pessoa do dia, igual a uma folga integral
     const reqAbsentByDate={};
@@ -315,7 +317,7 @@ window.Engine = (function () {
       const d=new Date(start); d.setDate(d.getDate()+i);
       const dStr=fmt(d); const dow=d.getDay();
       if (dStr<todayISO || !allowDow.includes(dow) || blocked(dStr)) continue;
-      const comm = (rules.block_commemorative!==false) ? commemorativeBlock(dStr, leadDays) : null;
+      const comm = (rules.block_commemorative!==false) ? commemorativeBlock(dStr, leadDays, allowedHol) : null;
       if (comm){ logs.push({type:'bloqueio', message:`${DIAS[dow]} (${dStr}): sem folga — semana de ${comm} (alto movimento). As folgas ficam para depois da data.`}); continue; }
       const existToday = existing.filter(it=>it.date===dStr);
       // dia inteiro fora: folga integral, falta, atestado, afastamento (qualquer um tira a pessoa do dia)
@@ -557,5 +559,5 @@ window.Engine = (function () {
 
   return { saturdaysOfMonth, openSaturdays, daysInMonth, operationalCapacity, fairnessIndex,
            saturdayRotation, suggestDayOffs, dayoffQueue, simEmployees, SCENARIOS, DOW, fmt, parse,
-           commemorativeDates };
+           commemorativeDates, commemorativeBlock };
 })();
