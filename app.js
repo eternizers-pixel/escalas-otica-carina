@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v63 (novo visual minimalista: fundo lavanda, roxo, cantos arredondados, sombras suaves)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v65 (largura menor no PC, alertas/cards consistentes, mobile com margem, Acessos em cards, botão relatório em destaque, acordeão em par só no PC)
 // ============================================================
 (function(){
 "use strict";
@@ -227,8 +227,8 @@ function renderHome(){
     <img src="logo.png" class="home-logo" alt="Ótica Carina" />
     <div class="tag">Sistema de Escalas &amp; Banco de Horas</div>
     <div style="margin-top:12px;display:flex;gap:20px;justify-content:center;flex-wrap:wrap">
-      <a href="#tiquetaque" style="color:var(--brand);font-weight:600;font-size:14px">🔄 Sincronizar banco de horas (TiqueTaque)</a>
-      <a href="#relsemana" style="color:var(--brand);font-weight:600;font-size:14px">📋 Relatório da semana (grupo)</a>
+      <a href="#tiquetaque" class="btn sec">🔄 Sincronizar banco (TiqueTaque)</a>
+      <a href="#relsemana" class="btn">📋 Relatório da semana (grupo)</a>
     </div>
   </div>
   ${cardsFor(HOME_TOP,'cols4')}${cardsFor(HOME_BOTTOM,'cols4')}`;
@@ -393,14 +393,14 @@ ROUTES.acessos=async function(){
   const roleOpts=(sel)=>['funcionaria','viewer','gestor'].map(r=>`<option value="${r}" ${sel===r?'selected':''}>${r==='gestor'?'Gestor':r==='viewer'?'Visualização':'Funcionária'}</option>`).join('');
   $('#view').innerHTML=`
     ${box('info','Cada funcionária cria a conta dela na tela de login (e-mail + senha). Aqui você <b>vincula</b> o login ao cadastro dela e define o <b>tipo de acesso</b>: <b>Funcionária</b> só vê a área dela (posição, folgas, preferência, pedidos); <b>Visualização</b> vê tudo sem alterar; <b>Gestor</b> tem acesso total.')}
-    <div class="panel"><div class="pb" style="padding:0;overflow-x:auto"><table>
-      <thead><tr><th>Login (e-mail)</th><th>Tipo de acesso</th><th>Vinculado a</th><th></th></tr></thead>
-      <tbody>${profs.map(p=>`<tr>
-        <td><b>${esc(p.email||'—')}</b>${p.id===S.user.id?' <span class="muted">(você)</span>':''}</td>
-        <td><select class="ac_role" data-id="${p.id}">${roleOpts(p.role)}</select></td>
-        <td><select class="ac_emp" data-id="${p.id}">${empOpts(p.employee_id)}</select></td>
-        <td><button class="btn sm" data-save="${p.id}">Salvar</button></td></tr>`).join('')||'<tr><td colspan=4 class="muted" style="padding:16px">Nenhum login criado ainda. Peça às funcionárias para criar a conta na tela de login.</td></tr>'}
-      </tbody></table></div></div>
+    ${profs.length?profs.map(p=>`<div class="card" style="margin-bottom:12px">
+      <div style="font-weight:700;font-size:15px;word-break:break-word">${esc(p.email||'—')}${p.id===S.user.id?' <span class="muted" style="font-weight:500">(você)</span>':''}</div>
+      <div class="grid2" style="margin-top:12px">
+        <div class="field" style="margin:0"><label>Tipo de acesso</label><select class="ac_role" data-id="${p.id}">${roleOpts(p.role)}</select></div>
+        <div class="field" style="margin:0"><label>Vinculado a</label><select class="ac_emp" data-id="${p.id}">${empOpts(p.employee_id)}</select></div>
+      </div>
+      <button class="btn sm" data-save="${p.id}" style="margin-top:12px">Salvar</button>
+    </div>`).join(''):box('warn','Nenhum login criado ainda. Peça às funcionárias para criar a conta na tela de login.')}
     ${box('info','Dica: o tipo <b>Funcionária</b> só funciona depois de vincular a uma pessoa em "Vinculado a". Sem vínculo, ela não vê nada.')}`;
   $$('[data-save]').forEach(b=>b.onclick=async()=>{ if(!gate())return; const id=b.dataset.save;
     const role=$(`.ac_role[data-id="${id}"]`).value;
@@ -634,7 +634,7 @@ ROUTES.regras=async function(){
 
   </div>`;
   // abre/fecha os dois cards da mesma linha juntos (evita o buraco na coluna ao lado)
-  (()=>{ const accs=$$('.acc-list .acc'); accs.forEach((d,i)=>d.addEventListener('toggle',()=>{ const p=(i%2===0)?accs[i+1]:accs[i-1]; if(p && p.open!==d.open) p.open=d.open; })); })();
+  (()=>{ const accs=$$('.acc-list .acc'); const paired=()=>window.matchMedia('(min-width:681px)').matches; accs.forEach((d,i)=>d.addEventListener('toggle',()=>{ if(!paired())return; /* abrir em par só no computador (2 colunas); no celular abre um por vez */ const p=(i%2===0)?accs[i+1]:accs[i-1]; if(p && p.open!==d.open) p.open=d.open; })); })();
   $('#saveRules')?.addEventListener('click',async()=>{ if(!gate())return;
     const payload={id:1,open_morning:$('#r_om').value,close_morning:$('#r_cm').value,open_afternoon:$('#r_oa').value,close_afternoon:$('#r_ca').value,
       open_time:$('#r_om').value,close_time:$('#r_ca').value,
