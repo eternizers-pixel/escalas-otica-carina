@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v72 (home: Rodízio sobe (verde) e Relatórios desce (lavanda))
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v73 (dashboard alertas lado a lado; motor sem aviso de banco; folgas em grid uniforme; histórico de sábados simplificado + troca entre sábados)
 // ============================================================
 (function(){
 "use strict";
@@ -464,7 +464,7 @@ ROUTES.dashboard=async function(){
   const usos = S.sim?[]:await getAll('bank_usage',b=>b.order('created_at',{ascending:false}).limit(8));
   const fresh=await bankFreshnessBanner();
   $('#view').innerHTML=`
-  ${fresh}
+  <div class="dash-alerts"><div>${fresh}</div><div>${alerts}</div></div>
   <div class="cards">
     <div class="card"><h3>Disponíveis hoje</h3><div class="kpi">${availToday}<small> / ${active.length} ativas</small></div></div>
     <div class="card"><h3>Indisponíveis hoje</h3><div class="kpi">${outIds.length}${meioToday.length?`<small> + ${meioToday.length} meio turno</small>`:''}</div></div>
@@ -475,7 +475,6 @@ ROUTES.dashboard=async function(){
     <div class="card"><h3>Folga prevista (todas aprovadas)</h3><div class="kpi" style="color:var(--amber)">−${fmtH(totalFolga)}</div></div>
     <div class="card"><h3>Banco previsto (após as folgas)</h3><div class="kpi" style="color:var(--green)">${fmtH(totalPrev)}</div></div>
   </div>
-  <div class="section">${alerts}</div>
   ${usos.length?`<div class="section panel"><div class="ph"><h3>🔎 Uso de banco detectado</h3><span class="muted">comparando importações</span></div><div class="pb">
     ${usos.map(u=>`<div class="reason" style="border-left-color:${u.matched?'var(--green)':'var(--amber)'};font-size:13px"><b>${esc(u.employee_name||'')}</b> — ${esc(u.note||'')} <span class="muted">(${(u.usage_date||'').split('-').reverse().slice(0,2).join('/')})</span></div>`).join('')}
   </div></div>`:''}
@@ -800,13 +799,11 @@ ROUTES.folgas=async function(){
   const lastDow=dw=>{ const arr=allAp.filter(it=>Engine.parse(it.date).getDay()===dw); if(!arr.length) return null;
     const d=arr[0].date; return {date:d, names:[...new Set(arr.filter(x=>x.date===d).map(x=>x.employee_name||nmMap[x.employee_id]||''))].filter(Boolean)}; };
   const lastMon=lastDow(1), lastFri=lastDow(5);
-  const fresh=await bankFreshnessBanner();
   let weekOffset=0; // 0 = semana de planejamento atual; ← / → mudam a semana (para simular as próximas)
   // dias da semana onde o motor pode distribuir folgas (1=seg … 5=sex). Padrão: todos.
   let selDays=String(rules.dayoff_weekdays||'1,2,3,4,5').split(',').map(s=>+s.trim()).filter(n=>n>=1&&n<=5);
   if(!selDays.length) selDays=[1,2,3,4,5];
   $('#view').innerHTML=`
-  ${fresh}
   <div class="toolbar">
     <button class="btn sec sm" id="wkPrev">←</button>
     <b id="wkLabel" style="min-width:185px;text-align:center">—</b>
@@ -955,7 +952,7 @@ ROUTES.escala=async function(){
     ${(isGestor()&&items.length)?`<button class="btn sec" id="delAllF" style="color:var(--red)">🗑️ Remover tudo</button>`:''}
     <div class="spacer"></div><span class="muted">${items.length} folga(s) a partir deste mês</span></div>
   ${box('info','Todas as folgas aprovadas. <b>Editar</b> troca o dia/horário, <b>Remover</b> apaga — útil quando a funcionária pede um dia diferente do que o sistema sugeriu. Você também pode <b>lançar</b> uma folga do zero.')}
-  <div style="display:flex;flex-wrap:wrap;gap:14px;align-items:flex-start">
+  <div class="escala-grid">
     ${(()=>{ const byDay={}; items.forEach(it=>{(byDay[it.date]=byDay[it.date]||[]).push(it);});
       return Object.keys(byDay).sort().map(date=>{
         const dia=Engine.DOW[Engine.parse(date).getDay()]; const dataBR=date.split('-').reverse().join('/');
@@ -968,7 +965,7 @@ ROUTES.escala=async function(){
             <span class="pill ${it.status==='aprovado'?'ativa':it.status==='recusado'?'afastada':'ferias'}">${it.status==='aprovado'?'Aprovado':it.status}</span>
             ${isGestor()?`<button class="btn ghost sm" data-swapf="${it.id}">🔁 Trocar</button><button class="btn ghost sm" data-edf="${it.id}">Editar</button><button class="btn ghost sm" style="color:var(--red)" data-delf="${it.id}">Remover</button>`:''}
           </div></div>`).join('');
-        return `<div class="panel" style="flex:1 1 calc(50% - 7px);min-width:300px;margin:0"><div class="ph" style="background:var(--brand-soft)"><h3 style="color:var(--brand-d);text-transform:capitalize;margin:0">${dia} · ${dataBR}</h3></div><div class="pb">${cards}</div></div>`;
+        return `<div class="panel" style="margin:0"><div class="ph" style="background:var(--brand-soft)"><h3 style="color:var(--brand-d);text-transform:capitalize;margin:0">${dia} · ${dataBR}</h3></div><div class="pb">${cards}</div></div>`;
       }).join('');
     })()||'<p class="muted" style="margin:0">Nenhuma folga registrada. Aprove no Motor de folgas ou clique em “Lançar folga”.</p>'}
   </div>`;
@@ -1175,6 +1172,7 @@ ROUTES.sabados=async function(){
     const invNote=meta.inverted?`<div class="reason" style="border-left-color:var(--purple)">🔁 Inversão automática: <b>${esc(meta.commName)}</b> perto do 2º sábado → reforço no 2º sábado (mais gente lá).</div>`:'';
     const passed = sats.length && sats[sats.length-1] < todayISO;
 
+    let swapSrc=null;  // troca entre sábados: {saturday_number, employee_id, employee_name}
     function renderEditor(){
       const cards=sats.map((d,idx)=>{
         const n=idx+1, tgt=targets[idx]||0;
@@ -1186,14 +1184,31 @@ ROUTES.sabados=async function(){
           <h3>${n}º sábado · ${d.split('-').reverse().join('/')}</h3>
           <span class="pill ${ok?'ativa':'ferias'}">${assigned.length}/${tgt} pessoas</span></div>
           <div class="pb">
-            ${assigned.map(a=>`<span class="pill ativa" style="margin:0 8px 8px 0;display:inline-flex;align-items:center;gap:7px;font-size:13px">${esc(fnm(a.employee_name))} ${isGestor()?`<button class="x" style="font-size:15px;line-height:1;padding:0" data-rm="${n}|${a.employee_id}" title="remover">×</button>`:''}</span>`).join('')||'<span class="muted">Ninguém escalado ainda.</span>'}
+            ${assigned.map(a=>{
+              const isSrc=swapSrc&&swapSrc.saturday_number===n&&swapSrc.employee_id===a.employee_id;
+              const isCand=swapSrc&&swapSrc.saturday_number!==n;
+              const acts=!isGestor()?''
+                :isSrc?`<button class="x" style="font-size:14px;line-height:1;padding:0" data-swapcancel="1" title="cancelar troca">×</button>`
+                :isCand?`<button class="lnk-sw" data-swapwith="${n}|${a.employee_id}" title="trocar de sábado com ${esc(fnm(swapSrc.employee_name))}">⇄ trocar</button>`
+                :swapSrc?''
+                :`<button class="x" style="font-size:13px;line-height:1;padding:0" data-swapsrc="${n}|${a.employee_id}" title="trocar de sábado">🔁</button><button class="x" style="font-size:15px;line-height:1;padding:0" data-rm="${n}|${a.employee_id}" title="remover">×</button>`;
+              return `<span class="pill ${isSrc?'ferias':'ativa'}" style="margin:0 8px 8px 0;display:inline-flex;align-items:center;gap:7px;font-size:13px">${esc(fnm(a.employee_name))} ${acts}</span>`;
+            }).join('')||'<span class="muted">Ninguém escalado ainda.</span>'}
             ${noExp?`<div class="alert warn" style="margin-top:8px">⚠️ Este sábado está <b>sem ninguém com mais conhecimento</b>. Evite deixar só quem sabe menos — inclua pelo menos uma das mais experientes.</div>`:''}
-            ${isGestor()?`<div style="margin-top:10px;max-width:300px"><select data-add="${n}"><option value="">+ adicionar funcionária…</option>${avail.map(e=>`<option value="${e.id}">${esc(e.name)}</option>`).join('')}</select></div>`:''}
+            ${isGestor()&&!swapSrc?`<div style="margin-top:10px;max-width:300px"><select data-add="${n}"><option value="">+ adicionar funcionária…</option>${avail.map(e=>`<option value="${e.id}">${esc(e.name)}</option>`).join('')}</select></div>`:''}
           </div></div>`;
       }).join('');
-      $('#satEditor').innerHTML=`<div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start">${cards}</div>`+(invNote?`<div class="section">${invNote}</div>`:'');
+      const swapBanner=swapSrc?`<div class="reason" style="border-left-color:var(--brand);margin:0 0 12px">🔁 Trocando <b>${esc(fnm(swapSrc.employee_name))}</b> — clique em <b>⇄ trocar</b> em alguém de outro sábado, ou cancele no ×.</div>`:'';
+      $('#satEditor').innerHTML=swapBanner+`<div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start">${cards}</div>`+(invNote?`<div class="section">${invNote}</div>`:'');
       $$('[data-rm]').forEach(b=>b.onclick=()=>{ const [n,id]=b.dataset.rm.split('|'); state=state.filter(a=>!(String(a.saturday_number)===n&&a.employee_id===id)); renderEditor(); });
       $$('[data-add]').forEach(s=>s.onchange=()=>{ const n=+s.dataset.add, id=s.value; if(!id)return; const e=emps.find(x=>x.id===id); state.push({saturday_number:n,saturday_date:sats[n-1],employee_id:id,employee_name:e.name}); renderEditor(); });
+      $$('[data-swapsrc]').forEach(b=>b.onclick=()=>{ const [n,id]=b.dataset.swapsrc.split('|'); const a=state.find(x=>String(x.saturday_number)===n&&x.employee_id===id); if(a){ swapSrc={saturday_number:+n,employee_id:id,employee_name:a.employee_name}; renderEditor(); } });
+      $$('[data-swapcancel]').forEach(b=>b.onclick=()=>{ swapSrc=null; renderEditor(); });
+      $$('[data-swapwith]').forEach(b=>b.onclick=()=>{ if(!swapSrc)return; const [n,id]=b.dataset.swapwith.split('|');
+        const A=state.find(x=>x.saturday_number===swapSrc.saturday_number&&x.employee_id===swapSrc.employee_id);
+        const B=state.find(x=>String(x.saturday_number)===n&&x.employee_id===id);
+        if(A&&B){ const an=A.saturday_number, bn=B.saturday_number; A.saturday_number=bn; A.saturday_date=sats[bn-1]; B.saturday_number=an; B.saturday_date=sats[an-1]; toast(`Troca feita: ${fnm(A.employee_name)} ↔ ${fnm(B.employee_name)}. Clique em Salvar rodízio.`); }
+        swapSrc=null; renderEditor(); });
     }
 
     // histórico agrupado por mês → por sábado (data DD/MM/AAAA, visual em cards)
@@ -1210,19 +1225,10 @@ ROUTES.sabados=async function(){
     const histHtml=Object.keys(byMonth).sort().reverse().map(mk=>{
       const M=byMonth[mk];
       const rows=Object.keys(M.sats).sort().reverse().map(sk=>{
-        const s=M.sats[sk]; const dBR=s.date.split('-').reverse().join('/');
-        return `<div style="display:flex;align-items:center;gap:14px;padding:11px 12px;border:1px solid var(--line);border-radius:12px;margin-bottom:8px;background:#fff;flex-wrap:wrap">
-          <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-width:88px;background:#eef1ff;border-radius:10px;padding:7px 10px">
-            <span style="font-weight:800;font-size:12px;color:var(--brand)">${s.num}º sábado</span>
-            <span style="font-weight:700;font-size:13px">${dBR}</span>
-          </div>
-          <div style="display:flex;gap:6px;flex-wrap:wrap;flex:1;min-width:0">
-            ${s.people.map(p=>`<span class="pill ativa" style="font-size:12.5px">${esc(fnm(p))}</span>`).join('')||'<span class="muted">—</span>'}
-          </div></div>`;
+        const s=M.sats[sk]; const dBR=s.date.split('-').reverse().slice(0,2).join('/');
+        return `<div class="sat-h-row"><span class="sat-h-when">${s.num}º · ${dBR}</span><span class="sat-h-who">${s.people.map(p=>esc(fnm(p))).join(', ')||'—'}</span></div>`;
       }).join('');
-      return `<div style="margin-bottom:18px">
-        <div style="font-weight:800;font-size:15px;margin:0 0 10px;padding-bottom:6px;border-bottom:2px solid var(--line)">${M.label}</div>
-        ${rows}</div>`;
+      return `<div class="sat-h-month"><div class="sat-h-mlabel">${M.label}</div>${rows}</div>`;
     }).join('')||'<p class="muted" style="margin:0">Sem histórico ainda.</p>';
 
     $('#view').innerHTML=`
