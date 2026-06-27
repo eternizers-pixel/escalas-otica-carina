@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v71 (home: 4 cards de cima em verde/teal, 4 de baixo em roxo/lavanda)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v72 (home: Rodízio sobe (verde) e Relatórios desce (lavanda))
 // ============================================================
 (function(){
 "use strict";
@@ -177,7 +177,7 @@ const NAV=[
   ['dashboard','📊','t','Dashboard','Visão geral, alertas e resumo do mês'],
   ['folgas','🌴','t','Motor de folgas','Sugestões inteligentes e justas'],
   ['escala','📋','t','Folgas aprovadas','Ver, editar e lançar folgas'],
-  ['sabados','📅','p','Rodízio de sábados','2 primeiros sábados, equilibrado'],
+  ['sabados','📅','t','Rodízio de sábados','2 primeiros sábados, equilibrado'],
   ['calendario','🗓️','p','Calendário','Visão mensal de folgas e férias'],
   ['config','⚙️','p','Configurações','Funcionárias, regras, TiqueTaque e mais'],
   ['funcionarias','👥','g','Funcionárias','Cadastro, cargos e banco de horas'],
@@ -186,11 +186,11 @@ const NAV=[
   ['pedidos','📨','p','Pedidos & exceções','Folgas, faltas, atestados, trocas'],
   ['tiquetaque','🔄','t','TiqueTaque','Sincronizar banco de horas'],
   ['regras','🏪','p','Regras da loja','Horários, turnos e limites'],
-  ['relatorios','📈','t','Relatórios','Resumo e índice de justiça'],
+  ['relatorios','📈','p','Relatórios','Resumo e índice de justiça'],
   ['relsemana','📋','t','Relatório da semana','Texto pronto para o grupo'],
 ];
-const HOME_TOP=['dashboard','folgas','escala','relatorios'];
-const HOME_BOTTOM=['sabados','calendario','pedidos','config'];
+const HOME_TOP=['dashboard','folgas','escala','sabados'];
+const HOME_BOTTOM=['relatorios','calendario','pedidos','config'];
 const HOME_KEYS=[...HOME_TOP,...HOME_BOTTOM];
 const CONFIG_KEYS=['funcionarias','acessos','ferias','tiquetaque','regras'];
 
