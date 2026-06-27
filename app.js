@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v65 (largura menor no PC, alertas/cards consistentes, mobile com margem, Acessos em cards, botão relatório em destaque, acordeão em par só no PC)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v66 (mobile: tabelas viram cards, margem maior, motor dias em linha + última folga alinhada; rodízio botões juntos; primeiro nome nas listas)
 // ============================================================
 (function(){
 "use strict";
@@ -16,6 +16,7 @@ const isGestor=()=>S.role==='gestor';
 function toast(msg){const t=$('#toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2800);}
 function gate(){ if(!isGestor()){ toast('Apenas o gestor pode alterar dados.'); return false;} return true; }
 const todayStr=()=>new Date().toISOString().slice(0,10);
+const fnm=n=>{ n=String(n||'').trim(); return n.split(/\s+/)[0]||n; }; // só o primeiro nome (listas/operacional)
 // data (YYYY-MM-DD) e minutos do dia no horário de Brasília, independente do fuso do aparelho
 function nowBrasilia(){ const d=new Date();
   const date=d.toLocaleDateString('en-CA',{timeZone:'America/Sao_Paulo'});
@@ -392,7 +393,7 @@ ROUTES.acessos=async function(){
   const empOpts=(sel)=>`<option value="">— nenhuma —</option>`+emps.map(e=>`<option value="${e.id}" ${sel===e.id?'selected':''}>${esc(e.name)}</option>`).join('');
   const roleOpts=(sel)=>['funcionaria','viewer','gestor'].map(r=>`<option value="${r}" ${sel===r?'selected':''}>${r==='gestor'?'Gestor':r==='viewer'?'Visualização':'Funcionária'}</option>`).join('');
   $('#view').innerHTML=`
-    ${box('info','Cada funcionária cria a conta dela na tela de login (e-mail + senha). Aqui você <b>vincula</b> o login ao cadastro dela e define o <b>tipo de acesso</b>: <b>Funcionária</b> só vê a área dela (posição, folgas, preferência, pedidos); <b>Visualização</b> vê tudo sem alterar; <b>Gestor</b> tem acesso total.')}
+    ${box('info','Vincule cada login ao cadastro da pessoa e escolha o acesso: <b>Funcionária</b> (vê só a área dela), <b>Visualização</b> (vê tudo, sem alterar) ou <b>Gestor</b> (total).')}
     ${profs.length?profs.map(p=>`<div class="card" style="margin-bottom:12px">
       <div style="font-weight:700;font-size:15px;word-break:break-word">${esc(p.email||'—')}${p.id===S.user.id?' <span class="muted" style="font-weight:500">(você)</span>':''}</div>
       <div class="grid2" style="margin-top:12px">
@@ -481,13 +482,13 @@ ROUTES.dashboard=async function(){
     <div class="spacer"></div><span class="muted">${MONTHS[month-1]} de ${year}</span>
   </div>
   <div class="panel"><div class="ph"><h3>Banco de horas por funcionária</h3><span class="muted">real → folgas aprovadas → previsto</span></div><div class="pb" style="padding:0">
-    <table><thead><tr><th>Funcionária</th><th>Cargo</th><th>Banco real</th><th>Folga prevista</th><th>Banco previsto</th><th>Status</th></tr></thead><tbody>
+    <table class="rt"><thead><tr><th>Funcionária</th><th>Cargo</th><th>Banco real</th><th>Folga prevista</th><th>Banco previsto</th><th>Status</th></tr></thead><tbody>
     ${emps.sort((a,b)=>(b.time_bank_balance||0)-(a.time_bank_balance||0)).map(e=>{ const fh=folgaH[e.id]||0; const prev=(+e.time_bank_balance||0)-fh; return `<tr>
-      <td><b>${esc(e.name)}</b></td><td class="muted">${esc(e.cargo||'—')}</td>
-      <td><b>${fmtH(e.time_bank_balance)}</b></td>
-      <td style="color:${fh?'var(--amber)':'var(--muted)'}">${fh?'−'+fmtH(fh):'—'}</td>
-      <td><b>${fmtH(prev)}</b></td>
-      <td><span class="pill ${e.status}">${e.status}</span></td></tr>`;}).join('')
+      <td data-label="Funcionária"><b>${esc(fnm(e.name))}</b></td><td data-label="Cargo" class="muted">${esc(e.cargo||'—')}</td>
+      <td data-label="Banco real"><b>${fmtH(e.time_bank_balance)}</b></td>
+      <td data-label="Folga prevista" style="color:${fh?'var(--amber)':'var(--muted)'}">${fh?'−'+fmtH(fh):'—'}</td>
+      <td data-label="Banco previsto"><b>${fmtH(prev)}</b></td>
+      <td data-label="Status"><span class="pill ${e.status}">${e.status}</span></td></tr>`;}).join('')
       ||'<tr><td colspan=6 class="muted" style="padding:18px">Nenhuma funcionária. Sincronize o TiqueTaque ou cadastre manualmente.</td></tr>'}
     </tbody></table></div></div>`;
 };
@@ -498,12 +499,12 @@ ROUTES.funcionarias=async function(){
   $('#view').innerHTML=`
   <div class="toolbar"><button class="btn" id="addEmp" ${isGestor()?'':'disabled'}>+ Nova funcionária</button>
     <div class="spacer"></div><span class="muted">${emps.length} cadastro(s)</span></div>
-  <div class="panel"><div class="pb" style="padding:0"><table>
+  <div class="panel"><div class="pb" style="padding:0"><table class="rt">
     <thead><tr><th>Nome</th><th>Cargo</th><th>Status</th><th>Carga</th><th>Banco</th><th>Prioridade</th><th></th></tr></thead>
     <tbody>${emps.map(e=>`<tr>
-      <td><b>${esc(e.name)}</b><br><span class="muted" style="font-size:11.5px">${esc(e.preferences||'')}</span></td>
-      <td>${esc(e.cargo||'—')}</td><td><span class="pill ${e.status}">${e.status}</span></td>
-      <td>${e.weekly_hours||44}h</td><td><b>${fmtH(e.time_bank_balance)}</b></td><td>${e.manual_priority||0}</td>
+      <td data-label="Nome"><b>${esc(e.name)}</b>${e.preferences?`<br><span class="muted" style="font-size:11.5px">${esc(e.preferences)}</span>`:''}</td>
+      <td data-label="Cargo">${esc(e.cargo||'—')}</td><td data-label="Status"><span class="pill ${e.status}">${e.status}</span></td>
+      <td data-label="Carga">${e.weekly_hours||44}h</td><td data-label="Banco"><b>${fmtH(e.time_bank_balance)}</b></td><td data-label="Prioridade">${e.manual_priority||0}</td>
       <td class="row-actions"><button class="btn ghost sm" data-edit="${e.id}">Editar</button>
         ${isGestor()?`<button class="btn ghost sm" style="color:var(--red)" data-del="${e.id}">Excluir</button>`:''}</td></tr>`).join('')
       ||'<tr><td colspan=7 class="muted" style="padding:18px">Nenhuma funcionária. Clique em “Nova funcionária” ou sincronize o TiqueTaque.</td></tr>'}
@@ -808,7 +809,7 @@ ROUTES.folgas=async function(){
     <button class="btn sec" id="regen">↻ Recalcular</button>
     <div class="spacer"></div><span class="muted" id="capInfo"></span></div>
   <div class="toolbar" style="flex-wrap:wrap;align-items:center"><span class="muted">Distribuir folgas em:</span>
-    <div class="chip-row">${[[1,'Seg'],[2,'Ter'],[3,'Qua'],[4,'Qui'],[5,'Sex']].map(([n,lb])=>`<label class="chk-chip"><input type="checkbox" class="wkday" value="${n}" ${selDays.includes(n)?'checked':''} ${isGestor()?'':'disabled'}/> ${lb}</label>`).join('')}</div>
+    <div class="chip-row wkdays">${[[1,'Seg'],[2,'Ter'],[3,'Qua'],[4,'Qui'],[5,'Sex']].map(([n,lb])=>`<label class="chk-chip"><input type="checkbox" class="wkday" value="${n}" ${selDays.includes(n)?'checked':''} ${isGestor()?'':'disabled'}/> ${lb}</label>`).join('')}</div>
     <span class="muted" style="font-size:12px">desmarque um dia para o motor não dar folga nele</span></div>
   <div id="folgaOut"><p class="muted">Carregando sugestões da semana…</p></div>`;
   async function run(){
@@ -858,7 +859,7 @@ ROUTES.folgas=async function(){
         const hm=(folgaTimeLabel(s,rules).match(/(\d{2}):(\d{2})/)||[])[0]; const hora=hm?' · '+hm.replace(':','h'):'';
         return `<div class="card" style="margin:0;display:flex;flex-direction:column;gap:9px">
           <div>
-            <div style="font-weight:700;font-size:15px">${esc(s.employee_name)}</div>
+            <div style="font-weight:700;font-size:15px">${esc(fnm(s.employee_name))}</div>
             <div style="font-size:14px;font-weight:600;margin-top:3px">${TYPE_LABEL[s.type]||s.type} <span class="muted" style="font-weight:500">(${SHIFT_LABEL[s.shift]||s.shift}) · ${s.hours}h${hora}</span></div>
           </div>
           <div style="display:flex;gap:5px;flex-wrap:wrap">${prefBadge(s.employee_id)}</div>
@@ -878,11 +879,11 @@ ROUTES.folgas=async function(){
       Promise.all(queue.map(q=>T('employees').update({queue_position:q.position,queue_total:_tot,queue_reason:q.whyShort||q.why||'',queue_updated_at:new Date().toISOString()}).eq('id',q.id))).catch(()=>{}); }
     const queueHtml=queue.map(q=>`<div style="display:flex;align-items:center;gap:11px;padding:8px 10px;border:1px solid var(--line);border-radius:10px;margin-bottom:6px;background:${q.elig?'#fff':'#f6f8fb'}">
         <div style="min-width:30px;height:30px;border-radius:50%;display:grid;place-items:center;font-weight:800;font-size:13px;flex:none;background:${(q.elig&&q.position<=3)?'var(--brand)':'#eef1f8'};color:${(q.elig&&q.position<=3)?'#fff':'var(--muted)'}">${q.position}º</div>
-        <div style="flex:1;min-width:0"><div style="font-weight:700">${esc(q.name)}</div><div class="muted" style="font-size:12.5px;margin-top:1px">${esc(q.why)}</div></div></div>`).join('');
+        <div style="flex:1;min-width:0"><div style="font-weight:700">${esc(fnm(q.name))}</div><div class="muted" style="font-size:12.5px;margin-top:1px">${esc(q.why)}</div></div></div>`).join('');
     const lf=info=> (info&&info.names&&info.names.length)?`<b>${info.names.map(esc).join(', ')}</b> <span class="muted">· ${info.date.split('-').reverse().join('/')}</span>`:'<span class="muted">ninguém ainda</span>';
     // faixa fina full-width: última folga seg/sex
     const monFri=`<div class="panel" style="margin-bottom:12px"><div class="pb" style="padding:11px 14px">
-      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:stretch">
+      <div class="lf-row" style="display:flex;gap:10px;flex-wrap:wrap;align-items:stretch">
         <span class="muted" style="font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.03em;display:flex;align-items:center;gap:6px;align-self:center">🗓️ Última folga</span>
         <div style="flex:1;min-width:190px;border:1px solid var(--line);border-radius:10px;padding:8px 12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span class="muted" style="font-size:11px;font-weight:700;text-transform:uppercase">Segunda</span> <span>${lf(lastMon)}</span></div>
         <div style="flex:1;min-width:190px;border:1px solid var(--line);border-radius:10px;padding:8px 12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span class="muted" style="font-size:11px;font-weight:700;text-transform:uppercase">Sexta</span> <span>${lf(lastFri)}</span></div>
@@ -1178,7 +1179,7 @@ ROUTES.sabados=async function(){
           <h3>${n}º sábado · ${d.split('-').reverse().join('/')}</h3>
           <span class="pill ${ok?'ativa':'ferias'}">${assigned.length}/${tgt} pessoas</span></div>
           <div class="pb">
-            ${assigned.map(a=>`<span class="pill ativa" style="margin:0 8px 8px 0;display:inline-flex;align-items:center;gap:7px;font-size:13px">${esc(a.employee_name)} ${isGestor()?`<button class="x" style="font-size:15px;line-height:1;padding:0" data-rm="${n}|${a.employee_id}" title="remover">×</button>`:''}</span>`).join('')||'<span class="muted">Ninguém escalado ainda.</span>'}
+            ${assigned.map(a=>`<span class="pill ativa" style="margin:0 8px 8px 0;display:inline-flex;align-items:center;gap:7px;font-size:13px">${esc(fnm(a.employee_name))} ${isGestor()?`<button class="x" style="font-size:15px;line-height:1;padding:0" data-rm="${n}|${a.employee_id}" title="remover">×</button>`:''}</span>`).join('')||'<span class="muted">Ninguém escalado ainda.</span>'}
             ${noExp?`<div class="alert warn" style="margin-top:8px">⚠️ Este sábado está <b>sem ninguém com mais conhecimento</b>. Evite deixar só quem sabe menos — inclua pelo menos uma das mais experientes.</div>`:''}
             ${isGestor()?`<div style="margin-top:10px;max-width:300px"><select data-add="${n}"><option value="">+ adicionar funcionária…</option>${avail.map(e=>`<option value="${e.id}">${esc(e.name)}</option>`).join('')}</select></div>`:''}
           </div></div>`;
@@ -1222,9 +1223,11 @@ ROUTES.sabados=async function(){
       <button class="btn sec sm" id="satPrev">←</button>
       <b style="min-width:150px;text-align:center">${MONTHS[month-1]} ${year}</b>
       <button class="btn sec sm" id="satNext">→</button>
-      <button class="btn" id="genSat" ${isGestor()?'':'disabled'}>⚡ Gerar sugestão</button>
-      <button class="btn sec" id="saveSat" ${isGestor()?'':'disabled'}>💾 Salvar rodízio</button>
       <div class="spacer"></div><span class="muted">${rules.saturday_start||'14:00'}–${rules.saturday_end||'17:00'}</span>
+    </div>
+    <div class="toolbar" style="flex-wrap:nowrap">
+      <button class="btn" id="genSat" style="flex:1" ${isGestor()?'':'disabled'}>⚡ Gerar sugestão</button>
+      <button class="btn sec" id="saveSat" style="flex:1" ${isGestor()?'':'disabled'}>💾 Salvar rodízio</button>
     </div>
     <div style="display:flex;gap:16px;flex-wrap:wrap;margin:6px 0 4px">
       <div style="display:flex;flex-direction:column;gap:4px;flex:1;min-width:230px;max-width:360px">
@@ -1329,11 +1332,11 @@ ROUTES.pedidos=async function(){
   const map=Object.fromEntries(emps.map(e=>[e.id,e.name]));
   $('#view').innerHTML=`
   <div class="toolbar"><button class="btn sec" id="addReq" ${isGestor()?'':'disabled'}>+ Registrar exceção (falta, atestado…)</button></div>
-  ${box('info','Aqui ficam os <b>pedidos das funcionárias</b> (folga e troca de sábado) e as <b>exceções</b> (falta, atestado, afastamento, atraso). Ao <b>Aprovar</b> um pedido de folga, ele vira folga em <b>Folgas aprovadas</b> automaticamente. Falta, atestado e afastamento tiram a funcionária do dia inteiro (o painel e o motor já consideram, <b>sem descontar banco</b>).')}
-  <div class="section panel" style="margin-top:0"><div class="ph"><h3>Pedidos e exceções</h3></div><div class="pb" style="padding:0"><table>
+  ${box('info','Pedidos das funcionárias (folga e troca) e exceções (falta, atestado, afastamento, atraso). <b>Aprovar</b> um pedido já o lança em <b>Folgas aprovadas</b>. Falta/atestado/afastamento tiram a pessoa do dia inteiro, sem descontar banco.')}
+  <div class="section panel" style="margin-top:0"><div class="ph"><h3>Pedidos e exceções</h3></div><div class="pb" style="padding:0"><table class="rt">
     <thead><tr><th>Funcionária</th><th>Data</th><th>Tipo</th><th>Motivo</th><th>Status</th><th></th></tr></thead>
-    <tbody>${reqs.map(r=>`<tr><td><b>${esc(r.employee_name||map[r.employee_id]||'—')}</b></td><td>${r.date||'—'}</td><td>${reqTypeLabel(r.request_type)}</td><td class="muted">${esc(r.reason||'')}</td>
-      <td><span class="pill ${r.status==='aprovado'?'ativa':r.status==='recusado'?'afastada':'ferias'}">${r.status}</span></td>
+    <tbody>${reqs.map(r=>`<tr><td data-label="Funcionária"><b>${esc(fnm(r.employee_name||map[r.employee_id]||'—'))}</b></td><td data-label="Data">${r.date?r.date.split('-').reverse().slice(0,2).join('/'):'—'}</td><td data-label="Tipo">${reqTypeLabel(r.request_type)}</td><td data-label="Motivo" class="muted">${esc(r.reason||'')}</td>
+      <td data-label="Status"><span class="pill ${r.status==='aprovado'?'ativa':r.status==='recusado'?'afastada':'ferias'}">${r.status}</span></td>
       <td class="row-actions">${isGestor()?`${r.status==='pendente'?`${r.request_type==='troca_folga'?`<button class="btn sm" data-troca="${r.id}">🔁 Resolver troca</button>`:`<button class="btn sm" data-ap="${r.id}">Aprovar</button>`}<button class="btn sec sm" data-rf="${r.id}">Recusar</button>`:''}<button class="btn ghost sm" data-edexc="${r.id}">Editar</button><button class="btn ghost sm" style="color:var(--red)" data-delexc="${r.id}">Remover</button>`:''}</td></tr>`).join('')||'<tr><td colspan=6 class="muted" style="padding:16px">Nenhum pedido registrado.</td></tr>'}
     </tbody></table></div></div>`;
   async function aprovarPedido(r){ if(!r||!gate())return;
@@ -1375,7 +1378,7 @@ async function satSwapModal(req){
   const cands=rows.filter(r=>r.saturday_date && r.saturday_date!==mine.saturday_date);
   const body=`<p style="margin-top:0"><b>${esc(req.employee_name||'A funcionária')}</b> está no sábado <b>${br(mine.saturday_date)}</b> e pediu troca.</p>
     <p class="muted">Escolha com quem trocar — ela vai para o sábado da colega e a colega vem para o dela. O rodízio é atualizado na hora.</p>
-    ${cands.length? cands.map(c=>`<div class="card" style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px"><span><b>${esc(c.employee_name||'')}</b> <span class="muted">· trabalha ${br(c.saturday_date)}</span></span><button class="btn sm" data-swap="${c.id}">Trocar</button></div>`).join('') : box('warn','Não há colega escalada em outro sábado deste mês para trocar.')}`;
+    ${cands.length? cands.map(c=>`<div class="card" style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px"><span><b>${esc(fnm(c.employee_name||''))}</b> <span class="muted">· trabalha ${br(c.saturday_date)}</span></span><button class="btn sm" data-swap="${c.id}">Trocar</button></div>`).join('') : box('warn','Não há colega escalada em outro sábado deste mês para trocar.')}`;
   openModal('Resolver troca de sábado', body, ()=>true);
   $('#mSave')?.remove(); const cancel=$('#mCancel'); if(cancel) cancel.textContent='Fechar';
   $$('[data-swap]').forEach(b=>b.onclick=async()=>{ if(!gate())return; const c=cands.find(x=>String(x.id)===b.dataset.swap); if(!c)return; b.disabled=true; b.textContent='Trocando…';
