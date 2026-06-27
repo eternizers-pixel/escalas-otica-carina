@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v69 (pedido mostra/edita o período; aprovar lança em Folgas aprovadas; avisos roxos fora do gestor)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v70 (funcionária: cancelar o próprio pedido pendente; dia da semana ao lado da data nos pedidos)
 // ============================================================
 (function(){
 "use strict";
@@ -288,7 +288,7 @@ async function renderFuncionaria(){
   const reqLbl=r=> r.request_type==='troca_folga'?'Troca de sábado':((r.reason&&/^\s*outro:/i.test(r.reason))?'Outro':(PL[codeOf(r)]||TYPE_LABEL[r.type]||'folga'));
   const stPill=s=> s==='aprovado'?'ativa':s==='recusado'?'afastada':'ferias';
   const reqList = myReqs.length
-    ? myReqs.map(r=>`<div class="preq"><div class="preq-top"><div class="preq-date"><b>${dataBR(r.date)}</b> <span class="muted">· ${esc(reqLbl(r))}</span></div><span class="pill ${stPill(r.status)}">${r.status}</span></div>${r.reason?`<div class="preq-reason">${esc(r.reason)}</div>`:''}<button class="btn ghost sm preq-edit" data-req="${r.id}">${r.status==='pendente'?'Ver / editar':'Ver'}</button></div>`).join('')
+    ? myReqs.map(r=>`<div class="preq"><div class="preq-top"><div class="preq-date"><b>${dataBR(r.date)}${r.date?' ('+Engine.DOW[Engine.parse(r.date).getDay()]+')':''}</b> <span class="muted">· ${esc(reqLbl(r))}</span></div><span class="pill ${stPill(r.status)}">${r.status}</span></div>${r.reason?`<div class="preq-reason">${esc(r.reason)}</div>`:''}<div style="display:flex;gap:8px;margin-top:10px"><button class="btn ghost sm preq-edit" data-req="${r.id}" style="flex:1;width:auto;margin-top:0">${r.status==='pendente'?'Ver / editar':'Ver'}</button>${r.status==='pendente'?`<button class="btn ghost sm preq-cancel" data-cancel="${r.id}" style="flex:1;color:var(--red)">Cancelar</button>`:''}</div></div>`).join('')
     : '<p class="muted" style="margin:0">Você ainda não fez pedidos.</p>';
   $('#view').innerHTML=`<div class="fnc">
     <div class="fnc-hi"><h2>Olá, ${esc(first)}! 👋</h2><p>Acompanhe aqui seu banco de horas, suas folgas e sua posição na fila.</p></div>
@@ -323,6 +323,9 @@ async function renderFuncionaria(){
     const {error}=await sb.rpc('esc_request_saturday_swap',{p_date:nextSat.saturday_date,p_reason:''});
     if(error){toast(error.message);return;} toast('Pedido de troca enviado para a gestão!'); renderFuncionaria(); });
   $$('.preq-edit').forEach(b=>b.onclick=()=>{ const r=myReqs.find(x=>x.id===b.dataset.req); if(r) viewEditReq(r); });
+  $$('.preq-cancel').forEach(b=>b.onclick=async()=>{ if(!confirm('Cancelar este pedido? Ele será removido e a gestão deixa de vê-lo.'))return;
+    const {error}=await sb.rpc('esc_cancel_my_dayoff',{p_id:b.dataset.cancel});
+    if(error){toast(error.message);return;} toast('Pedido cancelado.'); renderFuncionaria(); });
   function viewEditReq(r){
     const pendente=r.status==='pendente';
     const body=`<div class="field"><label>Pedido</label><div style="font-weight:700;font-size:16px">${dataBR(r.date)} · ${esc(reqLbl(r))}</div></div>
