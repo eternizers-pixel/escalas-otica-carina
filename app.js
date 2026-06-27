@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v70 (funcionária: cancelar o próprio pedido pendente; dia da semana ao lado da data nos pedidos)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v71 (home: 4 cards de cima em verde/teal, 4 de baixo em roxo/lavanda)
 // ============================================================
 (function(){
 "use strict";
@@ -174,19 +174,19 @@ async function boot(){
 
 // ---------- Nav model ----------
 const NAV=[
-  ['dashboard','📊','b','Dashboard','Visão geral, alertas e resumo do mês'],
+  ['dashboard','📊','t','Dashboard','Visão geral, alertas e resumo do mês'],
   ['folgas','🌴','t','Motor de folgas','Sugestões inteligentes e justas'],
-  ['escala','📋','g','Folgas aprovadas','Ver, editar e lançar folgas'],
+  ['escala','📋','t','Folgas aprovadas','Ver, editar e lançar folgas'],
   ['sabados','📅','p','Rodízio de sábados','2 primeiros sábados, equilibrado'],
-  ['calendario','🗓️','b','Calendário','Visão mensal de folgas e férias'],
+  ['calendario','🗓️','p','Calendário','Visão mensal de folgas e férias'],
   ['config','⚙️','p','Configurações','Funcionárias, regras, TiqueTaque e mais'],
   ['funcionarias','👥','g','Funcionárias','Cadastro, cargos e banco de horas'],
   ['acessos','🔑','k','Acessos','Logins das funcionárias e permissões'],
   ['ferias','✈️','a','Férias','Períodos e impacto na escala'],
-  ['pedidos','📨','k','Pedidos & exceções','Folgas, faltas, atestados, trocas'],
+  ['pedidos','📨','p','Pedidos & exceções','Folgas, faltas, atestados, trocas'],
   ['tiquetaque','🔄','t','TiqueTaque','Sincronizar banco de horas'],
   ['regras','🏪','p','Regras da loja','Horários, turnos e limites'],
-  ['relatorios','📈','g','Relatórios','Resumo e índice de justiça'],
+  ['relatorios','📈','t','Relatórios','Resumo e índice de justiça'],
   ['relsemana','📋','t','Relatório da semana','Texto pronto para o grupo'],
 ];
 const HOME_TOP=['dashboard','folgas','escala','relatorios'];
