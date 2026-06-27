@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v73 (dashboard alertas lado a lado; motor sem aviso de banco; folgas em grid uniforme; histórico de sábados simplificado + troca entre sábados)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v75 (dashboard: alertas mesma altura, sem "dado fresco", botões espaçados; rodízio: botões menores + Configurar mostra/esconde os campos)
 // ============================================================
 (function(){
 "use strict";
@@ -70,7 +70,7 @@ async function bankFreshnessBanner(){
   const days=Math.round((startOfDay(Date.now())-startOfDay(dt))/86400000);
   const quando=dt.toLocaleDateString('pt-BR')+' às '+dt.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
   if(days>=8) return box('warn',`<b>Banco de horas atualizado há ${days} dias</b> (${quando}). Antes de decidir folgas, vale reimportar a planilha (Total) do TiqueTaque.`);
-  return box('ok',`<b>Banco de horas atualizado em ${quando}</b> ${days>0?`(há ${days} dia${days>1?'s':''})`:'(hoje)'} — dado fresco para planejar.`);
+  return box('ok',`<b>Banco de horas atualizado em ${quando}</b> ${days>0?`(há ${days} dia${days>1?'s':''})`:'(hoje)'}`);
 }
 
 // Histórico real (justiça): folgas aprovadas + sábados trabalhados por funcionária.
@@ -478,7 +478,7 @@ ROUTES.dashboard=async function(){
   ${usos.length?`<div class="section panel"><div class="ph"><h3>🔎 Uso de banco detectado</h3><span class="muted">comparando importações</span></div><div class="pb">
     ${usos.map(u=>`<div class="reason" style="border-left-color:${u.matched?'var(--green)':'var(--amber)'};font-size:13px"><b>${esc(u.employee_name||'')}</b> — ${esc(u.note||'')} <span class="muted">(${(u.usage_date||'').split('-').reverse().slice(0,2).join('/')})</span></div>`).join('')}
   </div></div>`:''}
-  <div class="toolbar">
+  <div class="toolbar section">
     <button class="btn" onclick="location.hash='#folgas'">⚡ Gerar escala automática</button>
     <button class="btn sec" onclick="location.hash='#tiquetaque'">🔄 Sincronizar TiqueTaque</button>
     <div class="spacer"></div><span class="muted">${MONTHS[month-1]} de ${year}</span>
@@ -1149,6 +1149,7 @@ ROUTES.sabados=async function(){
   const s0=Engine.saturdaysOfMonth(year,month).slice(0,2);
   if(s0.length && Engine.fmt(s0[s0.length-1]) < todayISO){ month++; if(month>12){month=1;year++;} }
 
+  let cfgOpen=false;  // campos de configuração só aparecem ao clicar em "Configurar"
   async function load(){
     const [emps,rules,saved,hist,recent,mset]=await Promise.all([
       getAll('employees',b=>b.eq('is_simulation',S.sim).order('name')),
@@ -1238,10 +1239,12 @@ ROUTES.sabados=async function(){
       <button class="btn sec sm" id="satNext">→</button>
       <div class="spacer"></div><span class="muted">${rules.saturday_start||'14:00'}–${rules.saturday_end||'17:00'}</span>
     </div>
-    <div class="toolbar" style="flex-wrap:nowrap">
-      <button class="btn" id="genSat" style="flex:1" ${isGestor()?'':'disabled'}>⚡ Gerar sugestão</button>
-      <button class="btn sec" id="saveSat" style="flex:1" ${isGestor()?'':'disabled'}>💾 Salvar rodízio</button>
+    <div class="toolbar" style="flex-wrap:wrap">
+      <button class="btn" id="genSat" ${isGestor()?'':'disabled'}>⚡ Gerar sugestão</button>
+      <button class="btn sec" id="saveSat" ${isGestor()?'':'disabled'}>💾 Salvar rodízio</button>
+      ${isGestor()?`<button class="btn ghost" id="cfgSat">⚙️ Configurar</button>`:''}
     </div>
+    <div id="satCfg" style="display:${cfgOpen?'block':'none'}">
     <div style="display:flex;gap:16px;flex-wrap:wrap;margin:6px 0 4px">
       <div style="display:flex;flex-direction:column;gap:4px;flex:1;min-width:230px;max-width:360px">
         <span class="muted">Sábados que abrem neste mês:</span>
@@ -1260,6 +1263,7 @@ ROUTES.sabados=async function(){
         <span class="muted" style="font-size:12px">1º: ${targets[0]??'—'} · 2º: ${targets[1]??'—'} pessoa(s)</span>
       </div>
     </div>
+    </div>
     ${passed?box('warn','Estes sábados <b>já passaram</b>. Você pode registrar quem trabalhou (alimenta o histórico) ou ir para um mês futuro no <b>→</b>.'):box('info','O sistema sugere e <b>equilibra pelo histórico</b>. Ajuste na mão: remova no × e adicione pela lista — útil quando alguém pede para trocar um sábado. Depois <b>Salvar rodízio</b>.')}
     <div id="satEditor"></div>
     <div class="section panel"><div class="ph"><h3>Histórico de sábados</h3><span class="muted">por mês</span></div>
@@ -1267,6 +1271,7 @@ ROUTES.sabados=async function(){
     renderEditor();
     $('#satPrev').onclick=()=>{ month--; if(month<1){month=12;year--;} load(); };
     $('#satNext').onclick=()=>{ month++; if(month>12){month=1;year++;} load(); };
+    $('#cfgSat')?.addEventListener('click',()=>{ cfgOpen=!cfgOpen; const c=$('#satCfg'); if(c) c.style.display=cfgOpen?'block':'none'; });
     $('#satMode')?.addEventListener('change',async(e)=>{ if(!gate())return; const mode=e.target.value;
       const res=await T('month_settings').upsert({year,month,sat_mode:mode},{onConflict:'year,month'}); if(res.error){toast(res.error.message);return;}
       toast('Modo de sábados deste mês atualizado.'); load(); });
