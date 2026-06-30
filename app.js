@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v75 (dashboard: alertas mesma altura, sem "dado fresco", botões espaçados; rodízio: botões menores + Configurar mostra/esconde os campos)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v76 (motor: nunca sugere folga que deixe o banco previsto abaixo do mínimo configurado)
 // ============================================================
 (function(){
 "use strict";

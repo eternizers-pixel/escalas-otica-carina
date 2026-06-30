@@ -245,8 +245,11 @@ window.Engine = (function () {
       logs.push({type:'bloqueio', message:cap.note+' Geração de folgas suspensa até a equipe voltar ao mínimo.'});
       return { suggestions, logs, capacity:cap };
     }
-    // elegíveis: banco acima do mínimo configurado
-    let pool = active.filter(e => (e.time_bank_balance||0) >= minBank);
+    // elegíveis: banco PREVISTO (já descontando as folgas aprovadas) acima do mínimo configurado
+    const futHrsPool = {};
+    (existing||[]).forEach(it=>{ if(it&&it.employee_id) futHrsPool[it.employee_id]=(futHrsPool[it.employee_id]||0)+(+it.hours||0); });
+    const projBank = e => (e.time_bank_balance||0) - (futHrsPool[e.id]||0);
+    let pool = active.filter(e => projBank(e) >= minBank);
     if (pool.length===0){
       logs.push({type:'bloqueio', message:`Ninguém tem banco de horas acima de ${fmtHoras(minBank)} agora — não há horas a compensar com folga. (Esse mínimo é ajustável em Regras da loja.)`});
       return { suggestions, logs, capacity:cap };
@@ -395,7 +398,7 @@ window.Engine = (function () {
           let chosen=null;
           for (const e of cands){ const h=history[e.id]||{};
             if(day.dow===5 && (h.fridaysOff||0)>=2) continue;
-            if((bankLeft[e.id]||0) < costFull) continue;
+            if(((bankLeft[e.id]||0) - costFull) < minBank) continue; // não deixa o banco cair abaixo do mínimo
             if(requireExpert && expertIds.has(e.id) && (day.expertsAvail-day.expertOff-1) < 1) continue; // manteria a loja sem especialista
             chosen=e; break; }
           if(chosen){
@@ -421,8 +424,8 @@ window.Engine = (function () {
             if (day.dow===5 && (hh.fridaysOff||0)>=2){
               logs.push({type:'bloqueio', employee_id:e.id, employee_name:e.name, message:`${e.name} não recebe esta sexta: já folgou 2 sextas no mês — passando a vez para manter o equilíbrio.`}); continue;
             }
-            if ((bankLeft[e.id]||0) < hours){
-              if (genCount[e.id]>0) logs.push({type:'bloqueio', employee_id:e.id, employee_name:e.name, message:`${e.name} não recebe outra folga: o banco (${fmtHoras(bankLeft[e.id]||0)}) não cobre mais ${fmtHoras(hours)}.`});
+            if (((bankLeft[e.id]||0) - hours) < minBank){
+              logs.push({type:'bloqueio', employee_id:e.id, employee_name:e.name, message:`${e.name} não recebe folga: ficaria com ${fmtHoras((bankLeft[e.id]||0)-hours)} de banco, abaixo do mínimo de ${fmtHoras(minBank)}.`});
               continue;
             }
             if (requireExpert && expertIds.has(e.id) && (day.expertsAvail-day.expertOff-1) < 1){
