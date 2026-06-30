@@ -520,13 +520,14 @@ window.Engine = (function () {
   function dayoffQueue(employees, rules, history={}, existing=[]){
     const fH = v=>{ v=+v||0; const neg=v<0; let m=Math.round(Math.abs(v)*60); const h=Math.floor(m/60); m=m%60; return (neg?'-':'')+h+'h'+(m?String(m).padStart(2,'0'):''); };
     const minBank = rules.min_time_bank_for_dayoff ?? 6;
+    const folgaCost = Math.max(1, rules.early_leave_hours ?? 3); // custo (h) de uma folga parcial
     const active = employees.filter(e=>e.status==='ativa');
     // folgas já aprovadas (futuras): horas a descontar e quantas marcadas por pessoa
     const futH={}, futN={};
     (existing||[]).forEach(it=>{ if(!it||!it.employee_id) return; futH[it.employee_id]=(futH[it.employee_id]||0)+(+it.hours||0); futN[it.employee_id]=(futN[it.employee_id]||0)+1; });
     const good = x => x.fri*2 + x.mon + x.integral*2;   // folgas "boas" no histórico
     const rows = active.map(e=>{ const h=history[e.id]||{}; const bank=+e.time_bank_balance||0; const proj=bank-(futH[e.id]||0);
-      return { id:e.id, name:e.name, bank, proj, marcadas:futN[e.id]||0, elig:proj>=minBank,
+      return { id:e.id, name:e.name, bank, proj, marcadas:futN[e.id]||0, elig:(proj-folgaCost)>=minBank,
         last:(h.lastDayOffDays==null?null:h.lastDayOffDays), fri:h.fridaysOff||0, mon:h.mondaysOff||0,
         integral:h.integral||0, dayoffs:h.dayoffs||0 }; });
     const maxProj = Math.max(0, ...rows.map(r=>r.proj));
@@ -540,7 +541,9 @@ window.Engine = (function () {
       return (a.name||'').localeCompare(b.name||'');
     });
     rows.forEach((x,i)=>{ x.position=i+1; const w=[];
-      if(!x.elig){ const falta=Math.max(0, minBank - x.proj); w.push(`sem saldo p/ folga · banco ${x.marcadas>0?'previsto ':''}de ${fH(x.proj)}${falta>0?` — faltam ${fH(falta)} pro mínimo de ${fH(minBank)}`:''}`); }
+      if(!x.elig){ const pv=x.marcadas>0?'previsto ':'';
+        if(x.proj < minBank) w.push(`sem saldo p/ folga · banco ${pv}de ${fH(x.proj)} — faltam ${fH(minBank-x.proj)} pro mínimo de ${fH(minBank)}`);
+        else w.push(`sem saldo p/ folga · banco ${pv}de ${fH(x.proj)} — uma folga (${fH(folgaCost)}) deixaria abaixo do mínimo de ${fH(minBank)}`); }
       else {
         if(x.marcadas>0) w.push(`já tem ${x.marcadas} folga(s) marcada(s) — passou a vez`);
         w.push((x.proj>0&&x.proj>=maxProj) ? `maior banco${x.marcadas>0?' previsto':''} (${fH(x.proj)})` : `banco${x.marcadas>0?' previsto':''} de ${fH(x.proj)}`);

@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v76 (motor: nunca sugere folga que deixe o banco previsto abaixo do mínimo configurado)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v77 (motor + fila: só folga quem fica >= mínimo depois; fila mostra "uma folga deixaria abaixo do mínimo")
 // ============================================================
 (function(){
 "use strict";
