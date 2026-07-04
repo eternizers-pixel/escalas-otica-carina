@@ -189,6 +189,11 @@ label{display:block;font-size:12.5px;color:var(--muted);margin:0 0 5px;font-weig
 .sat-h-when{font-weight:700;font-size:13px;color:var(--ink);white-space:nowrap;min-width:70px}
 .sat-h-who{font-size:13px;color:var(--muted)}
 .lnk-sw{background:var(--brand);color:#fff;border:none;border-radius:8px;font-size:11px;font-weight:600;padding:2px 8px;cursor:pointer;line-height:1.5}
+.usos-acc{padding:0}
+.usos-acc>summary.ph{display:flex;justify-content:space-between;align-items:center;cursor:pointer;list-style:none;user-select:none}
+.usos-acc>summary.ph::-webkit-details-marker{display:none}
+.usos-acc>summary.ph::after{content:'▸';color:var(--muted);margin-left:10px}
+.usos-acc[open]>summary.ph::after{content:'▾'}
 .modal-bg{position:fixed;inset:0;background:rgba(16,26,51,.45);display:flex;align-items:center;justify-content:center;z-index:50;padding:20px}
 .modal{background:#fff;border-radius:22px;width:540px;max-width:96vw;max-height:90vh;overflow-y:auto;box-shadow:0 24px 64px rgba(40,30,90,.28)}
 .modal .mh{padding:16px 20px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center}

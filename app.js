@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v77 (motor + fila: só folga quem fica >= mínimo depois; fila mostra "uma folga deixaria abaixo do mínimo")
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v78 (dashboard: "Uso de banco detectado" vira bloco recolhível + nota explicando que cada linha é uma comparação, não total)
 // ============================================================
 (function(){
 "use strict";
@@ -475,9 +475,10 @@ ROUTES.dashboard=async function(){
     <div class="card"><h3>Folga prevista (todas aprovadas)</h3><div class="kpi" style="color:var(--amber)">−${fmtH(totalFolga)}</div></div>
     <div class="card"><h3>Banco previsto (após as folgas)</h3><div class="kpi" style="color:var(--green)">${fmtH(totalPrev)}</div></div>
   </div>
-  ${usos.length?`<div class="section panel"><div class="ph"><h3>🔎 Uso de banco detectado</h3><span class="muted">comparando importações</span></div><div class="pb">
+  ${usos.length?`<details class="section panel usos-acc"><summary class="ph"><h3>🔎 Uso de banco detectado</h3><span class="muted">${usos.length} registro(s) · clique para abrir</span></summary><div class="pb">
+    <div class="reason" style="border-left-color:var(--muted);font-size:12.5px">Cada linha é a <b>queda de banco entre duas importações seguidas</b> (não é total). Períodos diferentes não se somam entre si.</div>
     ${usos.map(u=>`<div class="reason" style="border-left-color:${u.matched?'var(--green)':'var(--amber)'};font-size:13px"><b>${esc(u.employee_name||'')}</b> — ${esc(u.note||'')} <span class="muted">(${(u.usage_date||'').split('-').reverse().slice(0,2).join('/')})</span></div>`).join('')}
-  </div></div>`:''}
+  </div></details>`:''}
   <div class="toolbar section">
     <button class="btn" onclick="location.hash='#folgas'">⚡ Gerar escala automática</button>
     <button class="btn sec" onclick="location.hash='#tiquetaque'">🔄 Sincronizar TiqueTaque</button>
