@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v78 (dashboard: "Uso de banco detectado" vira bloco recolhível + nota explicando que cada linha é uma comparação, não total)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v79 (Uso de banco detectado agrupado por funcionária: clica no nome e abre as detecções dela)
 // ============================================================
 (function(){
 "use strict";
@@ -475,10 +475,11 @@ ROUTES.dashboard=async function(){
     <div class="card"><h3>Folga prevista (todas aprovadas)</h3><div class="kpi" style="color:var(--amber)">−${fmtH(totalFolga)}</div></div>
     <div class="card"><h3>Banco previsto (após as folgas)</h3><div class="kpi" style="color:var(--green)">${fmtH(totalPrev)}</div></div>
   </div>
-  ${usos.length?`<details class="section panel usos-acc"><summary class="ph"><h3>🔎 Uso de banco detectado</h3><span class="muted">${usos.length} registro(s) · clique para abrir</span></summary><div class="pb">
-    <div class="reason" style="border-left-color:var(--muted);font-size:12.5px">Cada linha é a <b>queda de banco entre duas importações seguidas</b> (não é total). Períodos diferentes não se somam entre si.</div>
-    ${usos.map(u=>`<div class="reason" style="border-left-color:${u.matched?'var(--green)':'var(--amber)'};font-size:13px"><b>${esc(u.employee_name||'')}</b> — ${esc(u.note||'')} <span class="muted">(${(u.usage_date||'').split('-').reverse().slice(0,2).join('/')})</span></div>`).join('')}
-  </div></details>`:''}
+  ${usos.length?(()=>{ const byEmp={}; usos.forEach(u=>{ const k=u.employee_name||'—'; (byEmp[k]=byEmp[k]||[]).push(u); });
+    const groups=Object.keys(byEmp).sort().map(nm=>`<details class="usos-emp"><summary><b>${esc(nm)}</b> <span class="muted">· ${byEmp[nm].length} registro(s)</span></summary><div style="padding:2px 0 8px 16px">${byEmp[nm].map(u=>`<div class="reason" style="border-left-color:${u.matched?'var(--green)':'var(--amber)'};font-size:13px">${esc(u.note||'')} <span class="muted">(${(u.usage_date||'').split('-').reverse().slice(0,2).join('/')})</span></div>`).join('')}</div></details>`).join('');
+    return `<details class="section panel usos-acc"><summary class="ph"><h3>🔎 Uso de banco detectado</h3><span class="muted">${Object.keys(byEmp).length} funcionária(s) · clique para abrir</span></summary><div class="pb">
+    <div class="reason" style="border-left-color:var(--muted);font-size:12.5px">Agrupado por funcionária. Cada item é a <b>queda de banco entre duas importações</b> (não é total). Clique num nome para ver as detecções dela.</div>
+    ${groups}</div></details>`; })():''}
   <div class="toolbar section">
     <button class="btn" onclick="location.hash='#folgas'">⚡ Gerar escala automática</button>
     <button class="btn sec" onclick="location.hash='#tiquetaque'">🔄 Sincronizar TiqueTaque</button>
