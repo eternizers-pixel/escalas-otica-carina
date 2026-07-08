@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v86 (funcionária: fila mostra o motivo só quando sem saldo; link "Porquê?" no lugar do ícone)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v87 (funcionária: glifo ⓘ roxo no lugar do "Porquê?" para abrir a explicação do saldo mínimo)
 // ============================================================
 (function(){
 "use strict";
@@ -271,7 +271,7 @@ async function renderFuncionaria(){
   const posBlock = pos
     ? `<div class="kpi">${pos}º<small> de ${tot} na fila</small></div>
        ${(pos<=2)?`<div class="next-up">🎯 Você é uma das próximas da fila!</div>`:''}
-       ${(me.queue_reason && /sem saldo/i.test(me.queue_reason))?`<div class="reason">${esc(me.queue_reason)} <details class="tip-i"><summary>Porquê?</summary><div class="tip-msg">Ao utilizar 1h de folga, o sistema mantém 3h no seu banco para emergências e necessidades futuras. Por isso, o saldo mínimo para liberar a folga é de 4h.</div></details></div>`:''}
+       ${(me.queue_reason && /sem saldo/i.test(me.queue_reason))?`<div class="reason">${esc(me.queue_reason)} <details class="tip-i"><summary>ⓘ</summary><div class="tip-msg">Ao utilizar 1h de folga, o sistema mantém 3h no seu banco para emergências e necessidades futuras. Por isso, o saldo mínimo para liberar a folga é de 4h.</div></details></div>`:''}
        ${lastLine}
        <p class="muted" style="margin:8px 0 0;font-size:12.5px">ℹ️ A ordem pode variar uma posição ou outra para tentar respeitar o horário de preferência de cada uma.</p>`
     : `<p class="muted" style="margin:0 0 8px">Sua posição ainda não foi calculada. Assim que a gestão abrir o motor de folgas, ela aparece aqui.</p>${lastLine}`;
