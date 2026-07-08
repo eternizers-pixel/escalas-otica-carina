@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v80 (funcionária: "Solicitar folga (pendente)"; acessos: criar login manual + alterar senha)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v81 (funcionária: explica na fila quando o banco está acima do mínimo mas uma folga o deixaria abaixo)
 // ============================================================
 (function(){
 "use strict";

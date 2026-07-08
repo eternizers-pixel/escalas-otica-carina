@@ -557,7 +557,8 @@ window.Engine = (function () {
       const ws=[];
       if(x.elig){ if(x.marcadas>0) ws.push(`já tem ${x.marcadas} folga${x.marcadas>1?'s':''} marcada${x.marcadas>1?'s':''}`);
         ws.push(`banco${x.marcadas>0?' previsto':''} de ${fH(x.proj)}`); }
-      else ws.push(`sem saldo p/ folga · banco de ${fH(x.proj)}`);
+      else if(x.proj < minBank) ws.push(`sem saldo p/ folga · banco de ${fH(x.proj)} (abaixo do mínimo de ${fH(minBank)})`);
+      else ws.push(`sem saldo p/ folga · banco de ${fH(x.proj)}, mas uma folga de ${fH(folgaCost)} deixaria o banco abaixo do mínimo de ${fH(minBank)}`);
       x.whyShort = ws.join(' · ');
     });
     return rows;
