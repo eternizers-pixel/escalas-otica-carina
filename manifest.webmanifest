@@ -1,0 +1,21 @@
+{
+  "name": "Escalas · Ótica Carina",
+  "short_name": "Escalas",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#7c5cfc",
+  "theme_color": "#7c5cfc",
+  "icons": [
+    {
+      "src": "https://qvbqpdbumdbqrhdvtqcb.supabase.co/storage/v1/object/public/assets/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    },
+    {
+      "src": "https://qvbqpdbumdbqrhdvtqcb.supabase.co/storage/v1/object/public/assets/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
