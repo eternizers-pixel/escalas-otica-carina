@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v82 (funcionária: texto da fila mais claro — "precisa de Xh: mínimo + folga")
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v83 (funcionária: texto da fila resumido — "você tem Xh, mas precisa de Yh (mínimo + folga)")
 // ============================================================
 (function(){
 "use strict";
