@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v81 (funcionária: explica na fila quando o banco está acima do mínimo mas uma folga o deixaria abaixo)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v82 (funcionária: texto da fila mais claro — "precisa de Xh: mínimo + folga")
 // ============================================================
 (function(){
 "use strict";
