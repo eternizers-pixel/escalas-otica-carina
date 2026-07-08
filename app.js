@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v79 (Uso de banco detectado agrupado por funcionária: clica no nome e abre as detecções dela)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v80 (funcionária: "Solicitar folga (pendente)"; acessos: criar login manual + alterar senha)
 // ============================================================
 (function(){
 "use strict";
@@ -299,12 +299,12 @@ async function renderFuncionaria(){
     <div class="panel section"><div class="ph"><h3>🙋 Minha preferência</h3></div>
       <div class="pb"><p class="muted" style="margin:0 0 8px">Marque como você prefere folgar — <b>salva sozinho</b>. A gestão tenta seguir quando dá, não é garantido.</p>
       <div class="chip-row">${PREF.map(([v,l])=>`<label class="chk-chip"><input type="checkbox" class="myp" value="${v}" ${myPref.includes(v)?'checked':''}/> ${l}</label>`).join('')}</div></div></div>
-    <div class="panel section"><div class="ph"><h3>✉️ Pedir uma folga</h3></div><div class="pb">
+    <div class="panel section"><div class="ph"><h3>✉️ Solicitar folga <span class="muted" style="font-weight:500;font-size:12.5px">(pendente de aprovação)</span></h3></div><div class="pb">
       <div class="field"><label>Dia</label><input id="rq_date" type="date" min="${today}" value="${today}"/></div>
       <div class="field"><label>Como prefere</label><select id="rq_code">${PREF.map(([v,l])=>`<option value="${v}">${l}</option>`).join('')}<option value="outro">Outro (escrever)…</option></select></div>
       <div class="field" id="rq_outroWrap" style="display:none"><label>Que tipo de folga você precisa? <span style="color:var(--red)">*</span></label><input id="rq_outro" placeholder="ex.: meio turno, turno inteiro, dia inteiro…"/></div>
       <div class="field"><label>Motivo (opcional)</label><input id="rq_reason" placeholder="ex.: consulta médica"/></div>
-      <button class="btn" id="sendReq" style="width:100%">Enviar pedido</button>
+      <button class="btn" id="sendReq" style="width:100%">Solicitar folga</button>
       <div class="section"><h3 style="font-size:13px;color:var(--muted);margin:0 0 8px">Seus pedidos</h3>${reqList}</div></div></div>
   </div>`;
   $$('.myp').forEach(c=>c.onchange=async()=>{ const codes=$$('.myp').filter(x=>x.checked).map(x=>x.value).join(',');
@@ -396,15 +396,29 @@ ROUTES.acessos=async function(){
   const empOpts=(sel)=>`<option value="">— nenhuma —</option>`+emps.map(e=>`<option value="${e.id}" ${sel===e.id?'selected':''}>${esc(e.name)}</option>`).join('');
   const roleOpts=(sel)=>['funcionaria','viewer','gestor'].map(r=>`<option value="${r}" ${sel===r?'selected':''}>${r==='gestor'?'Gestor':r==='viewer'?'Visualização':'Funcionária'}</option>`).join('');
   $('#view').innerHTML=`
-    ${box('info','Vincule cada login ao cadastro da pessoa e escolha o acesso: <b>Funcionária</b> (vê só a área dela), <b>Visualização</b> (vê tudo, sem alterar) ou <b>Gestor</b> (total).')}
+    ${box('info','Vincule cada login ao cadastro da pessoa e escolha o acesso: <b>Funcionária</b> (vê só a área dela), <b>Visualização</b> (vê tudo, sem alterar) ou <b>Gestor</b> (total). A senha fica protegida (criptografada) — não dá pra ver a original, mas você pode <b>trocar</b> quando quiser.')}
+    <div class="card" style="margin-bottom:16px">
+      <div style="font-weight:700;font-size:15px">➕ Adicionar login manualmente</div>
+      <div class="grid2" style="margin-top:12px">
+        <div class="field" style="margin:0"><label>E-mail</label><input id="nl_email" type="email" placeholder="email@exemplo.com"/></div>
+        <div class="field" style="margin:0"><label>Senha inicial (6+ caracteres)</label><input id="nl_pass" type="text" placeholder="ex.: carina123"/></div>
+        <div class="field" style="margin:0"><label>Tipo de acesso</label><select id="nl_role">${roleOpts('funcionaria')}</select></div>
+        <div class="field" style="margin:0"><label>Vincular a</label><select id="nl_emp">${empOpts('')}</select></div>
+      </div>
+      <button class="btn sm" id="nl_add" style="margin-top:12px">Criar login</button>
+    </div>
     ${profs.length?profs.map(p=>`<div class="card" style="margin-bottom:12px">
       <div style="font-weight:700;font-size:15px;word-break:break-word">${esc(p.email||'—')}${p.id===S.user.id?' <span class="muted" style="font-weight:500">(você)</span>':''}</div>
       <div class="grid2" style="margin-top:12px">
         <div class="field" style="margin:0"><label>Tipo de acesso</label><select class="ac_role" data-id="${p.id}">${roleOpts(p.role)}</select></div>
         <div class="field" style="margin:0"><label>Vinculado a</label><select class="ac_emp" data-id="${p.id}">${empOpts(p.employee_id)}</select></div>
       </div>
-      <button class="btn sm" data-save="${p.id}" style="margin-top:12px">Salvar</button>
-    </div>`).join(''):box('warn','Nenhum login criado ainda. Peça às funcionárias para criar a conta na tela de login.')}
+      <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <button class="btn sm" data-save="${p.id}">Salvar</button>
+        <button class="btn ghost sm" data-pass="${p.id}">🔑 Alterar senha</button>
+        <span class="muted" style="font-size:12px">senha protegida — só dá pra trocar, não ver</span>
+      </div>
+    </div>`).join(''):box('warn','Nenhum login criado ainda. Crie um acima, ou peça às funcionárias para criar a conta na tela de login.')}
     ${box('info','Dica: o tipo <b>Funcionária</b> só funciona depois de vincular a uma pessoa em "Vinculado a". Sem vínculo, ela não vê nada.')}`;
   $$('[data-save]').forEach(b=>b.onclick=async()=>{ if(!gate())return; const id=b.dataset.save;
     const role=$(`.ac_role[data-id="${id}"]`).value;
@@ -412,6 +426,23 @@ ROUTES.acessos=async function(){
     if(role==='funcionaria' && !emp){ toast('Para "Funcionária", escolha a pessoa em "Vinculado a".'); return; }
     const {error}=await T('profiles').update({role, employee_id:emp}).eq('id',id);
     if(error){toast(error.message);return;} toast('Acesso atualizado.'); route(); });
+  $('#nl_add')?.addEventListener('click',async()=>{ if(!gate())return;
+    const email=($('#nl_email').value||'').trim().toLowerCase(); const pass=$('#nl_pass').value||'';
+    const role=$('#nl_role').value; const emp=$('#nl_emp').value||null;
+    if(!email||pass.length<6){ toast('Informe um e-mail válido e senha de 6+ caracteres.'); return; }
+    if(role==='funcionaria' && !emp){ toast('Para "Funcionária", escolha a pessoa em "Vincular a".'); return; }
+    try{ const tmp=supabase.createClient(CFG.SUPABASE_URL,CFG.SUPABASE_ANON_KEY,{auth:{persistSession:false,autoRefreshToken:false}});
+      const {data,error}=await tmp.auth.signUp({email,password:pass});
+      if(error){ toast(error.message); return; }
+      const nid=data&&data.user&&data.user.id;
+      if(nid){ await sb.rpc('esc_admin_confirm_email',{p_user_id:nid}); await T('profiles').update({role,employee_id:emp}).eq('id',nid); }
+      toast('Login criado! A pessoa já entra com esse e-mail e senha.'); route();
+    }catch(e){ toast('Erro ao criar: '+(e.message||e)); } });
+  $$('[data-pass]').forEach(b=>b.onclick=async()=>{ if(!gate())return;
+    const np=prompt('Nova senha para este login (mínimo 6 caracteres):'); if(np==null)return;
+    if((np||'').length<6){ toast('A senha precisa de pelo menos 6 caracteres.'); return; }
+    const {error}=await sb.rpc('esc_admin_set_password',{p_user_id:b.dataset.pass,p_password:np});
+    if(error){ toast(error.message); return; } toast('Senha alterada ✓'); });
 };
 
 // ---------- DASHBOARD ----------
