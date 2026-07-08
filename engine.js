@@ -309,6 +309,18 @@ window.Engine = (function () {
     };
     const leadDays = rules.high_traffic_lead_days ?? 7;
     const allowedHol = new Set(String(rules.holidays_allowed||'').split(',').map(s=>s.trim()).filter(Boolean));
+    // HOJE: não sugerir folga num turno cujo horário JÁ PASSOU (ex.: "entrar mais tarde de manhã" às 11h da manhã não faz sentido).
+    // Cada horário tem um "limite" — depois dele a folga daquele turno deixa de valer para o dia de hoje.
+    const _toMin=(t,def)=>{ const [h,m]=String(t||def).split(':').map(Number); return (h||0)*60+(m||0); };
+    const _cost=Math.round(hours*60);
+    const _cutoff = {
+      manha_ini: _toMin(rules.open_morning,'09:00')    + _cost,  // entrar mais tarde de manhã (só antes de já ter entrado)
+      manha_fim: _toMin(rules.close_morning,'12:00')   - _cost,  // sair mais cedo de manhã
+      tarde_ini: _toMin(rules.open_afternoon,'14:00')  + _cost,  // entrar mais tarde à tarde
+      tarde_fim: _toMin(rules.close_afternoon,'18:00') - _cost   // sair mais cedo à tarde
+    };
+    const _nowMin = new Date().getHours()*60 + new Date().getMinutes();
+    const slotPassed = (code, dStr)=> dStr===todayISO && _nowMin >= _cutoff[SLOT[code]];
 
     // exceções registradas (falta/atestado/afastamento) tiram a pessoa do dia, igual a uma folga integral
     const reqAbsentByDate={};
@@ -439,9 +451,9 @@ window.Engine = (function () {
             // cada HORÁRIO (slot) só pode ter UMA folga no dia: duas pessoas no mesmo dia, mas NUNCA no mesmo horário.
             // Se o horário PREFERIDO dela já está ocupado neste dia, tenta qualquer horário livre da loja
             // (preferência não é garantida) — assim ela folga em vez de ficar sem, sem colidir horário.
-            let validos=allowed.filter(code=> (day.absent[SLOT[code]]||0)===0 && (day.availDay.length-1) >= minPer);
-            if(!validos.length) validos=STORE.filter(code=> (day.absent[SLOT[code]]||0)===0 && (day.availDay.length-1) >= minPer);
-            if(!validos.length) continue; // nenhum horário livre no dia → vai para outro dia
+            let validos=allowed.filter(code=> (day.absent[SLOT[code]]||0)===0 && (day.availDay.length-1) >= minPer && !slotPassed(code, day.dStr));
+            if(!validos.length) validos=STORE.filter(code=> (day.absent[SLOT[code]]||0)===0 && (day.availDay.length-1) >= minPer && !slotPassed(code, day.dStr));
+            if(!validos.length) continue; // nenhum horário livre (ou todos já passaram hoje) → vai para outro dia
             // rodízio entrar/sair: se já teve "entrar mais tarde" nesta semana, a próxima é "sair mais cedo" (e vice-versa)
             const jaUsou = usedKind[e.id] || new Set();
             let opts = validos.filter(code=> !jaUsou.has(MAP[code].type));

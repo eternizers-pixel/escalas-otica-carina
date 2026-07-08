@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v87 (funcionária: glifo ⓘ roxo no lugar do "Porquê?" para abrir a explicação do saldo mínimo)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v88 (motor: no dia de hoje não sugere folga em turno cujo horário já passou)
 // ============================================================
 (function(){
 "use strict";
