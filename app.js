@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v88 (motor: no dia de hoje não sugere folga em turno cujo horário já passou)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v89 (férias orientadas por data: só conta de férias durante o período; atalhos 7/10/15/30 dias no cadastro)
 // ============================================================
 (function(){
 "use strict";
@@ -458,12 +458,15 @@ ROUTES.dashboard=async function(){
   const wkItems=(await getAll('schedule_items',b=>b.eq('status','aprovado').gte('date',todayISO))).filter(it=>dschedIds.has(it.schedule_id));
   const active=emps.filter(e=>e.status==='ativa');
   const nmById=Object.fromEntries(emps.map(e=>[e.id,e.name]));
-  const cap=Engine.operationalCapacity(emps,rules);
+  // FÉRIAS são orientadas por DATA: só conta como "de férias" quem tem um período ativo HOJE (não pelo status salvo)
+  const onFeriasToday=new Set((vacs||[]).filter(v=>v.employee_id && todayISO>=v.start_date && todayISO<=v.end_date).map(v=>v.employee_id));
+  const empsHoje=emps.map(e=>onFeriasToday.has(e.id)?{...e,status:'ferias'}:e);
+  const cap=Engine.operationalCapacity(empsHoje,rules);
   const minPer=rules.min_per_shift||4;
   // INDISPONÍVEIS HOJE (dia inteiro fora): status (férias/licença/afastada) + período de férias + folga integral / falta / atestado / afastamento de hoje
   const FULLDAY_OUT=['integral','falta','atestado','afastamento'];
   const reasonsOut={};
-  emps.forEach(e=>{ if(e.status==='ferias') reasonsOut[e.id]='Férias'; else if(e.status==='licenca') reasonsOut[e.id]='Licença'; else if(e.status==='afastada') reasonsOut[e.id]='Afastada'; });
+  emps.forEach(e=>{ if(e.status==='licenca') reasonsOut[e.id]='Licença'; else if(e.status==='afastada') reasonsOut[e.id]='Afastada'; });
   (vacs||[]).forEach(v=>{ if(v.employee_id && todayISO>=v.start_date && todayISO<=v.end_date && !reasonsOut[v.employee_id]) reasonsOut[v.employee_id]='Férias'; });
   const todayItems=wkItems.filter(it=>it.date===todayISO);
   todayItems.forEach(it=>{ if((FULLDAY_OUT.includes(it.type)||it.shift==='dia_inteiro') && !reasonsOut[it.employee_id]) reasonsOut[it.employee_id]=TYPE_LABEL[it.type]||'Folga integral'; });
@@ -523,7 +526,7 @@ ROUTES.dashboard=async function(){
       <td data-label="Banco real"><b>${fmtH(e.time_bank_balance)}</b></td>
       <td data-label="Folga prevista" style="color:${fh?'var(--amber)':'var(--muted)'}">${fh?'−'+fmtH(fh):'—'}</td>
       <td data-label="Banco previsto"><b>${fmtH(prev)}</b></td>
-      <td data-label="Status"><span class="pill ${e.status}">${e.status}</span></td></tr>`;}).join('')
+      <td data-label="Status"><span class="pill ${onFeriasToday.has(e.id)?'ferias':e.status}">${onFeriasToday.has(e.id)?'ferias':e.status}</span></td></tr>`;}).join('')
       ||'<tr><td colspan=6 class="muted" style="padding:18px">Nenhuma funcionária. Sincronize o TiqueTaque ou cadastre manualmente.</td></tr>'}
     </tbody></table></div></div>`;
 };
@@ -797,12 +800,23 @@ ROUTES.ferias=async function(){
   $('#addVac')?.addEventListener('click',()=>{
     openModal('Cadastrar férias',`
       <div class="field"><label>Funcionária</label><select id="v_emp">${emps.map(e=>`<option value="${e.id}">${esc(e.name)}</option>`).join('')}</select></div>
+      <div class="field"><label>Duração rápida</label>
+        <div class="durwrap">${[7,10,15,30].map(n=>`<button type="button" class="btn ghost sm durchip" data-dur="${n}">${n} dias</button>`).join('')}</div>
+        <div class="reason" style="font-size:12px;margin-top:6px">Escolha uma duração para preencher o fim automaticamente — ou defina início e fim manualmente.</div></div>
       <div class="grid2"><div class="field"><label>Início</label><input id="v_start" type="date" value="${todayStr()}"/></div><div class="field"><label>Fim</label><input id="v_end" type="date" value="${todayStr()}"/></div></div>
       <div class="field"><label>Observações</label><input id="v_notes"/></div>`,
       async()=>{ if(!gate())return false; const emp=$('#v_emp').value;
-        const res=await T('vacation_periods').insert({employee_id:emp,start_date:$('#v_start').value,end_date:$('#v_end').value,notes:$('#v_notes').value});
+        const st=$('#v_start').value, en=$('#v_end').value;
+        if(!st||!en){toast('Defina início e fim.');return false;}
+        if(en<st){toast('A data de fim não pode ser antes do início.');return false;}
+        const res=await T('vacation_periods').insert({employee_id:emp,start_date:st,end_date:en,notes:$('#v_notes').value});
         if(res.error){toast(res.error.message);return false;}
-        await T('employees').update({status:'ferias'}).eq('id',emp); toast('Férias cadastradas.'); route(); return true; });
+        toast('Férias cadastradas.'); route(); return true; });
+    // atalhos de duração: preenchem o Fim a partir do Início (dias corridos, inclusivo)
+    $$('[data-dur]').forEach(ch=>ch.onclick=()=>{ const s=$('#v_start').value; if(!s){toast('Escolha a data de início primeiro.');return;}
+      const d=new Date(s+'T00:00:00'); d.setDate(d.getDate()+(+ch.dataset.dur-1));
+      $('#v_end').value=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+      $$('[data-dur]').forEach(x=>x.classList.remove('dursel')); ch.classList.add('dursel'); });
   });
   $$('[data-delv]').forEach(b=>b.onclick=async()=>{ if(!gate())return;
     const v=vacs.find(x=>String(x.id)===String(b.dataset.delv));
@@ -1448,7 +1462,7 @@ function reqTypeLabel(t){return {pedido_folga:'Pedido de folga',recusa_folga:'Re
 // ---------- RELATÓRIOS ----------
 ROUTES.relatorios=async function(){
   const now=new Date(), year=now.getFullYear(), month=now.getMonth()+1, hoje=todayStr();
-  const [emps,items,reqs,rot,scheds,rules]=await Promise.all([getAll('employees',b=>b.eq('is_simulation',S.sim)),getAll('schedule_items'),getAll('dayoff_requests'),getAll('saturday_rotation'),getAll('schedules',b=>b.eq('is_simulation',S.sim)),T('store_rules').select('*').eq('id',1).maybeSingle().then(r=>r.data||{})]);
+  const [emps,items,reqs,rot,scheds,rules,vacs]=await Promise.all([getAll('employees',b=>b.eq('is_simulation',S.sim)),getAll('schedule_items'),getAll('dayoff_requests'),getAll('saturday_rotation'),getAll('schedules',b=>b.eq('is_simulation',S.sim)),T('store_rules').select('*').eq('id',1).maybeSingle().then(r=>r.data||{}),getAll('vacation_periods')]);
   const sIds=new Set(scheds.map(s=>s.id));
   const appr=items.filter(i=>i.status==='aprovado'&&sIds.has(i.schedule_id));
   const history=await buildHistory();
@@ -1501,7 +1515,7 @@ ROUTES.relatorios=async function(){
     <div class="card"><h3>Índice de justiça</h3><div class="fair" style="font-size:20px"><span class="ball" style="background:${ballColor}"></span>${fair.status} · ${fair.score}</div><div class="reason">${esc(fair.reason)}</div></div>
     <div class="card"><h3>Folgas aprovadas</h3><div class="kpi">${appr.length}</div></div>
     <div class="card"><h3>Total de sábados</h3><div class="kpi">${satDates.size}</div>${satDates.size?`<div class="reason">${satPast} trabalhado${satPast===1?'':'s'}${satFut?` · ${satFut} programado${satFut===1?'':'s'}`:''}</div>`:''}</div>
-    <div class="card"><h3>Em férias</h3><div class="kpi">${emps.filter(e=>e.status==='ferias').length}</div></div>
+    <div class="card"><h3>Em férias hoje</h3><div class="kpi">${new Set((vacs||[]).filter(v=>hoje>=v.start_date&&hoje<=v.end_date).map(v=>v.employee_id)).size}</div></div>
   </div>
   <div class="section"><div class="ph" style="padding:0 4px 8px"><h3>Justiça por funcionária</h3><span class="muted">todos os fatores</span></div>
     ${(()=>{ const stat=(label,val,hot)=>`<div style="background:#f4f6fb;border-radius:10px;padding:9px 11px"><div class="muted" style="font-size:11.5px;line-height:1.25">${label}</div><div style="font-weight:800;font-size:19px;margin-top:3px;color:${hot?'var(--amber)':'var(--ink)'}">${val}</div></div>`;
