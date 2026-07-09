@@ -210,6 +210,21 @@ label{display:block;font-size:12.5px;color:var(--muted);margin:0 0 5px;font-weig
 .durwrap{display:flex;gap:8px;flex-wrap:wrap}
 .durchip{cursor:pointer}
 .durchip.dursel{background:var(--brand);color:#fff;border-color:var(--brand)}
+.vac-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px;margin-top:4px}
+.vac-card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;box-shadow:0 1px 2px rgba(40,40,80,.04)}
+.vac-top{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:13px}
+.vac-top b{font-size:15px}
+.vtag{font-size:11px;font-weight:700;padding:3px 9px;border-radius:999px;white-space:nowrap}
+.vtag.now{background:var(--amber-soft);color:#a9720a}
+.vtag.fut{background:var(--brand-soft);color:var(--brand-d)}
+.vtag.past{background:#eef0f5;color:var(--muted)}
+.vac-per{display:flex;align-items:center;gap:12px;margin-bottom:12px}
+.vac-d{display:flex;flex-direction:column;font-weight:700;font-size:15px;color:var(--ink)}
+.vac-d small{font-weight:600;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px}
+.vac-ar{color:var(--muted);font-size:18px;margin-top:12px}
+.vac-dur{font-size:13px;color:var(--muted);margin-bottom:10px}
+.vac-actions{display:flex;gap:8px;border-top:1px solid var(--line);padding-top:12px;margin-top:2px}
+.vac-actions .btn{flex:1}
 .modal-bg{position:fixed;inset:0;background:rgba(16,26,51,.45);display:flex;align-items:center;justify-content:center;z-index:50;padding:20px}
 .modal{background:#fff;border-radius:22px;width:540px;max-width:96vw;max-height:90vh;overflow-y:auto;box-shadow:0 24px 64px rgba(40,30,90,.28)}
 .modal .mh{padding:16px 20px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center}

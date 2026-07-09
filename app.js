@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v89 (férias orientadas por data: só conta de férias durante o período; atalhos 7/10/15/30 dias no cadastro)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v90 (férias em cards + botão Editar; status Programada/Em férias/Encerrada)
 // ============================================================
 (function(){
 "use strict";
@@ -790,34 +790,46 @@ ROUTES.tiquetaque=async function(){
 ROUTES.ferias=async function(){
   const [emps,vacs]=await Promise.all([getAll('employees',b=>b.eq('is_simulation',S.sim).order('name')),getAll('vacation_periods',b=>b.order('start_date',{ascending:false}))]);
   const map=Object.fromEntries(emps.map(e=>[e.id,e.name]));
+  const today=todayStr();
+  const brDate=(s)=>String(s||'').split('-').reverse().join('/');
+  const durTxt=(a,b)=>{ const d=Math.round((new Date(b+'T00:00:00')-new Date(a+'T00:00:00'))/86400000)+1; return d+(d===1?' dia':' dias'); };
+  const vTag=(v)=> today<v.start_date?'<span class="vtag fut">Programada</span>' : today>v.end_date?'<span class="vtag past">Encerrada</span>' : '<span class="vtag now">Em férias</span>';
   $('#view').innerHTML=`
   <div class="toolbar"><button class="btn" id="addVac" ${isGestor()?'':'disabled'}>+ Cadastrar férias</button></div>
   ${box('info','Funcionárias em férias não recebem folga, não entram no rodízio nem em trocas — e o sistema reduz automaticamente o tamanho das folgas das demais.')}
-  <div class="panel"><div class="pb" style="padding:0"><table>
-    <thead><tr><th>Funcionária</th><th>Início</th><th>Fim</th><th>Observações</th><th></th></tr></thead>
-    <tbody>${vacs.map(v=>`<tr><td><b>${esc(map[v.employee_id]||'—')}</b></td><td>${v.start_date}</td><td>${v.end_date}</td><td class="muted">${esc(v.notes||'')}</td><td>${isGestor()?`<button class="btn ghost sm" style="color:var(--red)" data-delv="${v.id}">remover</button>`:''}</td></tr>`).join('')||'<tr><td colspan=5 class="muted" style="padding:16px">Nenhum período cadastrado.</td></tr>'}
-    </tbody></table></div></div>`;
-  $('#addVac')?.addEventListener('click',()=>{
-    openModal('Cadastrar férias',`
-      <div class="field"><label>Funcionária</label><select id="v_emp">${emps.map(e=>`<option value="${e.id}">${esc(e.name)}</option>`).join('')}</select></div>
+  <div class="vac-grid">
+    ${vacs.map(v=>`<div class="vac-card">
+      <div class="vac-top"><b>${esc(map[v.employee_id]||'—')}</b>${vTag(v)}</div>
+      <div class="vac-per"><span class="vac-d"><small>Início</small>${brDate(v.start_date)}</span><span class="vac-ar">→</span><span class="vac-d"><small>Fim</small>${brDate(v.end_date)}</span></div>
+      <div class="vac-dur">🗓️ ${durTxt(v.start_date,v.end_date)}</div>
+      ${v.notes?`<div class="reason" style="font-size:12.5px">${esc(v.notes)}</div>`:''}
+      ${isGestor()?`<div class="vac-actions"><button class="btn ghost sm" data-editv="${v.id}">✏️ Editar</button><button class="btn ghost sm" style="color:var(--red)" data-delv="${v.id}">Remover</button></div>`:''}
+    </div>`).join('')||`<div class="reason" style="margin-top:6px">Nenhum período cadastrado.</div>`}
+  </div>`;
+  const openVacModal=(vac)=>{ const isEdit=!!vac;
+    openModal(isEdit?'Editar férias':'Cadastrar férias',`
+      <div class="field"><label>Funcionária</label><select id="v_emp">${emps.map(e=>`<option value="${e.id}" ${isEdit&&String(e.id)===String(vac.employee_id)?'selected':''}>${esc(e.name)}</option>`).join('')}</select></div>
       <div class="field"><label>Duração rápida</label>
         <div class="durwrap">${[7,10,15,30].map(n=>`<button type="button" class="btn ghost sm durchip" data-dur="${n}">${n} dias</button>`).join('')}</div>
         <div class="reason" style="font-size:12px;margin-top:6px">Escolha uma duração para preencher o fim automaticamente — ou defina início e fim manualmente.</div></div>
-      <div class="grid2"><div class="field"><label>Início</label><input id="v_start" type="date" value="${todayStr()}"/></div><div class="field"><label>Fim</label><input id="v_end" type="date" value="${todayStr()}"/></div></div>
-      <div class="field"><label>Observações</label><input id="v_notes"/></div>`,
+      <div class="grid2"><div class="field"><label>Início</label><input id="v_start" type="date" value="${isEdit?vac.start_date:todayStr()}"/></div><div class="field"><label>Fim</label><input id="v_end" type="date" value="${isEdit?vac.end_date:todayStr()}"/></div></div>
+      <div class="field"><label>Observações</label><input id="v_notes" value="${isEdit?esc(vac.notes||''):''}"/></div>`,
       async()=>{ if(!gate())return false; const emp=$('#v_emp').value;
         const st=$('#v_start').value, en=$('#v_end').value;
         if(!st||!en){toast('Defina início e fim.');return false;}
         if(en<st){toast('A data de fim não pode ser antes do início.');return false;}
-        const res=await T('vacation_periods').insert({employee_id:emp,start_date:st,end_date:en,notes:$('#v_notes').value});
+        const payload={employee_id:emp,start_date:st,end_date:en,notes:$('#v_notes').value};
+        const res=isEdit ? await T('vacation_periods').update(payload).eq('id',vac.id) : await T('vacation_periods').insert(payload);
         if(res.error){toast(res.error.message);return false;}
-        toast('Férias cadastradas.'); route(); return true; });
+        toast(isEdit?'Férias atualizadas.':'Férias cadastradas.'); route(); return true; });
     // atalhos de duração: preenchem o Fim a partir do Início (dias corridos, inclusivo)
     $$('[data-dur]').forEach(ch=>ch.onclick=()=>{ const s=$('#v_start').value; if(!s){toast('Escolha a data de início primeiro.');return;}
       const d=new Date(s+'T00:00:00'); d.setDate(d.getDate()+(+ch.dataset.dur-1));
       $('#v_end').value=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
       $$('[data-dur]').forEach(x=>x.classList.remove('dursel')); ch.classList.add('dursel'); });
-  });
+  };
+  $('#addVac')?.addEventListener('click',()=>openVacModal(null));
+  $$('[data-editv]').forEach(b=>b.onclick=()=>{ const v=vacs.find(x=>String(x.id)===String(b.dataset.editv)); if(v) openVacModal(v); });
   $$('[data-delv]').forEach(b=>b.onclick=async()=>{ if(!gate())return;
     const v=vacs.find(x=>String(x.id)===String(b.dataset.delv));
     await T('vacation_periods').delete().eq('id',b.dataset.delv);
