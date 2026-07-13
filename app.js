@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v91 (fila: aviso de férias no motor + de férias vai pro fim; funcionária: opção Sem preferência + card Suas férias)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v92 (preferência: Sem preferência ocupa a linha inteira; chips com mesma altura, 2x2 sem espaço vazio)
 // ============================================================
 (function(){
 "use strict";
@@ -304,7 +304,7 @@ async function renderFuncionaria(){
     <div class="panel section"><div class="ph"><h3>🗓️ Próximo sábado à tarde a trabalhar</h3></div><div class="pb">${satBlock}</div></div>
     <div class="panel section"><div class="ph"><h3>🙋 Minha preferência</h3></div>
       <div class="pb"><p class="muted" style="margin:0 0 8px">Marque como você prefere folgar — <b>salva sozinho</b>. A gestão tenta seguir quando dá, não é garantido.</p>
-      <div class="chip-row"><label class="chk-chip"><input type="checkbox" class="myp-none" ${myPref.length===0?'checked':''}/> 🎲 Sem preferência · aleatório</label>${PREF.map(([v,l])=>`<label class="chk-chip"><input type="checkbox" class="myp" value="${v}" ${myPref.includes(v)?'checked':''}/> ${l}</label>`).join('')}</div></div></div>
+      <div class="chip-row"><label class="chk-chip" style="grid-column:1 / -1;justify-content:center"><input type="checkbox" class="myp-none" ${myPref.length===0?'checked':''}/> 🎲 Sem preferência · aleatório</label>${PREF.map(([v,l])=>`<label class="chk-chip"><input type="checkbox" class="myp" value="${v}" ${myPref.includes(v)?'checked':''}/> ${l}</label>`).join('')}</div></div></div>
     <div class="panel section"><div class="ph"><h3>✉️ Solicitar folga <span class="muted" style="font-weight:500;font-size:12.5px">(pendente de aprovação)</span></h3></div><div class="pb">
       <div class="field"><label>Dia</label><input id="rq_date" type="date" min="${today}" value="${today}"/></div>
       <div class="field"><label>Como prefere</label><select id="rq_code">${PREF.map(([v,l])=>`<option value="${v}">${l}</option>`).join('')}<option value="outro">Outro (escrever)…</option></select></div>
