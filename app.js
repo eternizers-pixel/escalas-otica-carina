@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v92 (preferência: Sem preferência ocupa a linha inteira; chips com mesma altura, 2x2 sem espaço vazio)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v93 (funcionária: saldo "sem saldo p/ folga" calculado ao vivo pelo banco atual, não pelo snapshot antigo da fila)
 // ============================================================
 (function(){
 "use strict";
@@ -265,6 +265,13 @@ async function renderFuncionaria(){
   let bankUpd='Atualizado pela gestão.';
   if(imp&&imp.imported_at){ const dt=new Date(imp.imported_at); const sd=x=>{const z=new Date(x);z.setHours(0,0,0,0);return z.getTime();}; const dias=Math.round((sd(Date.now())-sd(dt))/86400000); bankUpd=`Última atualização: ${dt.toLocaleDateString('pt-BR')} ${dias<=0?'(hoje)':dias===1?'(ontem)':`(há ${dias} dias)`}`; }
   const pos=me.queue_position, tot=me.queue_total;
+  // saldo calculado AO VIVO (bate com o banco mostrado acima; o snapshot da fila pode envelhecer entre importações)
+  const folgaCostF=Math.max(1, rules.early_leave_hours ?? 3);
+  const minBankF=rules.min_time_bank_for_dayoff ?? 6;
+  const myFutH=(items||[]).filter(it=>!ABSENCE_TYPES.includes(it.type)).reduce((s,it)=>s+(+it.hours||0),0);
+  const projF=(me.time_bank_balance||0)-myFutH;
+  const semSaldoF=(projF-folgaCostF)<minBankF;
+  const tipMsg=`Ao utilizar ${fmtH(folgaCostF)} de folga, o sistema mantém ${fmtH(minBankF)} no seu banco para emergências e necessidades futuras. Por isso, o saldo mínimo para liberar a folga é de ${fmtH(minBankF+folgaCostF)}.`;
   const lastFolga=(pastItems||[]).find(it=>!ABSENCE_TYPES.includes(it.type));
   let ultimaTxt='ainda sem registro';
   if(lastFolga){ const dias=Math.floor((new Date(today+'T00:00:00')-Engine.parse(lastFolga.date))/86400000); ultimaTxt = dias<=0?'hoje':dias===1?'ontem':`há ${dias} dias`; }
@@ -272,7 +279,7 @@ async function renderFuncionaria(){
   const posBlock = pos
     ? `<div class="kpi">${pos}º<small> de ${tot} na fila</small></div>
        ${(pos<=2)?`<div class="next-up">🎯 Você é uma das próximas da fila!</div>`:''}
-       ${(me.queue_reason && /sem saldo/i.test(me.queue_reason))?`<div class="reason">${esc(me.queue_reason)} <details class="tip-i"><summary>ⓘ</summary><div class="tip-msg">Ao utilizar 1h de folga, o sistema mantém 3h no seu banco para emergências e necessidades futuras. Por isso, o saldo mínimo para liberar a folga é de 4h.</div></details></div>`:''}
+       ${semSaldoF?`<div class="reason">sem saldo p/ folga · banco de ${fmtH(projF)} <details class="tip-i"><summary>ⓘ</summary><div class="tip-msg">${tipMsg}</div></details></div>`:''}
        ${lastLine}
        <p class="muted" style="margin:8px 0 0;font-size:12.5px">ℹ️ A ordem pode variar uma posição ou outra para tentar respeitar o horário de preferência de cada uma.</p>`
     : `<p class="muted" style="margin:0 0 8px">Sua posição ainda não foi calculada. Assim que a gestão abrir o motor de folgas, ela aparece aqui.</p>${lastLine}`;
