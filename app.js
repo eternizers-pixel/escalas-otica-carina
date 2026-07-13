@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v90 (férias em cards + botão Editar; status Programada/Em férias/Encerrada)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v91 (fila: aviso de férias no motor + de férias vai pro fim; funcionária: opção Sem preferência + card Suas férias)
 // ============================================================
 (function(){
 "use strict";
@@ -242,14 +242,15 @@ async function renderFuncionaria(){
   if(!eid){ $('#view').innerHTML=box('warn','Seu acesso ainda não foi vinculado a uma funcionária. Peça à gestão para liberar você em <b>Configurações → Acessos</b>.'); return; }
   $('#view').innerHTML='<div class="fnc"><p class="muted">Carregando…</p></div>';
   const today=todayStr();
-  const [emps,items,pastItems,reqs,sats,imp,rules]=await Promise.all([
+  const [emps,items,pastItems,reqs,sats,imp,rules,myVacs]=await Promise.all([
     getAll('employees',b=>b.eq('id',eid)),
     getAll('schedule_items',b=>b.eq('employee_id',eid).gte('date',today).eq('status','aprovado').order('date')),
     getAll('schedule_items',b=>b.eq('employee_id',eid).lt('date',today).eq('status','aprovado').order('date',{ascending:false}).limit(8)),
     getAll('dayoff_requests',b=>b.eq('employee_id',eid).order('created_at',{ascending:false}).limit(20)),
     getAll('saturday_rotation',b=>b.eq('employee_id',eid).gte('saturday_date',today).order('saturday_date').limit(1)),
     T('time_bank_imports').select('imported_at').neq('source','api').order('imported_at',{ascending:false}).limit(1).maybeSingle().then(r=>r.data).catch(()=>null),
-    T('store_rules').select('*').eq('id',1).maybeSingle().then(r=>r.data||{})
+    T('store_rules').select('*').eq('id',1).maybeSingle().then(r=>r.data||{}),
+    getAll('vacation_periods',b=>b.eq('employee_id',eid).gte('end_date',today).order('start_date'))
   ]);
   const me=emps[0]||{};
   const first=(me.name||'').trim().split(' ')[0]||'você';
@@ -284,6 +285,10 @@ async function renderFuncionaria(){
        <p class="muted" style="margin:8px 0 0;font-size:13px">Quer trocar com uma colega? Solicite abaixo — pendente de aprovação.</p>
        <button class="btn sec" id="swapSat" style="margin-top:10px;width:100%">🔁 Solicitar troca</button>`
     : '<p class="muted" style="margin:0">Nenhum sábado agendado para você por enquanto.</p>';
+  const dataBRfull=d=>(d||'').split('-').reverse().join('/');
+  const vacBlock = (myVacs&&myVacs.length)
+    ? `<div class="panel section"><div class="ph"><h3>🏖️ Suas férias</h3></div><div class="pb">${myVacs.map(v=>{ const now=today>=v.start_date&&today<=v.end_date; return `<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:12px 14px;border:1px solid var(--line);border-radius:12px;margin-bottom:8px"><div style="font-weight:700">${dataBRfull(v.start_date)} <span class="muted" style="font-weight:500">→</span> ${dataBRfull(v.end_date)}</div><span class="vtag ${now?'now':'fut'}">${now?'Em férias':'Programada'}</span></div>`; }).join('')}</div></div>`
+    : '';
   const myReqs=reqs.filter(r=>['pedido_folga','troca_folga'].includes(r.request_type));
   const reqLbl=r=> r.request_type==='troca_folga'?'Troca de sábado':((r.reason&&/^\s*outro:/i.test(r.reason))?'Outro':(PL[codeOf(r)]||TYPE_LABEL[r.type]||'folga'));
   const stPill=s=> s==='aprovado'?'ativa':s==='recusado'?'afastada':'ferias';
@@ -295,10 +300,11 @@ async function renderFuncionaria(){
     <div class="panel"><div class="ph"><h3>⏰ Seu banco de horas</h3></div><div class="pb"><div class="kpi">${fmtH(me.time_bank_balance||0)}</div><div class="reason">${bankUpd}</div></div></div>
     <div class="panel section"><div class="ph"><h3>📊 Sua posição na fila</h3></div><div class="pb">${posBlock}</div></div>
     <div class="panel section"><div class="ph"><h3>📅 Próximas folgas</h3></div><div class="pb">${folgaList}</div></div>
+    ${vacBlock}
     <div class="panel section"><div class="ph"><h3>🗓️ Próximo sábado à tarde a trabalhar</h3></div><div class="pb">${satBlock}</div></div>
     <div class="panel section"><div class="ph"><h3>🙋 Minha preferência</h3></div>
       <div class="pb"><p class="muted" style="margin:0 0 8px">Marque como você prefere folgar — <b>salva sozinho</b>. A gestão tenta seguir quando dá, não é garantido.</p>
-      <div class="chip-row">${PREF.map(([v,l])=>`<label class="chk-chip"><input type="checkbox" class="myp" value="${v}" ${myPref.includes(v)?'checked':''}/> ${l}</label>`).join('')}</div></div></div>
+      <div class="chip-row"><label class="chk-chip"><input type="checkbox" class="myp-none" ${myPref.length===0?'checked':''}/> 🎲 Sem preferência · aleatório</label>${PREF.map(([v,l])=>`<label class="chk-chip"><input type="checkbox" class="myp" value="${v}" ${myPref.includes(v)?'checked':''}/> ${l}</label>`).join('')}</div></div></div>
     <div class="panel section"><div class="ph"><h3>✉️ Solicitar folga <span class="muted" style="font-weight:500;font-size:12.5px">(pendente de aprovação)</span></h3></div><div class="pb">
       <div class="field"><label>Dia</label><input id="rq_date" type="date" min="${today}" value="${today}"/></div>
       <div class="field"><label>Como prefere</label><select id="rq_code">${PREF.map(([v,l])=>`<option value="${v}">${l}</option>`).join('')}<option value="outro">Outro (escrever)…</option></select></div>
@@ -307,9 +313,13 @@ async function renderFuncionaria(){
       <button class="btn" id="sendReq" style="width:100%">Solicitar folga</button>
       <div class="section"><h3 style="font-size:13px;color:var(--muted);margin:0 0 8px">Seus pedidos</h3>${reqList}</div></div></div>
   </div>`;
-  $$('.myp').forEach(c=>c.onchange=async()=>{ const codes=$$('.myp').filter(x=>x.checked).map(x=>x.value).join(',');
+  const noneEl=$('.myp-none');
+  const syncNone=()=>{ if(noneEl) noneEl.checked = $$('.myp').every(x=>!x.checked); };
+  const saveMyp=async()=>{ const codes=$$('.myp').filter(x=>x.checked).map(x=>x.value).join(','); syncNone();
     const {error}=await sb.rpc('esc_set_my_dayoff_pref',{p_codes:codes});
-    if(error){toast(error.message);return;} toast('Preferência salva ✓'); });
+    if(error){toast(error.message);return;} toast('Preferência salva ✓'); };
+  $$('.myp').forEach(c=>c.onchange=saveMyp);
+  if(noneEl) noneEl.onchange=async()=>{ if(noneEl.checked) $$('.myp').forEach(x=>x.checked=false); await saveMyp(); };
   $('#rq_code').onchange=function(){ $('#rq_outroWrap').style.display=this.value==='outro'?'':'none'; };
   $('#sendReq').onclick=async()=>{ const d=$('#rq_date').value; let code=$('#rq_code').value; let reason=($('#rq_reason').value||'').trim();
     if(!d){toast('Escolha o dia.');return;}
@@ -934,7 +944,7 @@ ROUTES.folgas=async function(){
     }).join('');
     // (log de decisão removido — a fila de justiça já explica o porquê de cada folga)
     // FILA DE JUSTIÇA — quem está na frente para folgar e por quê
-    const queue=Engine.dayoffQueue(emps,rules,history,existing);
+    const queue=Engine.dayoffQueue(emps,rules,history,existing,{vacations:vacs,winStart:weekStart,winEnd:friday,today:nb.date});
     // grava a posição na fila no cadastro (a funcionária lê só a dela na área dela) — só gestor, semana atual real
     if(isGestor() && !S.sim && weekOffset===0){ const _tot=queue.length;
       Promise.all(queue.map(q=>T('employees').update({queue_position:q.position,queue_total:_tot,queue_reason:q.whyShort||q.why||'',queue_updated_at:new Date().toISOString()}).eq('id',q.id))).catch(()=>{}); }

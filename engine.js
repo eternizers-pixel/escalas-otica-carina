@@ -529,21 +529,32 @@ window.Engine = (function () {
   // "passa a vez" (desce na fila) — assim a ordem gira a cada semana.
   // Critérios: elegível (banco previsto ≥ mínimo) → ainda sem folga marcada → maior banco previsto
   //            → mais tempo sem folgar → menos folgas "boas".
-  function dayoffQueue(employees, rules, history={}, existing=[]){
+  function dayoffQueue(employees, rules, history={}, existing=[], opts={}){
     const fH = v=>{ v=+v||0; const neg=v<0; let m=Math.round(Math.abs(v)*60); const h=Math.floor(m/60); m=m%60; return (neg?'-':'')+h+'h'+(m?String(m).padStart(2,'0'):''); };
+    const brd = s=>String(s||'').split('-').reverse().slice(0,2).join('/');
     const minBank = rules.min_time_bank_for_dayoff ?? 6;
     const folgaCost = Math.max(1, rules.early_leave_hours ?? 3); // custo (h) de uma folga parcial
     const active = employees.filter(e=>e.status==='ativa');
+    // janela da semana planejada + férias (para marcar quem está de férias)
+    const { vacations=[], winStart=null, winEnd=null, today=null } = opts;
+    const effStart = (today && winStart && today>winStart) ? today : winStart; // não considera dias já passados
+    const vacOf = (eid)=>{ if(!winStart||!winEnd) return null;
+      return (vacations||[]).filter(v=>v.employee_id===eid && v.start_date<=winEnd && v.end_date>=(effStart||winStart))
+        .sort((a,b)=> a.start_date<b.start_date?-1:1)[0] || null; };
     // folgas já aprovadas (futuras): horas a descontar e quantas marcadas por pessoa
     const futH={}, futN={};
     (existing||[]).forEach(it=>{ if(!it||!it.employee_id) return; futH[it.employee_id]=(futH[it.employee_id]||0)+(+it.hours||0); futN[it.employee_id]=(futN[it.employee_id]||0)+1; });
     const good = x => x.fri*2 + x.mon + x.integral*2;   // folgas "boas" no histórico
     const rows = active.map(e=>{ const h=history[e.id]||{}; const bank=+e.time_bank_balance||0; const proj=bank-(futH[e.id]||0);
-      return { id:e.id, name:e.name, bank, proj, marcadas:futN[e.id]||0, elig:(proj-folgaCost)>=minBank,
+      const vac=vacOf(e.id);
+      const feriasFull = !!(vac && vac.start_date<=(effStart||winStart) && vac.end_date>=winEnd); // de férias a semana toda
+      return { id:e.id, name:e.name, bank, proj, marcadas:futN[e.id]||0, elig:(proj-folgaCost)>=minBank && !feriasFull,
+        vac, feriasFull,
         last:(h.lastDayOffDays==null?null:h.lastDayOffDays), fri:h.fridaysOff||0, mon:h.mondaysOff||0,
         integral:h.integral||0, dayoffs:h.dayoffs||0 }; });
     const maxProj = Math.max(0, ...rows.map(r=>r.proj));
     rows.sort((a,b)=>{
+      if(a.feriasFull!==b.feriasFull) return a.feriasFull?1:-1;       // de férias a semana toda vai para o fim
       if(a.elig!==b.elig) return a.elig?-1:1;
       if((a.marcadas>0)!==(b.marcadas>0)) return a.marcadas>0?1:-1;   // quem já tem folga marcada passa a vez
       if(b.proj!==a.proj) return b.proj-a.proj;                       // maior banco previsto
@@ -553,6 +564,8 @@ window.Engine = (function () {
       return (a.name||'').localeCompare(b.name||'');
     });
     rows.forEach((x,i)=>{ x.position=i+1; const w=[];
+      if(x.feriasFull){ const per=`(${brd(x.vac.start_date)}–${brd(x.vac.end_date)})`;
+        x.why=`🏖️ de férias ${per} · sem folga nesta semana`; x.whyShort=`🏖️ de férias ${per}`; return; }
       if(!x.elig){ const pv=x.marcadas>0?'previsto ':'';
         if(x.proj < minBank) w.push(`sem saldo p/ folga · banco ${pv}de ${fH(x.proj)} — faltam ${fH(minBank-x.proj)} pro mínimo de ${fH(minBank)}`);
         else w.push(`sem saldo p/ folga · banco ${pv}de ${fH(x.proj)} — uma folga (${fH(folgaCost)}) deixaria abaixo do mínimo de ${fH(minBank)}`); }
@@ -564,6 +577,8 @@ window.Engine = (function () {
         else w.push(`última folga há ${x.last} dia(s)`);
         if(good(x)===0 && x.dayoffs>0 && x.marcadas===0) w.push('poucas folgas boas (sexta/segunda)');
       }
+      // férias parcial na semana (ainda folga nos dias antes): mostra aviso no motor
+      if(x.vac) w.push(`🏖️ férias a partir de ${brd(x.vac.start_date)}`);
       x.why = w.join(' · ');
       // versão curta para a funcionária (sem "passou a vez"/recência): só folgas marcadas + banco previsto
       const ws=[];
