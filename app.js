@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v97 (motor: reordenar fila ↑/↓ (ordem manual) + trocar pessoa da sugestão)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v98 (motor: card mais clean — preferência resumida (ambos os turnos) + 3 botões padronizados)
 // ============================================================
 (function(){
 "use strict";
@@ -928,11 +928,18 @@ ROUTES.folgas=async function(){
       return 'background:#eef0f4;color:#5b6577';};
     // tag com a preferência que a funcionária escolheu (ou "sem preferência · aleatório")
     const PREF_LABEL={manha_entrar:'Entrar +tarde · manhã',manha_sair:'Sair +cedo · manhã',tarde_entrar:'Entrar +tarde · tarde',tarde_sair:'Sair +cedo · tarde'};
+    // resume a preferência: agrupa por ação e diz "manhã", "tarde" ou "ambos os turnos"
+    const prefText=(codes)=>{ const has=c=>codes.includes(c);
+      const sh=(m,t)=> (m&&t)?'ambos os turnos':(m?'manhã':'tarde');
+      const parts=[];
+      if(has('manha_sair')||has('tarde_sair')) parts.push('Sair +cedo · '+sh(has('manha_sair'),has('tarde_sair')));
+      if(has('manha_entrar')||has('tarde_entrar')) parts.push('Entrar +tarde · '+sh(has('manha_entrar'),has('tarde_entrar')));
+      return parts.join('  ·  '); };
     const prefBadge=(empId)=>{
       const e=emps.find(x=>x.id===empId);
       const codes=String((e&&e.dayoff_pref)||'').split(',').map(x=>x.trim()).filter(c=>PREF_LABEL[c]);
-      if(!codes.length || codes.length>=4) return `<span style="font-size:11px;font-weight:600;background:#eef0f4;color:#5b6577;padding:2px 9px;border-radius:20px">🎲 Sem preferência · aleatório</span>`;
-      return `<span style="font-size:11px;font-weight:600;background:var(--purple-soft);color:var(--purple);padding:2px 9px;border-radius:20px">🙋 Prefere: ${esc(codes.map(c=>PREF_LABEL[c]).join(' / '))}</span>`;
+      if(!codes.length || codes.length>=4) return `<span style="font-size:11px;font-weight:600;background:#eef0f4;color:#5b6577;padding:2px 9px;border-radius:20px">🎲 Sem preferência</span>`;
+      return `<span style="font-size:11px;font-weight:600;background:var(--purple-soft);color:var(--purple);padding:2px 9px;border-radius:20px">🙋 ${esc(prefText(codes))}</span>`;
     };
     const activeEmps=emps.filter(e=>e.status==='ativa');
     const dayBlocks=Object.keys(byDay).sort().map(date=>{
@@ -940,15 +947,17 @@ ROUTES.folgas=async function(){
       const cards=byDay[date].map(s=>{
         const i=s._i;
         const hm=(folgaTimeLabel(s,rules).match(/(\d{2}):(\d{2})/)||[])[0]; const hora=hm?' · '+hm.replace(':','h'):'';
-        return `<div class="card" style="margin:0;display:flex;flex-direction:column;gap:9px">
+        return `<div class="card" style="margin:0;display:flex;flex-direction:column;gap:8px">
           <div>
             <div id="sug-name-${i}" style="font-weight:700;font-size:15px">${esc(fnm(s.employee_name))}</div>
             <div style="font-size:14px;font-weight:600;margin-top:3px">${TYPE_LABEL[s.type]||s.type} <span class="muted" style="font-weight:500">(${SHIFT_LABEL[s.shift]||s.shift}) · ${s.hours}h${hora}</span></div>
           </div>
-          <div id="sug-pref-${i}" style="display:flex;gap:5px;flex-wrap:wrap">${prefBadge(s.employee_id)}</div>
-          <div id="sug-tags-${i}" style="display:flex;gap:5px;flex-wrap:wrap">${(s.tags&&s.tags.length)?s.tags.map(t=>`<span style="font-size:11px;font-weight:600;${tagColor(t)};padding:2px 9px;border-radius:20px">${esc(t)}</span>`).join(''):''}</div>
-          ${isGestor()?`<select class="sug-swap" data-sw="${i}" style="font-size:12.5px;padding:6px 8px;border:1px solid var(--line);border-radius:8px;color:var(--ink)"><option value="">🔄 Trocar pessoa…</option>${activeEmps.filter(e=>e.id!==s.employee_id).map(e=>`<option value="${e.id}">${esc(e.name)}</option>`).join('')}</select>`:''}
-          <div class="row-actions" id="act${i}" style="margin-top:auto;padding-top:2px">${isGestor()?`<button class="btn sm" data-ap="${i}">Aprovar</button><button class="btn sm" data-aj="${i}" style="background:var(--amber-soft);color:var(--amber)">✏️ Ajustar</button><button class="btn sec sm" data-rf="${i}">Recusar</button>`:'<span class="muted">—</span>'}</div>
+          <div style="display:flex;gap:5px;flex-wrap:wrap">
+            <span id="sug-pref-${i}" style="display:contents">${prefBadge(s.employee_id)}</span>
+            <span id="sug-tags-${i}" style="display:contents">${(s.tags&&s.tags.length)?s.tags.map(t=>`<span style="font-size:11px;font-weight:600;${tagColor(t)};padding:2px 9px;border-radius:20px">${esc(t)}</span>`).join(''):''}</span>
+          </div>
+          ${isGestor()?`<select class="sug-swap" data-sw="${i}" style="font-size:12px;padding:5px 8px;border:1px solid var(--line);border-radius:8px;color:var(--muted);background:#fbfbfe"><option value="">🔄 Trocar pessoa…</option>${activeEmps.filter(e=>e.id!==s.employee_id).map(e=>`<option value="${e.id}">${esc(e.name)}</option>`).join('')}</select>`:''}
+          <div class="row-actions" id="act${i}" style="display:flex;gap:6px;margin-top:auto;padding-top:2px">${isGestor()?`<button class="btn sm" data-ap="${i}" style="flex:1">Aprovar</button><button class="btn sec sm" data-aj="${i}" style="flex:1">Ajustar</button><button class="btn sec sm" data-rf="${i}" style="flex:1;color:var(--red)">Recusar</button>`:'<span class="muted">—</span>'}</div>
         </div>`;
       }).join('');
       return `<div style="margin-bottom:16px">
