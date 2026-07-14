@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v95 (dashboard: avisos com fonte menor + texto curto — "Equipe no limite" cabe em 1 linha, mesma altura do verde)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v96 (motor: "entrar mais tarde" só vale antes da loja abrir — não sugere mais entrada de manhã depois de aberta)
 // ============================================================
 (function(){
 "use strict";
@@ -905,7 +905,11 @@ ROUTES.folgas=async function(){
     const existing=(await getAll('schedule_items',b=>b.eq('status','aprovado').gte('date',todayStr()))).filter(it=>fSchedIds.has(it.schedule_id));
     const out=Engine.suggestDayOffs({employees:emps,rules,vacations:vacs,requests:reqs,refusals,blockedDates:blk,year,month,horizonDays:4,startDate:weekStart,history,existing,weekdays:selDays});
     // só sugere o que ainda dá tempo hoje: descarta dias e turnos que já passaram (horário de Brasília)
-    out.suggestions=(out.suggestions||[]).filter(s=> s.date>nb.date ? true : (s.date<nb.date ? false : nb.min < ((s.shift==='manha')?hmMin(rules.close_morning||'12:00'):hmMin(rules.close_afternoon||'18:00'))) );
+    // limite por turno: entrar mais tarde só antes de a loja abrir; sair mais cedo até a hora da saída antecipada
+    const cutoffMin=(s)=>{ const oh=Math.round((+s.hours||0)*60);
+      if(s.type==='entrada_tarde') return s.shift==='manha'?hmMin(rules.open_morning||'09:00'):hmMin(rules.open_afternoon||'14:00');
+      return (s.shift==='manha'?hmMin(rules.close_morning||'12:00'):hmMin(rules.close_afternoon||'18:00'))-oh; };
+    out.suggestions=(out.suggestions||[]).filter(s=> s.date>nb.date ? true : (s.date<nb.date ? false : nb.min < cutoffMin(s)) );
     const wEnd=Engine.parse(weekStart); wEnd.setDate(wEnd.getDate()+4);
     const friday=Engine.fmt(wEnd);
     const weekOver=(nb.date>friday)||(nb.date===friday && nb.min>=hmMin(rules.close_afternoon||'18:00'));

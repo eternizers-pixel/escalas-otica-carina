@@ -314,9 +314,9 @@ window.Engine = (function () {
     const _toMin=(t,def)=>{ const [h,m]=String(t||def).split(':').map(Number); return (h||0)*60+(m||0); };
     const _cost=Math.round(hours*60);
     const _cutoff = {
-      manha_ini: _toMin(rules.open_morning,'09:00')    + _cost,  // entrar mais tarde de manhã (só antes de já ter entrado)
+      manha_ini: _toMin(rules.open_morning,'09:00'),             // entrar mais tarde de manhã: só vale ANTES de a loja abrir de manhã
       manha_fim: _toMin(rules.close_morning,'12:00')   - _cost,  // sair mais cedo de manhã
-      tarde_ini: _toMin(rules.open_afternoon,'14:00')  + _cost,  // entrar mais tarde à tarde
+      tarde_ini: _toMin(rules.open_afternoon,'14:00'),           // entrar mais tarde à tarde: só vale ANTES de a loja abrir à tarde
       tarde_fim: _toMin(rules.close_afternoon,'18:00') - _cost   // sair mais cedo à tarde
     };
     const _nowMin = new Date().getHours()*60 + new Date().getMinutes();
