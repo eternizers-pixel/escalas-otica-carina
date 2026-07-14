@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v93 (funcionária: saldo "sem saldo p/ folga" calculado ao vivo pelo banco atual, não pelo snapshot antigo da fila)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v94 (dashboard: bloco verde não estica quando há 2+ avisos amarelos — sem espaço vazio)
 // ============================================================
 (function(){
 "use strict";
@@ -515,7 +515,7 @@ ROUTES.dashboard=async function(){
   const usos = S.sim?[]:await getAll('bank_usage',b=>b.order('created_at',{ascending:false}).limit(8));
   const fresh=await bankFreshnessBanner();
   $('#view').innerHTML=`
-  <div class="dash-alerts"><div>${fresh}</div><div>${alerts}</div></div>
+  <div class="dash-alerts${((alerts.match(/class="alert /g)||[]).length>1)?' multi':''}"><div>${fresh}</div><div>${alerts}</div></div>
   <div class="cards">
     <div class="card"><h3>Disponíveis hoje</h3><div class="kpi">${availToday}<small> / ${active.length} ativas</small></div></div>
     <div class="card"><h3>Indisponíveis hoje</h3><div class="kpi">${outIds.length}${meioToday.length?`<small> + ${meioToday.length} meio turno</small>`:''}</div></div>
