@@ -394,6 +394,7 @@ window.Engine = (function () {
             !existing.some(it=>it.employee_id===e.id && it.date===day.dStr))
           .sort((a,b)=>{
             const ga=genCount[a.id]||0, gb=genCount[b.id]||0; if(ga!==gb) return ga-gb;       // 1) menos folgas na semana primeiro
+            const pa=+a.manual_priority||0, pb=+b.manual_priority||0; if(pa!==pb) return pb-pa; // 1b) ordem manual do gestor (↑/↓)
             if (isFri){ const fa=(history[a.id]?.fridaysOff)||0, fb=(history[b.id]?.fridaysOff)||0; if(fa!==fb) return fa-fb; } // 2) revezamento de sexta: quem pegou menos sextas primeiro
             const ca=canPref(a,day)?1:0, cb=canPref(b,day)?1:0; if(ca!==cb) return cb-ca;        // 3) quem consegue um horário preferido livre hoje vai primeiro (preserva os horários disputados)
             const da=minDist(a.id,day.dStr), db=minDist(b.id,day.dStr);
@@ -549,13 +550,14 @@ window.Engine = (function () {
       const vac=vacOf(e.id);
       const feriasFull = !!(vac && vac.start_date<=(effStart||winStart) && vac.end_date>=winEnd); // de férias a semana toda
       return { id:e.id, name:e.name, bank, proj, marcadas:futN[e.id]||0, elig:(proj-folgaCost)>=minBank && !feriasFull,
-        vac, feriasFull,
+        vac, feriasFull, mp:+e.manual_priority||0,
         last:(h.lastDayOffDays==null?null:h.lastDayOffDays), fri:h.fridaysOff||0, mon:h.mondaysOff||0,
         integral:h.integral||0, dayoffs:h.dayoffs||0 }; });
     const maxProj = Math.max(0, ...rows.map(r=>r.proj));
     rows.sort((a,b)=>{
       if(a.feriasFull!==b.feriasFull) return a.feriasFull?1:-1;       // de férias a semana toda vai para o fim
       if(a.elig!==b.elig) return a.elig?-1:1;
+      if((a.mp||0)!==(b.mp||0)) return (b.mp||0)-(a.mp||0);           // ordem manual do gestor (↑/↓) tem prioridade
       if((a.marcadas>0)!==(b.marcadas>0)) return a.marcadas>0?1:-1;   // quem já tem folga marcada passa a vez
       if(b.proj!==a.proj) return b.proj-a.proj;                       // maior banco previsto
       const la=a.last==null?99999:a.last, lb=b.last==null?99999:b.last;

@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v96 (motor: "entrar mais tarde" só vale antes da loja abrir — não sugere mais entrada de manhã depois de aberta)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v97 (motor: reordenar fila ↑/↓ (ordem manual) + trocar pessoa da sugestão)
 // ============================================================
 (function(){
 "use strict";
@@ -934,6 +934,7 @@ ROUTES.folgas=async function(){
       if(!codes.length || codes.length>=4) return `<span style="font-size:11px;font-weight:600;background:#eef0f4;color:#5b6577;padding:2px 9px;border-radius:20px">🎲 Sem preferência · aleatório</span>`;
       return `<span style="font-size:11px;font-weight:600;background:var(--purple-soft);color:var(--purple);padding:2px 9px;border-radius:20px">🙋 Prefere: ${esc(codes.map(c=>PREF_LABEL[c]).join(' / '))}</span>`;
     };
+    const activeEmps=emps.filter(e=>e.status==='ativa');
     const dayBlocks=Object.keys(byDay).sort().map(date=>{
       const dia=Engine.DOW[Engine.parse(date).getDay()]; const dataBR=date.split('-').reverse().slice(0,2).join('/');
       const cards=byDay[date].map(s=>{
@@ -941,11 +942,12 @@ ROUTES.folgas=async function(){
         const hm=(folgaTimeLabel(s,rules).match(/(\d{2}):(\d{2})/)||[])[0]; const hora=hm?' · '+hm.replace(':','h'):'';
         return `<div class="card" style="margin:0;display:flex;flex-direction:column;gap:9px">
           <div>
-            <div style="font-weight:700;font-size:15px">${esc(fnm(s.employee_name))}</div>
+            <div id="sug-name-${i}" style="font-weight:700;font-size:15px">${esc(fnm(s.employee_name))}</div>
             <div style="font-size:14px;font-weight:600;margin-top:3px">${TYPE_LABEL[s.type]||s.type} <span class="muted" style="font-weight:500">(${SHIFT_LABEL[s.shift]||s.shift}) · ${s.hours}h${hora}</span></div>
           </div>
-          <div style="display:flex;gap:5px;flex-wrap:wrap">${prefBadge(s.employee_id)}</div>
-          ${(s.tags&&s.tags.length)?`<div style="display:flex;gap:5px;flex-wrap:wrap">${s.tags.map(t=>`<span style="font-size:11px;font-weight:600;${tagColor(t)};padding:2px 9px;border-radius:20px">${esc(t)}</span>`).join('')}</div>`:''}
+          <div id="sug-pref-${i}" style="display:flex;gap:5px;flex-wrap:wrap">${prefBadge(s.employee_id)}</div>
+          <div id="sug-tags-${i}" style="display:flex;gap:5px;flex-wrap:wrap">${(s.tags&&s.tags.length)?s.tags.map(t=>`<span style="font-size:11px;font-weight:600;${tagColor(t)};padding:2px 9px;border-radius:20px">${esc(t)}</span>`).join(''):''}</div>
+          ${isGestor()?`<select class="sug-swap" data-sw="${i}" style="font-size:12.5px;padding:6px 8px;border:1px solid var(--line);border-radius:8px;color:var(--ink)"><option value="">🔄 Trocar pessoa…</option>${activeEmps.filter(e=>e.id!==s.employee_id).map(e=>`<option value="${e.id}">${esc(e.name)}</option>`).join('')}</select>`:''}
           <div class="row-actions" id="act${i}" style="margin-top:auto;padding-top:2px">${isGestor()?`<button class="btn sm" data-ap="${i}">Aprovar</button><button class="btn sm" data-aj="${i}" style="background:var(--amber-soft);color:var(--amber)">✏️ Ajustar</button><button class="btn sec sm" data-rf="${i}">Recusar</button>`:'<span class="muted">—</span>'}</div>
         </div>`;
       }).join('');
@@ -959,9 +961,13 @@ ROUTES.folgas=async function(){
     // grava a posição na fila no cadastro (a funcionária lê só a dela na área dela) — só gestor, semana atual real
     if(isGestor() && !S.sim && weekOffset===0){ const _tot=queue.length;
       Promise.all(queue.map(q=>T('employees').update({queue_position:q.position,queue_total:_tot,queue_reason:q.whyShort||q.why||'',queue_updated_at:new Date().toISOString()}).eq('id',q.id))).catch(()=>{}); }
-    const queueHtml=queue.map(q=>`<div style="display:flex;align-items:center;gap:11px;padding:8px 10px;border:1px solid var(--line);border-radius:10px;margin-bottom:6px;background:${q.elig?'#fff':'#f6f8fb'}">
+    const manualOn=emps.some(e=>(+e.manual_priority||0)>0);
+    const nQ=queue.length;
+    const qbtn=(dir,id,dis)=>`<button class="qmv" data-q${dir}="${id}" ${dis?'disabled':''} style="width:26px;height:19px;line-height:1;border:1px solid var(--line);border-radius:6px;background:#fff;font-size:10px;color:var(--brand);${dis?'opacity:.3;cursor:default':'cursor:pointer'}">${dir==='up'?'▲':'▼'}</button>`;
+    const queueHtml=queue.map((q,qi)=>`<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--line);border-radius:10px;margin-bottom:6px;background:${q.elig?'#fff':'#f6f8fb'}">
         <div style="min-width:30px;height:30px;border-radius:50%;display:grid;place-items:center;font-weight:800;font-size:13px;flex:none;background:${(q.elig&&q.position<=3)?'var(--brand)':'#eef1f8'};color:${(q.elig&&q.position<=3)?'#fff':'var(--muted)'}">${q.position}º</div>
-        <div style="flex:1;min-width:0"><div style="font-weight:700">${esc(fnm(q.name))}</div><div class="muted" style="font-size:12.5px;margin-top:1px">${esc(q.why)}</div></div></div>`).join('');
+        <div style="flex:1;min-width:0"><div style="font-weight:700">${esc(fnm(q.name))}</div><div class="muted" style="font-size:12.5px;margin-top:1px">${esc(q.why)}</div></div>
+        ${isGestor()?`<div style="display:flex;flex-direction:column;gap:3px;flex:none">${qbtn('up',q.id,qi===0)}${qbtn('down',q.id,qi===nQ-1)}</div>`:''}</div>`).join('');
     const lf=info=> (info&&info.names&&info.names.length)?`<b>${info.names.map(n=>esc(fnm(n))).join(', ')}</b> <span class="muted">· ${info.date.split('-').reverse().join('/')}</span>`:'<span class="muted">ninguém ainda</span>';
     // faixa fina full-width: última folga seg/sex
     const monFri=`<div class="panel" style="margin-bottom:12px"><div class="pb" style="padding:11px 14px">
@@ -976,7 +982,8 @@ ROUTES.folgas=async function(){
       <div style="display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap">
         <details class="panel" open style="flex:1 1 300px;min-width:270px;max-width:400px;margin:0"><summary style="cursor:pointer;padding:13px 16px;font-weight:700">📋 Fila de justiça <span class="muted" style="font-weight:500">(${queue.filter(q=>q.elig).length} com saldo)</span></summary>
           <div class="pb" style="padding-top:4px">${queueHtml||'<span class="muted">Sem funcionárias ativas.</span>'}
-          <div class="reason">Ordem por <b>banco de horas</b>, depois <b>tempo sem folgar</b> e justiça do histórico. Quem está sem saldo aparece no fim (em dia).</div></div></details>
+          ${manualOn?`<div class="reason" style="border-left-color:var(--amber);background:var(--amber-soft);color:#8a5a00">✋ <b>Ordem manual ativa</b> — sobrepõe o cálculo automático. <a id="qReset" style="cursor:pointer;text-decoration:underline;font-weight:700">↺ Voltar ao automático</a></div>`:''}
+          <div class="reason">Ordem por <b>banco de horas</b>, depois <b>tempo sem folgar</b> e justiça. Use <b>▲/▼</b> para reordenar na mão. Quem está sem saldo aparece no fim (em dia).</div></div></details>
         <div class="panel" style="flex:2 1 440px;min-width:300px;margin:0"><div class="ph"><h3>Sugestões da semana</h3>
           <div style="display:flex;align-items:center;gap:10px"><span class="muted">${out.suggestions.length} folga(s)</span>
           ${(isGestor()&&out.suggestions.length)?`<button class="btn sm" id="apAll">✓ Aprovar todos</button>`:''}</div></div>
@@ -996,6 +1003,22 @@ ROUTES.folgas=async function(){
     $$('[data-rf]').forEach(b=>b.onclick=async()=>{ if(!gate())return; const i=+b.dataset.rf; const s=out.suggestions[i]; const motivo=prompt('Motivo da recusa:','')||'';
       await T('dayoff_requests').insert({employee_id:s.employee_id,employee_name:s.employee_name,date:s.date,shift:s.shift,type:s.type,request_type:'recusa_folga',reason:motivo,status:'recusado'});
       $('#act'+i).innerHTML='<span class="pill afastada">✗ Recusado</span>'; toast('Recusa registrada. Recalcule para nova sugestão.'); });
+    // TROCAR pessoa da sugestão (rápido, sem abrir o formulário completo)
+    $$('[data-sw]').forEach(sel=>sel.onchange=()=>{ if(!gate()){sel.value='';return;} const i=+sel.dataset.sw; const id=sel.value; if(!id)return; const e=emps.find(x=>String(x.id)===String(id)); if(!e){sel.value='';return;}
+      out.suggestions[i].employee_id=e.id; out.suggestions[i].employee_name=e.name; out.suggestions[i].tags=['✋ Trocado manualmente'];
+      const nm=document.getElementById('sug-name-'+i); if(nm) nm.textContent=fnm(e.name);
+      const pf=document.getElementById('sug-pref-'+i); if(pf) pf.innerHTML=prefBadge(e.id);
+      const tg=document.getElementById('sug-tags-'+i); if(tg) tg.innerHTML=`<span style="font-size:11px;font-weight:600;background:var(--amber-soft);color:var(--amber);padding:2px 9px;border-radius:20px">✋ Trocado manualmente</span>`;
+      sel.innerHTML='<option value="">🔄 Trocar pessoa…</option>'+activeEmps.filter(x=>String(x.id)!==String(e.id)).map(x=>`<option value="${x.id}">${esc(x.name)}</option>`).join('');
+      toast('Pessoa trocada — confira e clique em Aprovar.'); });
+    // REORDENAR a fila de justiça (↑/↓) — grava a ordem manual (manual_priority) e recalcula
+    const applyOrder=async(ids)=>{ const N=ids.length; const ups=ids.map((eid,k)=>({id:eid,mp:N-k}));
+      ups.forEach(u=>{ const e=emps.find(x=>String(x.id)===String(u.id)); if(e) e.manual_priority=u.mp; });
+      await Promise.all(ups.map(u=>T('employees').update({manual_priority:u.mp}).eq('id',u.id))).catch(()=>{}); run(); };
+    const moveQ=(id,dir)=>{ if(!gate())return; const ids=queue.map(q=>q.id); const idx=ids.findIndex(x=>String(x)===String(id)); const j=idx+dir; if(idx<0||j<0||j>=ids.length)return; const t=ids[idx]; ids[idx]=ids[j]; ids[j]=t; applyOrder(ids); };
+    $$('[data-qup]').forEach(b=>b.onclick=()=>moveQ(b.dataset.qup,-1));
+    $$('[data-qdown]').forEach(b=>b.onclick=()=>moveQ(b.dataset.qdown,1));
+    if($('#qReset')) $('#qReset').onclick=async()=>{ if(!gate())return; emps.forEach(e=>e.manual_priority=0); await Promise.all(emps.map(e=>T('employees').update({manual_priority:0}).eq('id',e.id))).catch(()=>{}); toast('Voltou à ordem automática.'); run(); };
   }
   async function saveApproval(s){
     const d=Engine.parse(s.date); const y=d.getFullYear(), m=d.getMonth()+1; // mês/ano da própria folga
