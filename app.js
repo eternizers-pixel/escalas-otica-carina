@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v94 (dashboard: bloco verde não estica quando há 2+ avisos amarelos — sem espaço vazio)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v95 (dashboard: avisos com fonte menor + texto curto — "Equipe no limite" cabe em 1 linha, mesma altura do verde)
 // ============================================================
 (function(){
 "use strict";
@@ -499,8 +499,8 @@ ROUTES.dashboard=async function(){
   const totalBank=emps.reduce((s,e)=>s+(+e.time_bank_balance||0),0);
   const dataBRhoje=todayISO.split('-').reverse().slice(0,2).join('/');
   let alerts='';
-  if(availToday<=minPer) alerts+=box('err',`<b>Cobertura mínima em risco hoje:</b> só ${availToday} disponível(is) para o mínimo de ${minPer} por turno — sem margem para folga.`);
-  else if(availToday<=minPer+1) alerts+=box('warn',`<b>Equipe no limite hoje:</b> ${availToday} disponível(is) (mínimo ${minPer}) — pouca margem para folga.`);
+  if(availToday<=minPer) alerts+=box('err',`<b>Cobertura em risco:</b> ${availToday} disponíveis (mín. ${minPer}) — sem margem.`);
+  else if(availToday<=minPer+1) alerts+=box('warn',`<b>Equipe no limite:</b> ${availToday} disponíveis (mín. ${minPer}) — pouca margem.`);
   if(outList.length) alerts+=box('warn',`<b>Indisponíveis hoje (${dataBRhoje}):</b> ${outList.join(' · ')}.`);
   if(critBank.length) alerts+=box('err',`<b>Banco de horas CRÍTICO (≥ ${fmtH(tCrit)}):</b> ${critBank.map(e=>e.name+' ('+fmtH(e.time_bank_balance)+')').join(', ')}. Prioridade máxima para compensar com folga.`);
   if(altaBank.length) alerts+=box('warn',`<b>Banco de horas alto (≥ ${fmtH(tAlta)}):</b> ${altaBank.map(e=>e.name+' ('+fmtH(e.time_bank_balance)+')').join(', ')}. Priorize folgas para estas.`);
