@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v106 (Eventos: pesos — dia extra e noite comum = 1,5; noite de domingo/feriado = 2,5 (a pior); justiça por carga)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v107 (Eventos: log de carga só das 5 do banco; quem tem "domingo/feriado" nas restrições (Ivoni) não é escalado em dia extra)
 // ============================================================
 (function(){
 "use strict";
@@ -883,6 +883,7 @@ ROUTES.eventos=async function(){
   const evItems=allItems.filter(it=>it.type==='evento');
   const active=emps.filter(e=>e.status==='ativa'||e.status==='bastidores'); // evento inclui bastidores
   const bastId=new Set(emps.filter(e=>e.status==='bastidores').map(e=>e.id));
+  const noExtraSet=new Set(emps.filter(e=>/domingo|feriado|extra/i.test(e.restrictions||'')).map(e=>e.id));  // não fazem domingo/feriado (ex.: Ivoni) — marcado no campo "restrições"
   const nm=Object.fromEntries(emps.map(e=>[e.id,e.name]));
   const SHIFTS=[['manha','☀️ Manhã'],['tarde','🌇 Tarde'],['noite','🌙 Noite']];
   const dBR=s=>String(s||'').split('-').reverse().slice(0,2).join('/');
@@ -902,9 +903,9 @@ ROUTES.eventos=async function(){
     }).join('');
     // LOG DE DECISÃO — carga dos extras por pessoa (noite=1,5 · dia extra=1; manhã/tarde de dia normal não conta)
     const carga={}; ev.items.forEach(i=>{ const id=i.employee_id; carga[id]=carga[id]||{n:0,e:0,t:0}; const ext=isExtra(i.date); if(i.shift==='noite'){ carga[id].n++; carga[id].t+=ext?2.5:1.5; } else if(ext){ carga[id].e++; carga[id].t+=1.5; } });
-    const cr=Object.keys(carga).map(id=>({name:fnm(nm[id]||'—'),bast:bastId.has(id),n:carga[id].n,e:carga[id].e,t:carga[id].t})).filter(r=>r.t>0).sort((a,b)=>b.t-a.t);
+    const cr=Object.keys(carga).map(id=>({name:fnm(nm[id]||'—'),bast:bastId.has(id),n:carga[id].n,e:carga[id].e,t:carga[id].t})).filter(r=>r.t>0 && !r.bast).sort((a,b)=>b.t-a.t);
     const fmtC=x=>String(Math.round(x*10)/10).replace('.',',');
-    const logHtml=cr.length?`<details class="pb" style="padding-top:6px"><summary style="cursor:pointer;font-weight:700;font-size:12.5px">🔎 Log de decisão — carga dos extras</summary><div class="reason" style="font-size:11.5px;margin-top:6px">Equilibra por <b>carga</b>: dia extra e noite comum = 1,5 · <b>noite de domingo/feriado = 2,5</b> (a pior). Quem acumula mais é escalado menos; e evita a mesma pessoa em extras seguidos. Manhã/tarde de dia normal não conta (horário de serviço).</div><table style="width:100%;border-collapse:collapse;font-size:12px;margin-top:4px">${cr.map(r=>`<tr><td style="padding:3px 6px"><span class="ev-chip${r.bast?' bast':''}" style="font-size:10.5px">${esc(r.name)}</span></td><td style="padding:3px 6px;color:var(--muted)">${r.n} noite(s)${r.e?` + ${r.e} extra(s)`:''}</td><td style="padding:3px 6px;font-weight:800;text-align:right">carga ${fmtC(r.t)}</td></tr>`).join('')}</table></details>`:'';
+    const logHtml=cr.length?`<details class="pb" style="padding-top:6px"><summary style="cursor:pointer;font-weight:700;font-size:12.5px">🔎 Log de decisão — carga dos extras</summary><div class="reason" style="font-size:11.5px;margin-top:6px">Só as <b>5 do banco</b> — o apoio/gestão ajuda, mas não entra no rodízio de carga. Equilibra por <b>carga</b>: dia extra e noite comum = 1,5 · <b>noite de domingo/feriado = 2,5</b> (a pior). Quem acumula mais é escalado menos; e evita a mesma pessoa em extras seguidos. Manhã/tarde de dia normal não conta (horário de serviço).</div><table style="width:100%;border-collapse:collapse;font-size:12px;margin-top:4px">${cr.map(r=>`<tr><td style="padding:3px 6px"><span class="ev-chip${r.bast?' bast':''}" style="font-size:10.5px">${esc(r.name)}</span></td><td style="padding:3px 6px;color:var(--muted)">${r.n} noite(s)${r.e?` + ${r.e} extra(s)`:''}</td><td style="padding:3px 6px;font-weight:800;text-align:right">carga ${fmtC(r.t)}</td></tr>`).join('')}</table></details>`:'';
     return `<div class="panel section"><div class="ph"><h3>🎪 ${esc(ev.name)}</h3><span class="muted">${dBR(ev.dates[0])} a ${dBR(ev.dates[ev.dates.length-1])}</span></div>
       <div class="pb" style="padding:0;overflow-x:auto"><table style="border-collapse:collapse;width:100%;min-width:460px">
         <thead><tr><th style="padding:8px 10px;border:1px solid var(--line);text-align:left;font-size:12px">Dia</th>${SHIFTS.map(s=>`<th style="padding:8px 10px;border:1px solid var(--line);text-align:left;font-size:12px">${s[1]}</th>`).join('')}</tr></thead>
@@ -934,7 +935,7 @@ ROUTES.eventos=async function(){
         // reequilibrar: apaga só os EXTRAS (noites + manhã/tarde dos dias extras); mantém o que você preencheu na mão
         if(isReb){ const del=evItems.filter(i=>(i.reason||'Evento')===name && (i.shift==='noite' || isExtraD(i.date))).map(i=>i.id); if(del.length) await T('schedule_items').delete().in('id',del); }
         const existing=allItems.filter(it=>it.date>=st && it.date<=en);
-        const res=Engine.buildEventSchedule({employees:emps,rules,vacations:vacs,existing,busyByDate,extraDates:extraArr,event:{start_date:st,end_date:en,need_noite:+$('#ev_n').value,need_extra:+$('#ev_dom').value}});
+        const res=Engine.buildEventSchedule({employees:emps,rules,vacations:vacs,existing,busyByDate,extraDates:extraArr,noExtra:[...noExtraSet],event:{start_date:st,end_date:en,need_noite:+$('#ev_n').value,need_extra:+$('#ev_dom').value}});
         if(!res.assignments.length){toast('Ninguém disponível para os turnos automáticos (confira datas/férias).');return false;}
         const byMonth={}; res.assignments.forEach(a=>{ const d=Engine.parse(a.date); const k=d.getFullYear()+'-'+(d.getMonth()+1); (byMonth[k]=byMonth[k]||[]).push(a); });
         for(const k of Object.keys(byMonth)){ const [yy,mm]=k.split('-').map(Number); const sid=await schedForMonth(yy,mm); if(!sid) continue;

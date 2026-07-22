@@ -597,7 +597,8 @@ window.Engine = (function () {
   // Manhã/tarde são no horário do expediente (parte da equipe vai à praça) → mantém o mínimo na loja.
   // Noite é fora do expediente (as horas entram no banco pelo TiqueTaque; aqui só definimos quem vai).
   function buildEventSchedule(opts){
-    const { employees=[], rules={}, vacations=[], existing=[], event={}, busyByDate={}, extraDates=[] } = opts;
+    const { employees=[], rules={}, vacations=[], existing=[], event={}, busyByDate={}, extraDates=[], noExtra=[] } = opts;
+    const noExtraSet=new Set(noExtra);   // pessoas que não fazem domingo/feriado (ex.: Ivoni)
     const minPer = rules.min_per_shift || 4;
     const banco   = employees.filter(e=>e.status==='ativa');       // batem ponto (contam para o mínimo da loja no dia)
     const helpers = employees.filter(e=>e.status==='bastidores');  // bastidores (sem banco; não afetam o mínimo da loja)
@@ -617,10 +618,11 @@ window.Engine = (function () {
     for(const day of days){
       const outs=outDay[day]||new Set();
       const bz=busyByDate[day]||new Set(); // já ocupados no dia (manhã/tarde do evento) → não pegam a noite do mesmo dia
-      const bPool=banco.filter(e=>!onVac(e,day) && !outs.has(e.id) && !bz.has(e.id));
-      const hPool=helpers.filter(e=>!onVac(e,day) && !outs.has(e.id) && !bz.has(e.id));
-      const prevSet=assignedByDate[fmt(new Date(parse(day).getTime()-86400000))]||new Set();
       const dayExtra=isExtra(day);
+      const avail=(e)=> !onVac(e,day) && !outs.has(e.id) && !bz.has(e.id) && !(dayExtra && noExtraSet.has(e.id)); // domingo/feriado exclui quem não faz extra (ex.: Ivoni)
+      const bPool=banco.filter(avail);
+      const hPool=helpers.filter(avail);
+      const prevSet=assignedByDate[fmt(new Date(parse(day).getTime()-86400000))]||new Set();
       const todayAssigned=new Set();
       const doShift=(shift,daytime,count)=>{
         if(count<=0) return;
