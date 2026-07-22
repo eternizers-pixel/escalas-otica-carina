@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v98 (motor: card mais clean — preferência resumida (ambos os turnos) + 3 botões padronizados)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v99 (novo módulo Eventos: cadastra evento e monta escala manhã/tarde/noite com rodízio; funcionária vê a escala dela)
 // ============================================================
 (function(){
 "use strict";
@@ -88,7 +88,7 @@ async function buildHistory(refISO){
     const d=new Date(it.date+'T00:00:00'); const dow=d.getDay();
     const days=Math.floor((ref-d)/86400000);
     if(days<=0) continue; // só folgas ANTES da semana de referência contam para a justiça/recência
-    if(ABSENCE_TYPES.includes(it.type)) continue; // falta/atestado/afastamento não são folgas — não entram na justiça
+    if(ABSENCE_TYPES.includes(it.type) || it.type==='evento') continue; // faltas e eventos não são folgas — não entram na justiça
     const r=get(it.employee_id); r.dayoffs++;
     if(dow===5){ r.fridaysOff++; if(!r.lastFridayISO||it.date>r.lastFridayISO) r.lastFridayISO=it.date; }
     if(dow===1){ r.mondaysOff++; if(!r.lastMondayISO||it.date>r.lastMondayISO) r.lastMondayISO=it.date; }
@@ -183,6 +183,7 @@ const NAV=[
   ['funcionarias','👥','g','Funcionárias','Cadastro, cargos e banco de horas'],
   ['acessos','🔑','k','Acessos','Logins das funcionárias e permissões'],
   ['ferias','✈️','a','Férias','Períodos e impacto na escala'],
+  ['eventos','🎪','a','Eventos','Escala de manhã/tarde/noite em datas especiais'],
   ['pedidos','📨','p','Pedidos & exceções','Folgas, faltas, atestados, trocas'],
   ['tiquetaque','🔄','t','TiqueTaque','Sincronizar banco de horas'],
   ['regras','🏪','p','Regras da loja','Horários, turnos e limites'],
@@ -192,7 +193,7 @@ const NAV=[
 const HOME_TOP=['dashboard','folgas','escala','sabados'];
 const HOME_BOTTOM=['relatorios','calendario','pedidos','config'];
 const HOME_KEYS=[...HOME_TOP,...HOME_BOTTOM];
-const CONFIG_KEYS=['funcionarias','acessos','ferias','tiquetaque','regras'];
+const CONFIG_KEYS=['funcionarias','acessos','ferias','eventos','tiquetaque','regras'];
 
 function updateSimBanner(){ $('#simBanner').innerHTML = S.sim ? `<div class="simbanner">🧪 MODO SIMULAÇÃO — dados fictícios. Nada aqui afeta os dados reais.</div>`:''; }
 
@@ -283,8 +284,9 @@ async function renderFuncionaria(){
        ${lastLine}
        <p class="muted" style="margin:8px 0 0;font-size:12.5px">ℹ️ A ordem pode variar uma posição ou outra para tentar respeitar o horário de preferência de cada uma.</p>`
     : `<p class="muted" style="margin:0 0 8px">Sua posição ainda não foi calculada. Assim que a gestão abrir o motor de folgas, ela aparece aqui.</p>${lastLine}`;
-  const folgaList = items.length
-    ? items.map(it=>`<div class="folga-card"><div class="fc-day"><div class="fc-date">${dataBR(it.date)}</div><div class="fc-dow">${Engine.DOW[Engine.parse(it.date).getDay()]}</div></div><div class="fc-time">${folgaTimeLabel(it,rules)}</div></div>`).join('')
+  const folgaItems=items.filter(it=>it.type!=='evento'); // eventos aparecem na seção própria
+  const folgaList = folgaItems.length
+    ? folgaItems.map(it=>`<div class="folga-card"><div class="fc-day"><div class="fc-date">${dataBR(it.date)}</div><div class="fc-dow">${Engine.DOW[Engine.parse(it.date).getDay()]}</div></div><div class="fc-time">${folgaTimeLabel(it,rules)}</div></div>`).join('')
     : '<p class="muted" style="margin:0">Nenhuma folga agendada por enquanto.</p>';
   const nextSat=sats[0];
   const satBlock = nextSat
@@ -295,6 +297,13 @@ async function renderFuncionaria(){
   const dataBRfull=d=>(d||'').split('-').reverse().join('/');
   const vacBlock = (myVacs&&myVacs.length)
     ? `<div class="panel section"><div class="ph"><h3>🏖️ Suas férias</h3></div><div class="pb">${myVacs.map(v=>{ const now=today>=v.start_date&&today<=v.end_date; return `<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:12px 14px;border:1px solid var(--line);border-radius:12px;margin-bottom:8px"><div style="font-weight:700">${dataBRfull(v.start_date)} <span class="muted" style="font-weight:500">→</span> ${dataBRfull(v.end_date)}</div><span class="vtag ${now?'now':'fut'}">${now?'Em férias':'Programada'}</span></div>`; }).join('')}</div></div>`
+    : '';
+  // escala de EVENTO da funcionária (turnos manhã/tarde/noite)
+  const SHIFT_EV={manha:'☀️ Manhã',tarde:'🌇 Tarde',noite:'🌙 Noite'};
+  const evItems=items.filter(it=>it.type==='evento').sort((a,b)=> a.date<b.date?-1:(a.date>b.date?1:0));
+  const evByName={}; evItems.forEach(it=>{ const k=it.reason||'Evento'; (evByName[k]=evByName[k]||[]).push(it); });
+  const eventBlock = evItems.length
+    ? Object.keys(evByName).map(name=>`<div class="panel section"><div class="ph"><h3>🎪 ${esc(name)}</h3></div><div class="pb">${evByName[name].map(it=>`<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:11px 14px;border:1px solid var(--line);border-radius:12px;margin-bottom:8px"><div style="font-weight:700">${dataBR(it.date)} <span class="muted" style="font-weight:500">· ${Engine.DOW[Engine.parse(it.date).getDay()]}</span></div><span style="font-size:12.5px;font-weight:700;background:var(--brand-soft);color:var(--brand-d);padding:3px 10px;border-radius:20px">${SHIFT_EV[it.shift]||it.shift}</span></div>`).join('')}<div class="reason" style="font-size:12px">Os turnos da noite entram no seu banco de horas pelo ponto do TiqueTaque.</div></div></div>`).join('')
     : '';
   const myReqs=reqs.filter(r=>['pedido_folga','troca_folga'].includes(r.request_type));
   const reqLbl=r=> r.request_type==='troca_folga'?'Troca de sábado':((r.reason&&/^\s*outro:/i.test(r.reason))?'Outro':(PL[codeOf(r)]||TYPE_LABEL[r.type]||'folga'));
@@ -307,6 +316,7 @@ async function renderFuncionaria(){
     <div class="panel"><div class="ph"><h3>⏰ Seu banco de horas</h3></div><div class="pb"><div class="kpi">${fmtH(me.time_bank_balance||0)}</div><div class="reason">${bankUpd}</div></div></div>
     <div class="panel section"><div class="ph"><h3>📊 Sua posição na fila</h3></div><div class="pb">${posBlock}</div></div>
     <div class="panel section"><div class="ph"><h3>📅 Próximas folgas</h3></div><div class="pb">${folgaList}</div></div>
+    ${eventBlock}
     ${vacBlock}
     <div class="panel section"><div class="ph"><h3>🗓️ Próximo sábado à tarde a trabalhar</h3></div><div class="pb">${satBlock}</div></div>
     <div class="panel section"><div class="ph"><h3>🙋 Minha preferência</h3></div>
@@ -858,6 +868,70 @@ ROUTES.ferias=async function(){
     toast('Férias removidas.'); route(); });
 };
 
+// ---------- EVENTOS ----------
+ROUTES.eventos=async function(){
+  const [emps,rules,vacs,scheds]=await Promise.all([
+    getAll('employees',b=>b.eq('is_simulation',S.sim).order('name')),
+    T('store_rules').select('*').eq('id',1).maybeSingle().then(r=>r.data||{}),
+    getAll('vacation_periods'),
+    getAll('schedules',b=>b.eq('is_simulation',S.sim))]);
+  const schedIds=new Set(scheds.map(s=>s.id));
+  const allItems=(await getAll('schedule_items',b=>b.eq('status','aprovado'))).filter(it=>schedIds.has(it.schedule_id));
+  const evItems=allItems.filter(it=>it.type==='evento');
+  const active=emps.filter(e=>e.status==='ativa');
+  const nm=Object.fromEntries(emps.map(e=>[e.id,e.name]));
+  const SHIFTS=[['manha','☀️ Manhã'],['tarde','🌇 Tarde'],['noite','🌙 Noite']];
+  const dBR=s=>String(s||'').split('-').reverse().slice(0,2).join('/');
+  const byEvent={}; evItems.forEach(it=>{ const k=it.reason||'Evento'; (byEvent[k]=byEvent[k]||[]).push(it); });
+  const events=Object.keys(byEvent).sort().map(name=>{ const items=byEvent[name]; const dates=[...new Set(items.map(i=>i.date))].sort(); return {name,items,dates}; });
+  const schedForMonth=async(y,m)=>{ let s=scheds.find(x=>x.year===y&&x.month===m); if(!s){ s=(await T('schedules').insert({year:y,month:m,status:'sugerida',is_simulation:S.sim,created_by:S.user.id}).select().single()).data; if(s){scheds.push(s);schedIds.add(s.id);} } return s&&s.id; };
+  const saveAssign=async(a,name)=>{ const d=Engine.parse(a.date); const sid=await schedForMonth(d.getFullYear(),d.getMonth()+1); if(!sid)return; await T('schedule_items').insert({schedule_id:sid,employee_id:a.employee_id,employee_name:a.employee_name||nm[a.employee_id],date:a.date,shift:a.shift,type:'evento',hours:0,status:'aprovado',reason:name}); };
+  const eventCard=(ev)=>{
+    const grid=ev.dates.map(date=>{
+      const cells=SHIFTS.map(([sh])=>{
+        const people=ev.items.filter(i=>i.date===date && i.shift===sh);
+        const chips=people.map(p=>`<span class="ev-chip">${esc(fnm(nm[p.employee_id]||p.employee_name||'—'))}${isGestor()?`<a class="ev-x" data-rm="${p.id}">✕</a>`:''}</span>`).join('')||'<span class="muted" style="font-size:12px">—</span>';
+        const add=isGestor()?`<select class="ev-add" data-add-date="${date}" data-add-shift="${sh}" data-add-ev="${esc(ev.name)}" style="font-size:11.5px;padding:3px 6px;border:1px dashed var(--line);border-radius:7px;color:var(--muted);background:#fff;margin-top:5px;max-width:100%"><option value="">+ add</option>${active.map(e=>`<option value="${e.id}">${esc(e.name)}</option>`).join('')}</select>`:'';
+        return `<td style="vertical-align:top;padding:7px 8px;border:1px solid var(--line)"><div style="display:flex;flex-wrap:wrap;gap:4px">${chips}</div>${add}</td>`;
+      }).join('');
+      return `<tr><td style="padding:7px 10px;border:1px solid var(--line);font-weight:700;white-space:nowrap">${dBR(date)}<div class="muted" style="font-size:11px;font-weight:500;text-transform:capitalize">${Engine.DOW[Engine.parse(date).getDay()]}</div></td>${cells}</tr>`;
+    }).join('');
+    return `<div class="panel section"><div class="ph"><h3>🎪 ${esc(ev.name)}</h3><span class="muted">${dBR(ev.dates[0])} a ${dBR(ev.dates[ev.dates.length-1])}</span></div>
+      <div class="pb" style="padding:0;overflow-x:auto"><table style="border-collapse:collapse;width:100%;min-width:460px">
+        <thead><tr><th style="padding:8px 10px;border:1px solid var(--line);text-align:left;font-size:12px">Dia</th>${SHIFTS.map(s=>`<th style="padding:8px 10px;border:1px solid var(--line);text-align:left;font-size:12px">${s[1]}</th>`).join('')}</tr></thead>
+        <tbody>${grid}</tbody></table></div>
+      ${isGestor()?`<div class="pb" style="padding-top:10px"><button class="btn sec sm" data-del-ev="${esc(ev.name)}" style="color:var(--red)">🗑 Excluir evento</button></div>`:''}</div>`;
+  };
+  $('#view').innerHTML=`
+    <div class="toolbar"><button class="btn" id="addEv" ${isGestor()?'':'disabled'}>+ Novo evento</button></div>
+    ${box('info','No dia (manhã/tarde) parte da equipe vai ao evento e a loja segue com o mínimo por turno. À noite é fora do expediente — as horas entram no banco pelo TiqueTaque. Cada funcionária vê a escala dela no próprio login.')}
+    ${events.length? events.map(eventCard).join('') : '<div class="reason" style="margin-top:6px">Nenhum evento cadastrado. Clique em “Novo evento” para montar a escala de manhã/tarde/noite.</div>'}`;
+  $('#addEv')?.addEventListener('click',()=>{
+    openModal('Novo evento',`
+      <div class="field"><label>Nome do evento</label><input id="ev_name" placeholder="ex.: Festa da Praça Central"/></div>
+      <div class="grid2"><div class="field"><label>Início</label><input id="ev_start" type="date" value="${todayStr()}"/></div><div class="field"><label>Fim</label><input id="ev_end" type="date" value="${todayStr()}"/></div></div>
+      <label style="font-weight:600;font-size:13px;margin:4px 0 0;display:block">Quantas funcionárias por turno (por dia)</label>
+      <div class="grid2" style="margin-top:6px"><div class="field"><label>☀️ Manhã</label><input id="ev_m" type="number" min="0" value="2"/></div><div class="field"><label>🌇 Tarde</label><input id="ev_t" type="number" min="0" value="2"/></div></div>
+      <div class="field"><label>🌙 Noite</label><input id="ev_n" type="number" min="0" value="3"/></div>
+      <div class="reason" style="font-size:12px">O sistema distribui com rodízio justo. Você pode ajustar (adicionar/remover) depois.</div>`,
+      async()=>{ if(!gate())return false; const name=($('#ev_name').value||'').trim(); const st=$('#ev_start').value, en=$('#ev_end').value;
+        if(!name){toast('Dê um nome ao evento.');return false;}
+        if(!st||!en||en<st){toast('Confira as datas (fim não pode ser antes do início).');return false;}
+        if(events.some(e=>e.name.toLowerCase()===name.toLowerCase())){toast('Já existe um evento com esse nome.');return false;}
+        const existing=allItems.filter(it=>it.date>=st && it.date<=en);
+        const res=Engine.buildEventSchedule({employees:emps,rules,vacations:vacs,existing,event:{start_date:st,end_date:en,need_manha:+$('#ev_m').value,need_tarde:+$('#ev_t').value,need_noite:+$('#ev_n').value}});
+        if(!res.assignments.length){toast('Ninguém disponível para montar a escala (confira datas/férias).');return false;}
+        for(const a of res.assignments){ await saveAssign(a,name); }
+        toast(res.warnings.length?`Evento criado (${res.warnings.length} aviso(s) — confira os turnos).`:'Evento criado e escala montada!');
+        route(); return true; });
+  });
+  $$('[data-rm]').forEach(b=>b.onclick=async()=>{ if(!gate())return; await T('schedule_items').delete().eq('id',b.dataset.rm); toast('Removida do turno.'); route(); });
+  $$('[data-add-date]').forEach(sel=>sel.onchange=async()=>{ if(!gate()){sel.value='';return;} const id=sel.value; if(!id)return; const e=active.find(x=>String(x.id)===String(id)); if(!e){sel.value='';return;}
+    await saveAssign({date:sel.dataset.addDate,shift:sel.dataset.addShift,employee_id:e.id,employee_name:e.name}, sel.dataset.addEv); toast('Adicionada ao turno.'); route(); });
+  $$('[data-del-ev]').forEach(b=>b.onclick=async()=>{ if(!gate())return; const name=b.dataset.delEv; if(!confirm('Excluir o evento "'+name+'" e toda a escala dele?'))return;
+    const ids=evItems.filter(i=>(i.reason||'Evento')===name).map(i=>i.id); for(const id of ids){ await T('schedule_items').delete().eq('id',id); } toast('Evento excluído.'); route(); });
+};
+
 // ---------- MOTOR DE FOLGAS ----------
 ROUTES.folgas=async function(){
   const now=new Date(), year=now.getFullYear(), month=now.getMonth()+1;
@@ -902,7 +976,7 @@ ROUTES.folgas=async function(){
     // folgas já aprovadas (atualizadas a cada cálculo — reflete o que você acabou de aprovar)
     const fScheds=await getAll('schedules',b=>b.eq('is_simulation',S.sim));
     const fSchedIds=new Set(fScheds.map(s=>s.id));
-    const existing=(await getAll('schedule_items',b=>b.eq('status','aprovado').gte('date',todayStr()))).filter(it=>fSchedIds.has(it.schedule_id));
+    const existing=(await getAll('schedule_items',b=>b.eq('status','aprovado').gte('date',todayStr()))).filter(it=>fSchedIds.has(it.schedule_id) && it.type!=='evento');
     const out=Engine.suggestDayOffs({employees:emps,rules,vacations:vacs,requests:reqs,refusals,blockedDates:blk,year,month,horizonDays:4,startDate:weekStart,history,existing,weekdays:selDays});
     // só sugere o que ainda dá tempo hoje: descarta dias e turnos que já passaram (horário de Brasília)
     // limite por turno: entrar mais tarde só antes de a loja abrir; sair mais cedo até a hora da saída antecipada
@@ -1055,7 +1129,7 @@ ROUTES.escala=async function(){
   const [emps,rules,items]=await Promise.all([
     getAll('employees',b=>b.eq('is_simulation',S.sim).order('name')),
     T('store_rules').select('*').eq('id',1).maybeSingle().then(r=>r.data||{}),
-    getAll('schedule_items',b=>b.gte('date',ini).order('date'))]);
+    getAll('schedule_items',b=>b.gte('date',ini).neq('type','evento').order('date'))]);
   const map=Object.fromEntries(emps.map(e=>[e.id,e.name]));
   const timeKey=it=>{const m=folgaTimeLabel(it,rules).match(/(\d{2}):(\d{2})/);return m?(+m[1]*60+ +m[2]):9999;};
   items.sort((a,b)=>(a.date||'').localeCompare(b.date||'')||timeKey(a)-timeKey(b));
@@ -1408,7 +1482,7 @@ ROUTES.calendario=async function(){
     const first=new Date(year,month-1,1), startDow=first.getDay(), dim=Engine.daysInMonth(year,month);
     const mm=String(month).padStart(2,'0');
     const [items,vacs,rules,blk,emps,rot]=await Promise.all([
-      getAll('schedule_items',b=>b.gte('date',`${year}-${mm}-01`).lte('date',`${year}-${mm}-${dim}`)),
+      getAll('schedule_items',b=>b.gte('date',`${year}-${mm}-01`).lte('date',`${year}-${mm}-${dim}`).neq('type','evento')),
       getAll('vacation_periods'),T('store_rules').select('*').eq('id',1).maybeSingle().then(r=>r.data||{}),getAll('blocked_dates'),
       getAll('employees',b=>b.eq('is_simulation',S.sim)),
       getAll('saturday_rotation',b=>b.eq('year',year).eq('month',month))]);

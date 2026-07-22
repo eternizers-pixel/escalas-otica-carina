@@ -592,7 +592,41 @@ window.Engine = (function () {
     return rows;
   }
 
+  // ---- Escala de EVENTO ----
+  // Distribui as funcionárias nos turnos manhã/tarde/noite ao longo dos dias do evento, com rodízio justo.
+  // Manhã/tarde são no horário do expediente (parte da equipe vai à praça) → mantém o mínimo na loja.
+  // Noite é fora do expediente (as horas entram no banco pelo TiqueTaque; aqui só definimos quem vai).
+  function buildEventSchedule(opts){
+    const { employees=[], rules={}, vacations=[], existing=[], event={} } = opts;
+    const minPer = rules.min_per_shift || 4;
+    const active = employees.filter(e=>e.status==='ativa');
+    const onVac=(e,d)=> vacations.some(v=>v.employee_id===e.id && d>=v.start_date && d<=v.end_date);
+    const FULL=['integral','falta','atestado','afastamento'];
+    const outDay={}; (existing||[]).forEach(it=>{ if(it&&it.date&&(FULL.includes(it.type)||it.shift==='dia_inteiro')){ (outDay[it.date]=outDay[it.date]||new Set()).add(it.employee_id); } });
+    const load={}, sh={manha:{},tarde:{},noite:{}}; active.forEach(e=>{ load[e.id]=0; sh.manha[e.id]=0; sh.tarde[e.id]=0; sh.noite[e.id]=0; });
+    const days=[]; { let d=parse(event.start_date), end=parse(event.end_date), g=0; while(d<=end && g++<90){ days.push(fmt(d)); const n=new Date(d); n.setDate(n.getDate()+1); d=n; } }
+    const need={ manha:Math.max(0,+event.need_manha||0), tarde:Math.max(0,+event.need_tarde||0), noite:Math.max(0,+event.need_noite||0) };
+    const assignments=[]; const warnings=[];
+    for(const day of days){
+      const outs=outDay[day]||new Set();
+      const pool=active.filter(e=>!onVac(e,day) && !outs.has(e.id));
+      const todayAssigned=new Set();
+      const doShift=(shift,daytime)=>{
+        let count=need[shift]; if(count<=0) return;
+        if(daytime){ const maxSend=pool.length-minPer; if(count>Math.max(0,maxSend)){ warnings.push(`${day} · ${shift}: pediu ${count}, mas só dá para tirar ${Math.max(0,maxSend)} da loja (mínimo ${minPer}).`); count=Math.max(0,maxSend); } }
+        const rank=(list)=> list.slice().sort((a,b)=> (sh[shift][a.id]-sh[shift][b.id]) || (load[a.id]-load[b.id]) || String(a.name||'').localeCompare(b.name||''));
+        let cands=rank(pool.filter(e=>!todayAssigned.has(e.id)));
+        if(cands.length<count) cands=cands.concat(rank(pool.filter(e=>todayAssigned.has(e.id)))); // último caso: repete alguém do dia
+        const chosen=cands.slice(0,count);
+        chosen.forEach(e=>{ assignments.push({date:day,shift,employee_id:e.id,employee_name:e.name}); load[e.id]++; sh[shift][e.id]++; todayAssigned.add(e.id); });
+        if(chosen.length<need[shift]) warnings.push(`${day} · ${shift}: só ${chosen.length} disponível(is) para ${need[shift]} (férias/ausências).`);
+      };
+      doShift('manha',true); doShift('tarde',true); doShift('noite',false);
+    }
+    return { assignments, warnings, days };
+  }
+
   return { saturdaysOfMonth, openSaturdays, daysInMonth, operationalCapacity, fairnessIndex,
-           saturdayRotation, suggestDayOffs, dayoffQueue, simEmployees, SCENARIOS, DOW, fmt, parse,
+           saturdayRotation, suggestDayOffs, dayoffQueue, buildEventSchedule, simEmployees, SCENARIOS, DOW, fmt, parse,
            commemorativeDates, commemorativeBlock };
 })();
