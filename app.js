@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v110 (Eventos: carga em HORAS reais de banco — noite 4h · domingo/feriado 8h em dobro)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v111 (Eventos: sem dobro — cada turno 4h; regra domingo≠feriado; distribui parelho)
 // ============================================================
 (function(){
 "use strict";
@@ -901,11 +901,11 @@ ROUTES.eventos=async function(){
       }).join('');
       return `<tr style="${isExtra(date)?'background:var(--amber-soft)':''}"><td style="padding:7px 10px;border:1px solid var(--line);font-weight:700;white-space:nowrap">${dBR(date)}<div class="muted" style="font-size:11px;font-weight:500;text-transform:capitalize">${Engine.DOW[Engine.parse(date).getDay()]}${isExtra(date)?' · <b style="color:#a9720a">extra</b>':''}</div></td>${cells}</tr>`;
     }).join('');
-    // LOG DE DECISÃO — horas no banco por pessoa (turno normal=4h · domingo/feriado=8h; manhã/tarde de dia normal não conta)
-    const carga={}; ev.items.forEach(i=>{ const id=i.employee_id; carga[id]=carga[id]||{n:0,e:0,t:0}; const ext=isExtra(i.date); if(i.shift==='noite'){ carga[id].n++; carga[id].t+=ext?8:4; } else if(ext){ carga[id].e++; carga[id].t+=8; } });
+    // LOG DE DECISÃO — horas de trabalho no evento por pessoa (cada turno=4h; manhã/tarde de dia normal não conta)
+    const carga={}; ev.items.forEach(i=>{ const id=i.employee_id; carga[id]=carga[id]||{n:0,e:0,t:0}; const ext=isExtra(i.date); if(i.shift==='noite'){ carga[id].n++; carga[id].t+=4; } else if(ext){ carga[id].e++; carga[id].t+=4; } });
     const cr=Object.keys(carga).map(id=>({name:fnm(nm[id]||'—'),bast:bastId.has(id),n:carga[id].n,e:carga[id].e,t:carga[id].t})).filter(r=>r.t>0 && !r.bast).sort((a,b)=>b.t-a.t);
     const fmtC=x=>String(Math.round(x*10)/10).replace('.',',');
-    const logHtml=cr.length?`<details class="pb" style="padding-top:6px"><summary style="cursor:pointer;font-weight:700;font-size:12.5px">🔎 Log de decisão — horas no banco</summary><div class="reason" style="font-size:11.5px;margin-top:6px">Só as <b>5 do banco</b> — o apoio/gestão ajuda, mas não entra no rodízio. Equilibra pelas <b>horas que entram no banco</b>: turno normal (noite) = <b>4h</b> · domingo/feriado (loja fechada, hora em dobro) = <b>8h</b>. Quem acumula mais horas é escalado menos; e evita a mesma pessoa em extras seguidos. Manhã/tarde de dia normal não conta (horário de serviço).</div><table style="width:100%;border-collapse:collapse;font-size:12px;margin-top:4px">${cr.map(r=>`<tr><td style="padding:3px 6px"><span class="ev-chip${r.bast?' bast':''}" style="font-size:10.5px">${esc(r.name)}</span></td><td style="padding:3px 6px;color:var(--muted)">${r.n} noite(s)${r.e?` + ${r.e} extra(s)`:''}</td><td style="padding:3px 6px;font-weight:800;text-align:right">${fmtC(r.t)}h</td></tr>`).join('')}</table></details>`:'';
+    const logHtml=cr.length?`<details class="pb" style="padding-top:6px"><summary style="cursor:pointer;font-weight:700;font-size:12.5px">🔎 Log de decisão — horas no banco</summary><div class="reason" style="font-size:11.5px;margin-top:6px">Só as <b>5 do banco</b> — o apoio/gestão ajuda, mas não entra no rodízio. Cada turno = <b>4h</b> e distribui parelho (quem acumula mais é escalado menos). <b>Quem trabalha domingo não pega o feriado</b> (e vice-versa). Manhã/tarde de dia normal não conta (horário de serviço).</div><table style="width:100%;border-collapse:collapse;font-size:12px;margin-top:4px">${cr.map(r=>`<tr><td style="padding:3px 6px"><span class="ev-chip${r.bast?' bast':''}" style="font-size:10.5px">${esc(r.name)}</span></td><td style="padding:3px 6px;color:var(--muted)">${r.n} noite(s)${r.e?` + ${r.e} extra(s)`:''}</td><td style="padding:3px 6px;font-weight:800;text-align:right">${fmtC(r.t)}h</td></tr>`).join('')}</table></details>`:'';
     return `<div class="panel section"><div class="ph"><h3>🎪 ${esc(ev.name)}</h3><span class="muted">${dBR(ev.dates[0])} a ${dBR(ev.dates[ev.dates.length-1])}</span></div>
       <div class="pb" style="padding:0;overflow-x:auto"><table style="border-collapse:collapse;width:100%;min-width:460px">
         <thead><tr><th style="padding:8px 10px;border:1px solid var(--line);text-align:left;font-size:12px">Dia</th>${SHIFTS.map(s=>`<th style="padding:8px 10px;border:1px solid var(--line);text-align:left;font-size:12px">${s[1]}</th>`).join('')}</tr></thead>
@@ -915,7 +915,7 @@ ROUTES.eventos=async function(){
   };
   $('#view').innerHTML=`
     <div class="toolbar"><button class="btn" id="addEv" ${isGestor()?'':'disabled'}>+ Novo evento</button></div>
-    ${box('info','O sistema distribui só as <b>5 do banco</b> (roxo), no rodízio justo pelas <b>horas de banco</b>: as <b>noites</b> (4h) e os <b>dias em que a loja fecha</b> (domingos e feriados, 8h — hora em dobro) — e evita a mesma pessoa em extras seguidos. O <b>apoio/gestão</b> (verde) e a manhã/tarde dos outros dias você põe na mão pelo “+ add”, como decidir. O 🔎 <b>log de decisão</b> mostra as horas das 5. Cada funcionária vê a escala dela no login.')}
+    ${box('info','O sistema distribui só as <b>5 do banco</b> (roxo), no rodízio justo por <b>horas</b> (cada turno = 4h): as <b>noites</b> e os <b>dias em que a loja fecha</b> (domingos e feriados) — e <b>quem trabalha domingo não pega o feriado</b>. O <b>apoio/gestão</b> (verde) e a manhã/tarde dos outros dias você põe na mão pelo “+ add”, como decidir. O 🔎 <b>log de decisão</b> mostra as horas das 5. Cada funcionária vê a escala dela no login.')}
     ${events.length? events.map(eventCard).join('') : '<div class="reason" style="margin-top:6px">Nenhum evento cadastrado. Clique em “Novo evento” para montar a escala de manhã/tarde/noite.</div>'}`;
   const openEventModal=(ev)=>{ const isReb=!!ev;
     openModal(isReb?`🔀 Reequilibrar — “${esc(ev.name)}”`:'Novo evento',`
@@ -923,7 +923,7 @@ ROUTES.eventos=async function(){
       <div class="grid2"><div class="field"><label>Início</label><input id="ev_start" type="date" value="${isReb?ev.start:todayStr()}"/></div><div class="field"><label>Fim</label><input id="ev_end" type="date" value="${isReb?ev.end:todayStr()}"/></div></div>
       <div class="grid2"><div class="field"><label>🌙 Por noite <span class="muted" style="font-weight:500">(banco)</span></label><input id="ev_n" type="number" min="0" value="${isReb?ev.n:3}"/></div><div class="field"><label>🗓️ Dia extra <span class="muted" style="font-weight:500">(banco)</span></label><input id="ev_dom" type="number" min="0" value="${isReb?ev.dom:2}"/></div></div>
       <div class="field"><label>Dias extras — loja fechada</label><div id="ev_days" class="chip-row" style="grid-template-columns:1fr 1fr;gap:6px"></div><div class="reason" style="font-size:11.5px;margin-top:6px">Domingos já entram (fixos). Marque os <b>feriados</b> (ex.: 10/08). Nesses dias a manhã/tarde também são distribuídas no rodízio.</div></div>
-      <div class="reason" style="font-size:12px">O sistema distribui só as <b>5 do banco</b> (rodízio justo por carga) nas <b>noites</b> e nos <b>dias extras</b>. O <b>apoio/gestão</b> (Ana, Henrique, Helena, Carol, Ivoni) você adiciona na mão pelo “+ add”, onde quiser.</div>`,
+      <div class="reason" style="font-size:12px">O sistema distribui só as <b>5 do banco</b> (rodízio justo por horas — cada turno 4h; domingo e feriado com pessoas diferentes) nas <b>noites</b> e nos <b>dias extras</b>. O <b>apoio/gestão</b> (Ana, Henrique, Helena, Carol, Ivoni) você adiciona na mão pelo “+ add”, onde quiser.</div>`,
       async()=>{ if(!gate())return false; const name=isReb?ev.name:($('#ev_name').value||'').trim(); const st=$('#ev_start').value, en=$('#ev_end').value;
         if(!name){toast('Dê um nome ao evento.');return false;}
         if(!st||!en||en<st){toast('Confira as datas (fim não pode ser antes do início).');return false;}
