@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v112 (Eventos: log conta todos os turnos do evento — 4h cada, inclui sábado tarde)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v113 (Eventos: horários nos turnos — manhã 9–13, tarde 13–17, noite 17–21 — grade + tela da funcionária)
 // ============================================================
 (function(){
 "use strict";
@@ -194,6 +194,7 @@ const HOME_TOP=['dashboard','folgas','escala','sabados'];
 const HOME_BOTTOM=['relatorios','calendario','pedidos','config'];
 const HOME_KEYS=[...HOME_TOP,...HOME_BOTTOM];
 const CONFIG_KEYS=['funcionarias','acessos','ferias','eventos','tiquetaque','regras'];
+const SHIFT_TIME={manha:'9h–13h',tarde:'13h–17h',noite:'17h–21h'}; // horários dos turnos do evento (4h cada)
 
 function updateSimBanner(){ $('#simBanner').innerHTML = S.sim ? `<div class="simbanner">🧪 MODO SIMULAÇÃO — dados fictícios. Nada aqui afeta os dados reais.</div>`:''; }
 
@@ -303,7 +304,7 @@ async function renderFuncionaria(){
   const evItems=items.filter(it=>it.type==='evento').sort((a,b)=> a.date<b.date?-1:(a.date>b.date?1:0));
   const evByName={}; evItems.forEach(it=>{ const k=it.reason||'Evento'; (evByName[k]=evByName[k]||[]).push(it); });
   const eventBlock = evItems.length
-    ? Object.keys(evByName).map(name=>`<div class="panel section"><div class="ph"><h3>🎪 ${esc(name)}</h3></div><div class="pb">${evByName[name].map(it=>`<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:11px 14px;border:1px solid var(--line);border-radius:12px;margin-bottom:8px"><div style="font-weight:700">${dataBR(it.date)} <span class="muted" style="font-weight:500">· ${Engine.DOW[Engine.parse(it.date).getDay()]}</span></div><span style="font-size:12.5px;font-weight:700;background:var(--brand-soft);color:var(--brand-d);padding:3px 10px;border-radius:20px">${SHIFT_EV[it.shift]||it.shift}</span></div>`).join('')}<div class="reason" style="font-size:12px">Os turnos da noite entram no seu banco de horas pelo ponto do TiqueTaque.</div></div></div>`).join('')
+    ? Object.keys(evByName).map(name=>`<div class="panel section"><div class="ph"><h3>🎪 ${esc(name)}</h3></div><div class="pb">${evByName[name].map(it=>`<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:11px 14px;border:1px solid var(--line);border-radius:12px;margin-bottom:8px"><div style="font-weight:700">${dataBR(it.date)} <span class="muted" style="font-weight:500">· ${Engine.DOW[Engine.parse(it.date).getDay()]}</span></div><span style="font-size:12.5px;font-weight:700;background:var(--brand-soft);color:var(--brand-d);padding:3px 10px;border-radius:20px;white-space:nowrap">${SHIFT_EV[it.shift]||it.shift} · ${SHIFT_TIME[it.shift]||''}</span></div>`).join('')}<div class="reason" style="font-size:12px">Os turnos da noite entram no seu banco de horas pelo ponto do TiqueTaque.</div></div></div>`).join('')
     : '';
   const myReqs=reqs.filter(r=>['pedido_folga','troca_folga'].includes(r.request_type));
   const reqLbl=r=> r.request_type==='troca_folga'?'Troca de sábado':((r.reason&&/^\s*outro:/i.test(r.reason))?'Outro':(PL[codeOf(r)]||TYPE_LABEL[r.type]||'folga'));
@@ -908,7 +909,7 @@ ROUTES.eventos=async function(){
     const logHtml=cr.length?`<details class="pb" style="padding-top:6px"><summary style="cursor:pointer;font-weight:700;font-size:12.5px">🔎 Log de decisão — horas do evento</summary><div class="reason" style="font-size:11.5px;margin-top:6px">Só as <b>5 do banco</b> — o apoio/gestão ajuda, mas não entra no rodízio. Cada turno do evento = <b>4h</b> e distribui parelho (quem acumula mais é escalado menos). <b>Quem trabalha domingo não pega o feriado/segunda</b> (e vice-versa).</div><table style="width:100%;border-collapse:collapse;font-size:12px;margin-top:4px">${cr.map(r=>`<tr><td style="padding:3px 6px"><span class="ev-chip${r.bast?' bast':''}" style="font-size:10.5px">${esc(r.name)}</span></td><td style="padding:3px 6px;color:var(--muted)">${r.n} noite(s)${r.e?` + ${r.e} extra(s)`:''}</td><td style="padding:3px 6px;font-weight:800;text-align:right">${fmtC(r.t)}h</td></tr>`).join('')}</table></details>`:'';
     return `<div class="panel section"><div class="ph"><h3>🎪 ${esc(ev.name)}</h3><span class="muted">${dBR(ev.dates[0])} a ${dBR(ev.dates[ev.dates.length-1])}</span></div>
       <div class="pb" style="padding:0;overflow-x:auto"><table style="border-collapse:collapse;width:100%;min-width:460px">
-        <thead><tr><th style="padding:8px 10px;border:1px solid var(--line);text-align:left;font-size:12px">Dia</th>${SHIFTS.map(s=>`<th style="padding:8px 10px;border:1px solid var(--line);text-align:left;font-size:12px">${s[1]}</th>`).join('')}</tr></thead>
+        <thead><tr><th style="padding:8px 10px;border:1px solid var(--line);text-align:left;font-size:12px">Dia</th>${SHIFTS.map(s=>`<th style="padding:8px 10px;border:1px solid var(--line);text-align:left;font-size:12px">${s[1]} <span class="muted" style="font-weight:500;font-size:10.5px">${SHIFT_TIME[s[0]]||''}</span></th>`).join('')}</tr></thead>
         <tbody>${grid}</tbody></table></div>
       ${logHtml}
       ${isGestor()?`<div class="pb" style="padding-top:10px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn sec sm" data-reb-ev="${esc(ev.name)}">🔀 Reequilibrar</button><button class="btn sec sm" data-del-ev="${esc(ev.name)}" style="color:var(--red)">🗑 Excluir evento</button></div>`:''}</div>`;
