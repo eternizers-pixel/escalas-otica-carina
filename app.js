@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v100 (Eventos: inclui bastidores/apoio (Ivoni, Carol, Ana, Henrique, Helena) mesclando 1 do banco + 1 de apoio; mínimo da loja só conta o banco)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v101 (Eventos: gravação/exclusão em lote — rápido; inclui bastidores + banco)
 // ============================================================
 (function(){
 "use strict";
@@ -922,7 +922,10 @@ ROUTES.eventos=async function(){
         const existing=allItems.filter(it=>it.date>=st && it.date<=en);
         const res=Engine.buildEventSchedule({employees:emps,rules,vacations:vacs,existing,event:{start_date:st,end_date:en,need_manha:+$('#ev_m').value,need_tarde:+$('#ev_t').value,need_noite:+$('#ev_n').value}});
         if(!res.assignments.length){toast('Ninguém disponível para montar a escala (confira datas/férias).');return false;}
-        for(const a of res.assignments){ await saveAssign(a,name); }
+        const byMonth={}; res.assignments.forEach(a=>{ const d=Engine.parse(a.date); const k=d.getFullYear()+'-'+(d.getMonth()+1); (byMonth[k]=byMonth[k]||[]).push(a); });
+        for(const k of Object.keys(byMonth)){ const [yy,mm]=k.split('-').map(Number); const sid=await schedForMonth(yy,mm); if(!sid) continue;
+          const rows=byMonth[k].map(a=>({schedule_id:sid,employee_id:a.employee_id,employee_name:a.employee_name||nm[a.employee_id],date:a.date,shift:a.shift,type:'evento',hours:0,status:'aprovado',reason:name}));
+          const r=await T('schedule_items').insert(rows); if(r.error){toast(r.error.message);return false;} }
         toast(res.warnings.length?`Evento criado (${res.warnings.length} aviso(s) — confira os turnos).`:'Evento criado e escala montada!');
         route(); return true; });
   });
@@ -930,7 +933,7 @@ ROUTES.eventos=async function(){
   $$('[data-add-date]').forEach(sel=>sel.onchange=async()=>{ if(!gate()){sel.value='';return;} const id=sel.value; if(!id)return; const e=active.find(x=>String(x.id)===String(id)); if(!e){sel.value='';return;}
     await saveAssign({date:sel.dataset.addDate,shift:sel.dataset.addShift,employee_id:e.id,employee_name:e.name}, sel.dataset.addEv); toast('Adicionada ao turno.'); route(); });
   $$('[data-del-ev]').forEach(b=>b.onclick=async()=>{ if(!gate())return; const name=b.dataset.delEv; if(!confirm('Excluir o evento "'+name+'" e toda a escala dele?'))return;
-    const ids=evItems.filter(i=>(i.reason||'Evento')===name).map(i=>i.id); for(const id of ids){ await T('schedule_items').delete().eq('id',id); } toast('Evento excluído.'); route(); });
+    const ids=evItems.filter(i=>(i.reason||'Evento')===name).map(i=>i.id); if(ids.length) await T('schedule_items').delete().in('id',ids); toast('Evento excluído.'); route(); });
 };
 
 // ---------- MOTOR DE FOLGAS ----------
