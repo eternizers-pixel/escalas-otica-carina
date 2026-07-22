@@ -610,8 +610,8 @@ window.Engine = (function () {
     const need={ noite:Math.max(0,+event.need_noite||0), extra:Math.max(0,+(event.need_extra!=null?event.need_extra:event.need_dom)||0) }; // noite (todo dia) + dia dos EXTRAS (loja fechada)
     const extraSet=new Set(extraDates);
     const isExtra=(d)=> extraSet.has(d) || parse(d).getDay()===0;   // domingo OU feriado = loja fechada → dia todo é extra
-    // peso da carga: dia extra e noite comum = 1,5 · NOITE de domingo/feriado = 2,5 (descanso + noite, a pior)
-    const wOf=(shift,ext)=> shift==='noite' ? (ext?2.5:1.5) : 1.5;
+    // peso = HORAS reais no banco: turno normal (noite fora do expediente) = 4h · domingo/feriado (loja fechada, hora em dobro) = 8h
+    const wOf=(shift,ext)=> ext ? 8 : 4;
     const assignments=[]; const warnings=[]; const assignedByDate={};
     // equilibra pela CARGA (peso acumulado); depois evita quem trabalhou no dia anterior (extras seguidos); depois o mesmo tipo de turno
     const rankBy=(shift,todayAssigned,prevSet)=>(list)=> list.filter(e=>!todayAssigned.has(e.id)).sort((a,b)=> (load[a.id]-load[b.id]) || ((prevSet.has(a.id)?1:0)-(prevSet.has(b.id)?1:0)) || (sh[shift][a.id]-sh[shift][b.id]) || String(a.name||'').localeCompare(b.name||''));
@@ -645,7 +645,7 @@ window.Engine = (function () {
         chosen.forEach(e=>{ assignments.push({date:day,shift,employee_id:e.id,employee_name:e.name}); load[e.id]+=wOf(shift,dayExtra); sh[shift][e.id]++; todayAssigned.add(e.id); (assignedByDate[day]=assignedByDate[day]||new Set()).add(e.id); });
         if(chosen.length<count) warnings.push(`${day} · ${shift}: faltou ${count-chosen.length} (limite do mínimo da loja / disponíveis).`);
       };
-      // no dia extra ataca a NOITE primeiro (a mais pesada, 2,5) pra ela cair em quem tem menos carga; depois manhã/tarde
+      // no dia extra ataca a NOITE primeiro (8h, a mais pesada) pra ela cair em quem tem menos horas; depois manhã/tarde
       doShift('noite',false,need.noite);
       if(isExtra(day)){ doShift('manha',false,need.extra); doShift('tarde',false,need.extra); }
     }
