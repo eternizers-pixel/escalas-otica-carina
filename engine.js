@@ -609,7 +609,8 @@ window.Engine = (function () {
     const need={ noite:Math.max(0,+event.need_noite||0), extra:Math.max(0,+(event.need_extra!=null?event.need_extra:event.need_dom)||0) }; // noite (todo dia) + dia dos EXTRAS (loja fechada)
     const extraSet=new Set(extraDates);
     const isExtra=(d)=> extraSet.has(d) || parse(d).getDay()===0;   // domingo OU feriado = loja fechada → dia todo é extra
-    const wOf=(shift)=> shift==='noite'?1.5:1;   // a noite pesa mais que o dia extra → quem pega noite faz menos turnos no total
+    // peso da carga: dia extra e noite comum = 1,5 · NOITE de domingo/feriado = 2,5 (descanso + noite, a pior)
+    const wOf=(shift,ext)=> shift==='noite' ? (ext?2.5:1.5) : 1.5;
     const assignments=[]; const warnings=[]; const assignedByDate={};
     // equilibra pela CARGA (peso acumulado); depois evita quem trabalhou no dia anterior (extras seguidos); depois o mesmo tipo de turno
     const rankBy=(shift,todayAssigned,prevSet)=>(list)=> list.filter(e=>!todayAssigned.has(e.id)).sort((a,b)=> (load[a.id]-load[b.id]) || ((prevSet.has(a.id)?1:0)-(prevSet.has(b.id)?1:0)) || (sh[shift][a.id]-sh[shift][b.id]) || String(a.name||'').localeCompare(b.name||''));
@@ -619,6 +620,7 @@ window.Engine = (function () {
       const bPool=banco.filter(e=>!onVac(e,day) && !outs.has(e.id) && !bz.has(e.id));
       const hPool=helpers.filter(e=>!onVac(e,day) && !outs.has(e.id) && !bz.has(e.id));
       const prevSet=assignedByDate[fmt(new Date(parse(day).getTime()-86400000))]||new Set();
+      const dayExtra=isExtra(day);
       const todayAssigned=new Set();
       const doShift=(shift,daytime,count)=>{
         if(count<=0) return;
@@ -638,7 +640,7 @@ window.Engine = (function () {
           const pk=pool2.splice(idx,1)[0];
           chosen.push(pk.e); if(pk.g==='b') cb++; else ch++;
         }
-        chosen.forEach(e=>{ assignments.push({date:day,shift,employee_id:e.id,employee_name:e.name}); load[e.id]+=wOf(shift); sh[shift][e.id]++; todayAssigned.add(e.id); (assignedByDate[day]=assignedByDate[day]||new Set()).add(e.id); });
+        chosen.forEach(e=>{ assignments.push({date:day,shift,employee_id:e.id,employee_name:e.name}); load[e.id]+=wOf(shift,dayExtra); sh[shift][e.id]++; todayAssigned.add(e.id); (assignedByDate[day]=assignedByDate[day]||new Set()).add(e.id); });
         if(chosen.length<count) warnings.push(`${day} · ${shift}: faltou ${count-chosen.length} (limite do mínimo da loja / disponíveis).`);
       };
       if(isExtra(day)){ doShift('manha',false,need.extra); doShift('tarde',false,need.extra); } // domingo ou feriado: manhã/tarde são extra (loja fechada) → auto
