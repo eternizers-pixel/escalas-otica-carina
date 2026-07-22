@@ -622,20 +622,24 @@ window.Engine = (function () {
       const todayAssigned=new Set();
       const doShift=(shift,daytime,count)=>{
         if(count<=0) return;
-        const rank=rankBy(shift,todayAssigned,prevSet);
-        let bRank=rank(bPool), hRank=rank(hPool);
-        const bCap = daytime ? Math.max(0, bPool.length - minPer) : bRank.length; // no dia, só o banco reduz a loja
+        const bCap = daytime ? Math.max(0, bPool.length - minPer) : bPool.length; // no dia útil só o banco reduz a loja
+        let pool2=[...bPool.map(e=>({e,g:'b'})), ...hPool.map(e=>({e,g:'h'}))].filter(x=>!todayAssigned.has(x.e.id));
+        const pen=(id)=>prevSet.has(id)?1:0;
         const chosen=[]; let cb=0, ch=0;
-        while(chosen.length<count){
-          const canB = bRank.length>0 && cb<bCap;
-          const canH = hRank.length>0;
-          if(!canB && !canH) break;
-          let takeB; if(canB && canH) takeB=(cb<=ch); else takeB=canB;   // mescla: geralmente 1 do banco + 1 bastidor
-          const e = takeB ? bRank.shift() : hRank.shift();
-          chosen.push(e); if(takeB) cb++; else ch++;
+        while(chosen.length<count && pool2.length){
+          // JUSTIÇA primeiro (menor carga); depois mistura banco/apoio; depois evita quem trabalhou ontem; depois o mesmo tipo de turno
+          pool2.sort((x,y)=> (load[x.e.id]-load[y.e.id])
+            || ((x.g==='b'?cb:ch)-(y.g==='b'?cb:ch))
+            || (pen(x.e.id)-pen(y.e.id))
+            || ((sh[shift][x.e.id]||0)-(sh[shift][y.e.id]||0))
+            || String(x.e.name||'').localeCompare(y.e.name||''));
+          const idx=pool2.findIndex(x=> x.g==='h' || cb<bCap);
+          if(idx<0) break;
+          const pk=pool2.splice(idx,1)[0];
+          chosen.push(pk.e); if(pk.g==='b') cb++; else ch++;
         }
         chosen.forEach(e=>{ assignments.push({date:day,shift,employee_id:e.id,employee_name:e.name}); load[e.id]+=wOf(shift); sh[shift][e.id]++; todayAssigned.add(e.id); (assignedByDate[day]=assignedByDate[day]||new Set()).add(e.id); });
-        if(chosen.length<count) warnings.push(`${day} · ${shift}: faltou ${count-chosen.length} (limite do mínimo da loja / bastidores disponíveis).`);
+        if(chosen.length<count) warnings.push(`${day} · ${shift}: faltou ${count-chosen.length} (limite do mínimo da loja / disponíveis).`);
       };
       if(isExtra(day)){ doShift('manha',false,need.extra); doShift('tarde',false,need.extra); } // domingo ou feriado: manhã/tarde são extra (loja fechada) → auto
       doShift('noite',false,need.noite);

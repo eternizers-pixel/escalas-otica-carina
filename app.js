@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v104 (Eventos: feriados = dia extra (marca no cadastro); evita mesma pessoa em extras seguidos; log de decisão com a carga de cada uma)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v105 (Eventos: distribuição prioriza JUSTIÇA/carga (mistura banco+apoio vira desempate) — carga mais equilibrada)
 // ============================================================
 (function(){
 "use strict";
