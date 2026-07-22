@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v103 (Eventos: sistema distribui noites + domingo (loja fechada) no rodízio justo; sábado/dias úteis manhã-tarde manuais)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v104 (Eventos: feriados = dia extra (marca no cadastro); evita mesma pessoa em extras seguidos; log de decisão com a carga de cada uma)
 // ============================================================
 (function(){
 "use strict";
@@ -870,11 +870,14 @@ ROUTES.ferias=async function(){
 
 // ---------- EVENTOS ----------
 ROUTES.eventos=async function(){
-  const [emps,rules,vacs,scheds]=await Promise.all([
+  const [emps,rules,vacs,scheds,blk]=await Promise.all([
     getAll('employees',b=>b.eq('is_simulation',S.sim).order('name')),
     T('store_rules').select('*').eq('id',1).maybeSingle().then(r=>r.data||{}),
     getAll('vacation_periods'),
-    getAll('schedules',b=>b.eq('is_simulation',S.sim))]);
+    getAll('schedules',b=>b.eq('is_simulation',S.sim)),
+    getAll('blocked_dates')]);
+  const holidaySet=new Set((blk||[]).map(b=>b.date));  // feriados/bloqueios cadastrados = loja fechada (dia extra)
+  const isExtra=(d)=>Engine.parse(d).getDay()===0 || holidaySet.has(d);  // domingo ou feriado
   const schedIds=new Set(scheds.map(s=>s.id));
   const allItems=(await getAll('schedule_items',b=>b.eq('status','aprovado'))).filter(it=>schedIds.has(it.schedule_id));
   const evItems=allItems.filter(it=>it.type==='evento');
@@ -895,46 +898,59 @@ ROUTES.eventos=async function(){
         const add=isGestor()?`<select class="ev-add" data-add-date="${date}" data-add-shift="${sh}" data-add-ev="${esc(ev.name)}" style="font-size:11.5px;padding:3px 6px;border:1px dashed var(--line);border-radius:7px;color:var(--muted);background:#fff;margin-top:5px;max-width:100%"><option value="">+ add</option><optgroup label="Banco de horas">${active.filter(e=>!bastId.has(e.id)).map(e=>`<option value="${e.id}">${esc(e.name)}</option>`).join('')}</optgroup><optgroup label="Bastidores">${active.filter(e=>bastId.has(e.id)).map(e=>`<option value="${e.id}">${esc(e.name)}</option>`).join('')}</optgroup></select>`:'';
         return `<td style="vertical-align:top;padding:7px 8px;border:1px solid var(--line)"><div style="display:flex;flex-wrap:wrap;gap:4px">${chips}</div>${add}</td>`;
       }).join('');
-      return `<tr><td style="padding:7px 10px;border:1px solid var(--line);font-weight:700;white-space:nowrap">${dBR(date)}<div class="muted" style="font-size:11px;font-weight:500;text-transform:capitalize">${Engine.DOW[Engine.parse(date).getDay()]}</div></td>${cells}</tr>`;
+      return `<tr style="${isExtra(date)?'background:var(--amber-soft)':''}"><td style="padding:7px 10px;border:1px solid var(--line);font-weight:700;white-space:nowrap">${dBR(date)}<div class="muted" style="font-size:11px;font-weight:500;text-transform:capitalize">${Engine.DOW[Engine.parse(date).getDay()]}${isExtra(date)?' · <b style="color:#a9720a">extra</b>':''}</div></td>${cells}</tr>`;
     }).join('');
+    // LOG DE DECISÃO — carga dos extras por pessoa (noite=1,5 · dia extra=1; manhã/tarde de dia normal não conta)
+    const carga={}; ev.items.forEach(i=>{ const id=i.employee_id; carga[id]=carga[id]||{n:0,e:0}; if(i.shift==='noite') carga[id].n++; else if(isExtra(i.date)) carga[id].e++; });
+    const cr=Object.keys(carga).map(id=>({name:fnm(nm[id]||'—'),bast:bastId.has(id),n:carga[id].n,e:carga[id].e,t:carga[id].n*1.5+carga[id].e})).filter(r=>r.t>0).sort((a,b)=>b.t-a.t);
+    const fmtC=x=>String(Math.round(x*10)/10).replace('.',',');
+    const logHtml=cr.length?`<details class="pb" style="padding-top:6px"><summary style="cursor:pointer;font-weight:700;font-size:12.5px">🔎 Log de decisão — carga dos extras</summary><div class="reason" style="font-size:11.5px;margin-top:6px">Equilibra por <b>carga</b>: noite = 1,5 · dia extra (domingo/feriado) = 1. Quem pega noite faz menos no total; e evita a mesma pessoa em extras seguidos. Manhã/tarde de dia normal não conta (horário de serviço).</div><table style="width:100%;border-collapse:collapse;font-size:12px;margin-top:4px">${cr.map(r=>`<tr><td style="padding:3px 6px"><span class="ev-chip${r.bast?' bast':''}" style="font-size:10.5px">${esc(r.name)}</span></td><td style="padding:3px 6px;color:var(--muted)">${r.n} noite(s)${r.e?` + ${r.e} extra(s)`:''}</td><td style="padding:3px 6px;font-weight:800;text-align:right">carga ${fmtC(r.t)}</td></tr>`).join('')}</table></details>`:'';
     return `<div class="panel section"><div class="ph"><h3>🎪 ${esc(ev.name)}</h3><span class="muted">${dBR(ev.dates[0])} a ${dBR(ev.dates[ev.dates.length-1])}</span></div>
       <div class="pb" style="padding:0;overflow-x:auto"><table style="border-collapse:collapse;width:100%;min-width:460px">
         <thead><tr><th style="padding:8px 10px;border:1px solid var(--line);text-align:left;font-size:12px">Dia</th>${SHIFTS.map(s=>`<th style="padding:8px 10px;border:1px solid var(--line);text-align:left;font-size:12px">${s[1]}</th>`).join('')}</tr></thead>
         <tbody>${grid}</tbody></table></div>
+      ${logHtml}
       ${isGestor()?`<div class="pb" style="padding-top:10px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn sec sm" data-reb-ev="${esc(ev.name)}">🔀 Reequilibrar</button><button class="btn sec sm" data-del-ev="${esc(ev.name)}" style="color:var(--red)">🗑 Excluir evento</button></div>`:''}</div>`;
   };
   $('#view').innerHTML=`
     <div class="toolbar"><button class="btn" id="addEv" ${isGestor()?'':'disabled'}>+ Novo evento</button></div>
-    ${box('info','O sistema distribui no rodízio justo (<b>banco</b> roxo + <b>apoio/gestão</b> verde) <b>as noites</b> e o <b>dia de domingo</b> (loja fechada) — a noite pesa mais, então quem pega os piores faz menos no total. <b>Manhã e tarde dos outros dias</b> você preenche na grade pelo “+ add” (horário de serviço). A noite entra no banco de quem bate ponto pelo TiqueTaque. Cada funcionária vê a escala dela no login.')}
+    ${box('info','O sistema distribui no rodízio justo (<b>banco</b> roxo + <b>apoio/gestão</b> verde) <b>as noites</b> e os <b>dias em que a loja fecha</b> (domingos e feriados) — a noite pesa mais, então quem pega os piores faz menos no total, e evita a mesma pessoa em extras seguidos. <b>Os outros dias</b> você preenche na grade pelo “+ add” (horário de serviço). O 🔎 <b>log de decisão</b> mostra a carga de cada uma. Cada funcionária vê a escala dela no login.')}
     ${events.length? events.map(eventCard).join('') : '<div class="reason" style="margin-top:6px">Nenhum evento cadastrado. Clique em “Novo evento” para montar a escala de manhã/tarde/noite.</div>'}`;
-  const isSun=(d)=>Engine.parse(d).getDay()===0;
   const openEventModal=(ev)=>{ const isReb=!!ev;
     openModal(isReb?`🔀 Reequilibrar — “${esc(ev.name)}”`:'Novo evento',`
       <div class="field"><label>Nome do evento</label><input id="ev_name" value="${isReb?esc(ev.name):''}" ${isReb?'readonly style="background:#f4f6fb"':''} placeholder="ex.: Festa da Praça Central"/></div>
       <div class="grid2"><div class="field"><label>Início</label><input id="ev_start" type="date" value="${isReb?ev.start:todayStr()}"/></div><div class="field"><label>Fim</label><input id="ev_end" type="date" value="${isReb?ev.end:todayStr()}"/></div></div>
-      <div class="grid2"><div class="field"><label>🌙 Por noite</label><input id="ev_n" type="number" min="0" value="${isReb?ev.n:3}"/></div><div class="field"><label>🗓️ Domingo (manhã/tarde)</label><input id="ev_dom" type="number" min="0" value="${isReb?ev.dom:2}"/></div></div>
-      <div class="reason" style="font-size:12px">O sistema distribui no rodízio justo (banco + apoio) <b>as noites</b> e <b>o dia de domingo</b> (loja fechada). <b>Manhã e tarde dos outros dias</b> você preenche na grade pelo “+ add” — são horário de serviço.</div>`,
+      <div class="grid2"><div class="field"><label>🌙 Por noite</label><input id="ev_n" type="number" min="0" value="${isReb?ev.n:3}"/></div><div class="field"><label>🗓️ Dia extra (manhã/tarde)</label><input id="ev_dom" type="number" min="0" value="${isReb?ev.dom:2}"/></div></div>
+      <div class="field"><label>Dias extras — loja fechada</label><div id="ev_days" class="chip-row" style="grid-template-columns:1fr 1fr;gap:6px"></div><div class="reason" style="font-size:11.5px;margin-top:6px">Domingos já entram (fixos). Marque os <b>feriados</b> (ex.: 10/08). Nesses dias a manhã/tarde também são distribuídas no rodízio.</div></div>
+      <div class="reason" style="font-size:12px">O sistema distribui no rodízio justo (banco + apoio) <b>as noites</b> e os <b>dias extras</b>. Os outros dias você preenche na grade pelo “+ add”.</div>`,
       async()=>{ if(!gate())return false; const name=isReb?ev.name:($('#ev_name').value||'').trim(); const st=$('#ev_start').value, en=$('#ev_end').value;
         if(!name){toast('Dê um nome ao evento.');return false;}
         if(!st||!en||en<st){toast('Confira as datas (fim não pode ser antes do início).');return false;}
         if(!isReb && events.some(e=>e.name.toLowerCase()===name.toLowerCase())){toast('Já existe um evento com esse nome.');return false;}
-        // manuais (manhã/tarde de dias úteis/sábado) → essas pessoas não entram nos extras do mesmo dia
-        const busyByDate={}; evItems.filter(i=>(i.reason||'Evento')===name && i.shift!=='noite' && !isSun(i.date)).forEach(i=>{ (busyByDate[i.date]=busyByDate[i.date]||new Set()).add(i.employee_id); });
-        // reequilibrar: apaga só os EXTRAS (noites de todo dia + manhã/tarde de domingo); mantém o que você preencheu na mão
-        if(isReb){ const del=evItems.filter(i=>(i.reason||'Evento')===name && (i.shift==='noite' || isSun(i.date))).map(i=>i.id); if(del.length) await T('schedule_items').delete().in('id',del); }
+        const extra=new Set(); $$('.ev-extra').forEach(c=>{ if(c.checked || Engine.parse(c.value).getDay()===0) extra.add(c.value); }); const extraArr=[...extra];
+        const isExtraD=(dt)=> extra.has(dt) || Engine.parse(dt).getDay()===0;
+        // manuais (manhã/tarde de dia normal) → essas pessoas não entram nos extras do mesmo dia
+        const busyByDate={}; evItems.filter(i=>(i.reason||'Evento')===name && i.shift!=='noite' && !isExtraD(i.date)).forEach(i=>{ (busyByDate[i.date]=busyByDate[i.date]||new Set()).add(i.employee_id); });
+        // reequilibrar: apaga só os EXTRAS (noites + manhã/tarde dos dias extras); mantém o que você preencheu na mão
+        if(isReb){ const del=evItems.filter(i=>(i.reason||'Evento')===name && (i.shift==='noite' || isExtraD(i.date))).map(i=>i.id); if(del.length) await T('schedule_items').delete().in('id',del); }
         const existing=allItems.filter(it=>it.date>=st && it.date<=en);
-        const res=Engine.buildEventSchedule({employees:emps,rules,vacations:vacs,existing,busyByDate,event:{start_date:st,end_date:en,need_noite:+$('#ev_n').value,need_dom:+$('#ev_dom').value}});
+        const res=Engine.buildEventSchedule({employees:emps,rules,vacations:vacs,existing,busyByDate,extraDates:extraArr,event:{start_date:st,end_date:en,need_noite:+$('#ev_n').value,need_extra:+$('#ev_dom').value}});
         if(!res.assignments.length){toast('Ninguém disponível para os turnos automáticos (confira datas/férias).');return false;}
         const byMonth={}; res.assignments.forEach(a=>{ const d=Engine.parse(a.date); const k=d.getFullYear()+'-'+(d.getMonth()+1); (byMonth[k]=byMonth[k]||[]).push(a); });
         for(const k of Object.keys(byMonth)){ const [yy,mm]=k.split('-').map(Number); const sid=await schedForMonth(yy,mm); if(!sid) continue;
           const rows=byMonth[k].map(a=>({schedule_id:sid,employee_id:a.employee_id,employee_name:a.employee_name||nm[a.employee_id],date:a.date,shift:a.shift,type:'evento',hours:0,status:'aprovado',reason:name}));
           const r=await T('schedule_items').insert(rows); if(r.error){toast(r.error.message);return false;} }
-        toast(isReb?'Reequilibrado!':'Evento criado — noites e domingo distribuídos! Preencha manhã/tarde dos outros dias na grade.');
+        toast(isReb?'Reequilibrado!':'Evento criado — noites e dias extras distribuídos! Preencha o resto na grade.');
         route(); return true; });
+    const renderDays=()=>{ const cont=$('#ev_days'); if(!cont)return; const st=$('#ev_start').value, en=$('#ev_end').value; if(!st||!en||en<st){ cont.innerHTML='<span class="muted" style="font-size:12px">Defina as datas.</span>'; return; }
+      let d=Engine.parse(st), end=Engine.parse(en), g=0, html=''; while(d<=end && g++<90){ const iso=Engine.fmt(d), dow=d.getDay(), sun=dow===0, hol=holidaySet.has(iso), chk=sun||hol;
+        html+=`<label class="chk-chip" style="font-size:11px;justify-content:flex-start"><input type="checkbox" class="ev-extra" value="${iso}" ${chk?'checked':''} ${sun?'disabled':''}/> ${dBR(iso)} ${Engine.DOW[dow].slice(0,3)}${sun?' · dom':hol?' · fer':''}</label>`;
+        const n=new Date(d); n.setDate(n.getDate()+1); d=n; } cont.innerHTML=html; };
+    $('#ev_start')&&($('#ev_start').onchange=renderDays); $('#ev_end')&&($('#ev_end').onchange=renderDays); renderDays();
   };
   $('#addEv')?.addEventListener('click',()=>openEventModal(null));
   $$('[data-reb-ev]').forEach(b=>b.onclick=()=>{ const name=b.dataset.rebEv; const ev=events.find(e=>e.name===name); if(!ev)return;
-    let n=0,dom=0; ev.dates.forEach(d=>{ const cn=ev.items.filter(i=>i.date===d&&i.shift==='noite').length; if(cn>n)n=cn; if(isSun(d)){ const cm=ev.items.filter(i=>i.date===d&&i.shift==='manha').length; if(cm>dom)dom=cm; } });
+    let n=0,dom=0; ev.dates.forEach(d=>{ const cn=ev.items.filter(i=>i.date===d&&i.shift==='noite').length; if(cn>n)n=cn; if(isExtra(d)){ const cm=ev.items.filter(i=>i.date===d&&i.shift==='manha').length; if(cm>dom)dom=cm; } });
     openEventModal({name, start:ev.dates[0], end:ev.dates[ev.dates.length-1], n:n||3, dom:dom||2}); });
   $$('[data-rm]').forEach(b=>b.onclick=async()=>{ if(!gate())return; await T('schedule_items').delete().eq('id',b.dataset.rm); toast('Removida do turno.'); route(); });
   $$('[data-add-date]').forEach(sel=>sel.onchange=async()=>{ if(!gate()){sel.value='';return;} const id=sel.value; if(!id)return; const e=active.find(x=>String(x.id)===String(id)); if(!e){sel.value='';return;}

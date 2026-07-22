@@ -597,7 +597,7 @@ window.Engine = (function () {
   // Manhã/tarde são no horário do expediente (parte da equipe vai à praça) → mantém o mínimo na loja.
   // Noite é fora do expediente (as horas entram no banco pelo TiqueTaque; aqui só definimos quem vai).
   function buildEventSchedule(opts){
-    const { employees=[], rules={}, vacations=[], existing=[], event={}, busyByDate={} } = opts;
+    const { employees=[], rules={}, vacations=[], existing=[], event={}, busyByDate={}, extraDates=[] } = opts;
     const minPer = rules.min_per_shift || 4;
     const banco   = employees.filter(e=>e.status==='ativa');       // batem ponto (contam para o mínimo da loja no dia)
     const helpers = employees.filter(e=>e.status==='bastidores');  // bastidores (sem banco; não afetam o mínimo da loja)
@@ -606,20 +606,23 @@ window.Engine = (function () {
     const outDay={}; (existing||[]).forEach(it=>{ if(it&&it.date&&(FULL.includes(it.type)||it.shift==='dia_inteiro')){ (outDay[it.date]=outDay[it.date]||new Set()).add(it.employee_id); } });
     const load={}, sh={manha:{},tarde:{},noite:{}}; [...banco,...helpers].forEach(e=>{ load[e.id]=0; sh.manha[e.id]=0; sh.tarde[e.id]=0; sh.noite[e.id]=0; });
     const days=[]; { let d=parse(event.start_date), end=parse(event.end_date), g=0; while(d<=end && g++<90){ days.push(fmt(d)); const n=new Date(d); n.setDate(n.getDate()+1); d=n; } }
-    const need={ noite:Math.max(0,+event.need_noite||0), dom:Math.max(0,+event.need_dom||0) }; // noite (todo dia) + domingo dia (loja fechada)
-    const wOf=(shift)=> shift==='noite'?1.5:1;   // a noite pesa mais que o dia de domingo → quem pega noite faz menos turnos no total
-    const assignments=[]; const warnings=[];
-    // equilibra pela CARGA (peso acumulado) primeiro; depois evita repetir o mesmo tipo de turno
-    const rankBy=(shift,todayAssigned)=>(list)=> list.filter(e=>!todayAssigned.has(e.id)).sort((a,b)=> (load[a.id]-load[b.id]) || (sh[shift][a.id]-sh[shift][b.id]) || String(a.name||'').localeCompare(b.name||''));
+    const need={ noite:Math.max(0,+event.need_noite||0), extra:Math.max(0,+(event.need_extra!=null?event.need_extra:event.need_dom)||0) }; // noite (todo dia) + dia dos EXTRAS (loja fechada)
+    const extraSet=new Set(extraDates);
+    const isExtra=(d)=> extraSet.has(d) || parse(d).getDay()===0;   // domingo OU feriado = loja fechada → dia todo é extra
+    const wOf=(shift)=> shift==='noite'?1.5:1;   // a noite pesa mais que o dia extra → quem pega noite faz menos turnos no total
+    const assignments=[]; const warnings=[]; const assignedByDate={};
+    // equilibra pela CARGA (peso acumulado); depois evita quem trabalhou no dia anterior (extras seguidos); depois o mesmo tipo de turno
+    const rankBy=(shift,todayAssigned,prevSet)=>(list)=> list.filter(e=>!todayAssigned.has(e.id)).sort((a,b)=> (load[a.id]-load[b.id]) || ((prevSet.has(a.id)?1:0)-(prevSet.has(b.id)?1:0)) || (sh[shift][a.id]-sh[shift][b.id]) || String(a.name||'').localeCompare(b.name||''));
     for(const day of days){
       const outs=outDay[day]||new Set();
       const bz=busyByDate[day]||new Set(); // já ocupados no dia (manhã/tarde do evento) → não pegam a noite do mesmo dia
       const bPool=banco.filter(e=>!onVac(e,day) && !outs.has(e.id) && !bz.has(e.id));
       const hPool=helpers.filter(e=>!onVac(e,day) && !outs.has(e.id) && !bz.has(e.id));
+      const prevSet=assignedByDate[fmt(new Date(parse(day).getTime()-86400000))]||new Set();
       const todayAssigned=new Set();
       const doShift=(shift,daytime,count)=>{
         if(count<=0) return;
-        const rank=rankBy(shift,todayAssigned);
+        const rank=rankBy(shift,todayAssigned,prevSet);
         let bRank=rank(bPool), hRank=rank(hPool);
         const bCap = daytime ? Math.max(0, bPool.length - minPer) : bRank.length; // no dia, só o banco reduz a loja
         const chosen=[]; let cb=0, ch=0;
@@ -631,10 +634,10 @@ window.Engine = (function () {
           const e = takeB ? bRank.shift() : hRank.shift();
           chosen.push(e); if(takeB) cb++; else ch++;
         }
-        chosen.forEach(e=>{ assignments.push({date:day,shift,employee_id:e.id,employee_name:e.name}); load[e.id]+=wOf(shift); sh[shift][e.id]++; todayAssigned.add(e.id); });
+        chosen.forEach(e=>{ assignments.push({date:day,shift,employee_id:e.id,employee_name:e.name}); load[e.id]+=wOf(shift); sh[shift][e.id]++; todayAssigned.add(e.id); (assignedByDate[day]=assignedByDate[day]||new Set()).add(e.id); });
         if(chosen.length<count) warnings.push(`${day} · ${shift}: faltou ${count-chosen.length} (limite do mínimo da loja / bastidores disponíveis).`);
       };
-      if(parse(day).getDay()===0){ doShift('manha',false,need.dom); doShift('tarde',false,need.dom); } // domingo: manhã/tarde são extra (loja fechada) → auto
+      if(isExtra(day)){ doShift('manha',false,need.extra); doShift('tarde',false,need.extra); } // domingo ou feriado: manhã/tarde são extra (loja fechada) → auto
       doShift('noite',false,need.noite);
     }
     return { assignments, warnings, days };
