@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v99 (novo módulo Eventos: cadastra evento e monta escala manhã/tarde/noite com rodízio; funcionária vê a escala dela)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v100 (Eventos: inclui bastidores/apoio (Ivoni, Carol, Ana, Henrique, Helena) mesclando 1 do banco + 1 de apoio; mínimo da loja só conta o banco)
 // ============================================================
 (function(){
 "use strict";
@@ -548,7 +548,7 @@ ROUTES.dashboard=async function(){
   </div>
   <div class="panel panel-rt"><div class="ph"><h3>Banco de horas por funcionária</h3><span class="muted">real → folgas aprovadas → previsto</span></div><div class="pb" style="padding:0">
     <table class="rt"><thead><tr><th>Funcionária</th><th>Cargo</th><th>Banco real</th><th>Folga prevista</th><th>Banco previsto</th><th>Status</th></tr></thead><tbody>
-    ${emps.sort((a,b)=>(b.time_bank_balance||0)-(a.time_bank_balance||0)).map(e=>{ const fh=folgaH[e.id]||0; const prev=(+e.time_bank_balance||0)-fh; return `<tr>
+    ${emps.filter(e=>e.status!=='bastidores').sort((a,b)=>(b.time_bank_balance||0)-(a.time_bank_balance||0)).map(e=>{ const fh=folgaH[e.id]||0; const prev=(+e.time_bank_balance||0)-fh; return `<tr>
       <td data-label="Funcionária"><b>${esc(fnm(e.name))}</b></td><td data-label="Cargo" class="muted">${esc(e.cargo||'—')}</td>
       <td data-label="Banco real"><b>${fmtH(e.time_bank_balance)}</b></td>
       <td data-label="Folga prevista" style="color:${fh?'var(--amber)':'var(--muted)'}">${fh?'−'+fmtH(fh):'—'}</td>
@@ -878,7 +878,8 @@ ROUTES.eventos=async function(){
   const schedIds=new Set(scheds.map(s=>s.id));
   const allItems=(await getAll('schedule_items',b=>b.eq('status','aprovado'))).filter(it=>schedIds.has(it.schedule_id));
   const evItems=allItems.filter(it=>it.type==='evento');
-  const active=emps.filter(e=>e.status==='ativa');
+  const active=emps.filter(e=>e.status==='ativa'||e.status==='bastidores'); // evento inclui bastidores
+  const bastId=new Set(emps.filter(e=>e.status==='bastidores').map(e=>e.id));
   const nm=Object.fromEntries(emps.map(e=>[e.id,e.name]));
   const SHIFTS=[['manha','☀️ Manhã'],['tarde','🌇 Tarde'],['noite','🌙 Noite']];
   const dBR=s=>String(s||'').split('-').reverse().slice(0,2).join('/');
@@ -890,8 +891,8 @@ ROUTES.eventos=async function(){
     const grid=ev.dates.map(date=>{
       const cells=SHIFTS.map(([sh])=>{
         const people=ev.items.filter(i=>i.date===date && i.shift===sh);
-        const chips=people.map(p=>`<span class="ev-chip">${esc(fnm(nm[p.employee_id]||p.employee_name||'—'))}${isGestor()?`<a class="ev-x" data-rm="${p.id}">✕</a>`:''}</span>`).join('')||'<span class="muted" style="font-size:12px">—</span>';
-        const add=isGestor()?`<select class="ev-add" data-add-date="${date}" data-add-shift="${sh}" data-add-ev="${esc(ev.name)}" style="font-size:11.5px;padding:3px 6px;border:1px dashed var(--line);border-radius:7px;color:var(--muted);background:#fff;margin-top:5px;max-width:100%"><option value="">+ add</option>${active.map(e=>`<option value="${e.id}">${esc(e.name)}</option>`).join('')}</select>`:'';
+        const chips=people.map(p=>{ const bast=bastId.has(p.employee_id); return `<span class="ev-chip${bast?' bast':''}" title="${bast?'Bastidores':'Banco de horas'}">${esc(fnm(nm[p.employee_id]||p.employee_name||'—'))}${isGestor()?`<a class="ev-x" data-rm="${p.id}">✕</a>`:''}</span>`; }).join('')||'<span class="muted" style="font-size:12px">—</span>';
+        const add=isGestor()?`<select class="ev-add" data-add-date="${date}" data-add-shift="${sh}" data-add-ev="${esc(ev.name)}" style="font-size:11.5px;padding:3px 6px;border:1px dashed var(--line);border-radius:7px;color:var(--muted);background:#fff;margin-top:5px;max-width:100%"><option value="">+ add</option><optgroup label="Banco de horas">${active.filter(e=>!bastId.has(e.id)).map(e=>`<option value="${e.id}">${esc(e.name)}</option>`).join('')}</optgroup><optgroup label="Bastidores">${active.filter(e=>bastId.has(e.id)).map(e=>`<option value="${e.id}">${esc(e.name)}</option>`).join('')}</optgroup></select>`:'';
         return `<td style="vertical-align:top;padding:7px 8px;border:1px solid var(--line)"><div style="display:flex;flex-wrap:wrap;gap:4px">${chips}</div>${add}</td>`;
       }).join('');
       return `<tr><td style="padding:7px 10px;border:1px solid var(--line);font-weight:700;white-space:nowrap">${dBR(date)}<div class="muted" style="font-size:11px;font-weight:500;text-transform:capitalize">${Engine.DOW[Engine.parse(date).getDay()]}</div></td>${cells}</tr>`;
@@ -904,7 +905,7 @@ ROUTES.eventos=async function(){
   };
   $('#view').innerHTML=`
     <div class="toolbar"><button class="btn" id="addEv" ${isGestor()?'':'disabled'}>+ Novo evento</button></div>
-    ${box('info','No dia (manhã/tarde) parte da equipe vai ao evento e a loja segue com o mínimo por turno. À noite é fora do expediente — as horas entram no banco pelo TiqueTaque. Cada funcionária vê a escala dela no próprio login.')}
+    ${box('info','A escala mistura o <b>banco de horas</b> (roxo) com o pessoal de <b>apoio/gestão</b> (verde: Ivoni, Carol, Ana, Henrique, Helena) — em geral 1 de cada. No dia, a loja segue com o mínimo por turno. À noite é fora do expediente — as horas de quem bate ponto entram no banco pelo TiqueTaque. Cada funcionária vê a escala dela no próprio login.')}
     ${events.length? events.map(eventCard).join('') : '<div class="reason" style="margin-top:6px">Nenhum evento cadastrado. Clique em “Novo evento” para montar a escala de manhã/tarde/noite.</div>'}`;
   $('#addEv')?.addEventListener('click',()=>{
     openModal('Novo evento',`
@@ -1610,7 +1611,7 @@ ROUTES.relatorios=async function(){
   // véspera/pós-feriado (±1 dia de data comemorativa)
   const commDates=[...Engine.commemorativeDates(year-1),...Engine.commemorativeDates(year),...Engine.commemorativeDates(year+1)].map(c=>Engine.parse(c.date).getTime());
   const nearHoliday=(ds)=>{const t=Engine.parse(ds).getTime();return commDates.some(c=>Math.abs((c-t)/86400000)<=1);};
-  const active=emps.filter(e=>e.status!=='desligada');
+  const active=emps.filter(e=>e.status!=='desligada' && e.status!=='bastidores');
   const per=active.map(e=>{
     const mine=appr.filter(i=>i.employee_id===e.id);
     const dow=ds=>Engine.parse(ds).getDay();
