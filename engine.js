@@ -645,8 +645,9 @@ window.Engine = (function () {
         chosen.forEach(e=>{ assignments.push({date:day,shift,employee_id:e.id,employee_name:e.name}); load[e.id]+=wOf(shift,dayExtra); sh[shift][e.id]++; todayAssigned.add(e.id); (assignedByDate[day]=assignedByDate[day]||new Set()).add(e.id); });
         if(chosen.length<count) warnings.push(`${day} · ${shift}: faltou ${count-chosen.length} (limite do mínimo da loja / disponíveis).`);
       };
-      if(isExtra(day)){ doShift('manha',false,need.extra); doShift('tarde',false,need.extra); } // domingo ou feriado: manhã/tarde são extra (loja fechada) → auto
+      // no dia extra ataca a NOITE primeiro (a mais pesada, 2,5) pra ela cair em quem tem menos carga; depois manhã/tarde
       doShift('noite',false,need.noite);
+      if(isExtra(day)){ doShift('manha',false,need.extra); doShift('tarde',false,need.extra); }
     }
     return { assignments, warnings, days };
   }

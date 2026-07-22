@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v108 (Eventos: automático distribui SÓ as 5 do banco; apoio/gestão é 100% manual pelo "+ add")
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v109 (Eventos: no dia extra ataca a noite (2,5) primeiro → carga mais equilibrada)
 // ============================================================
 (function(){
 "use strict";
