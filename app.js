@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v107 (Eventos: log de carga só das 5 do banco; quem tem "domingo/feriado" nas restrições (Ivoni) não é escalado em dia extra)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v108 (Eventos: automático distribui SÓ as 5 do banco; apoio/gestão é 100% manual pelo "+ add")
 // ============================================================
 (function(){
 "use strict";
@@ -915,15 +915,15 @@ ROUTES.eventos=async function(){
   };
   $('#view').innerHTML=`
     <div class="toolbar"><button class="btn" id="addEv" ${isGestor()?'':'disabled'}>+ Novo evento</button></div>
-    ${box('info','O sistema distribui no rodízio justo (<b>banco</b> roxo + <b>apoio/gestão</b> verde) <b>as noites</b> e os <b>dias em que a loja fecha</b> (domingos e feriados) — a noite pesa mais, então quem pega os piores faz menos no total, e evita a mesma pessoa em extras seguidos. <b>Os outros dias</b> você preenche na grade pelo “+ add” (horário de serviço). O 🔎 <b>log de decisão</b> mostra a carga de cada uma. Cada funcionária vê a escala dela no login.')}
+    ${box('info','O sistema distribui só as <b>5 do banco</b> (roxo), no rodízio justo por carga: as <b>noites</b> e os <b>dias em que a loja fecha</b> (domingos e feriados) — noite de domingo/feriado pesa mais, e evita a mesma pessoa em extras seguidos. O <b>apoio/gestão</b> (verde) e a manhã/tarde dos outros dias você põe na mão pelo “+ add”, como decidir. O 🔎 <b>log de decisão</b> mostra a carga das 5. Cada funcionária vê a escala dela no login.')}
     ${events.length? events.map(eventCard).join('') : '<div class="reason" style="margin-top:6px">Nenhum evento cadastrado. Clique em “Novo evento” para montar a escala de manhã/tarde/noite.</div>'}`;
   const openEventModal=(ev)=>{ const isReb=!!ev;
     openModal(isReb?`🔀 Reequilibrar — “${esc(ev.name)}”`:'Novo evento',`
       <div class="field"><label>Nome do evento</label><input id="ev_name" value="${isReb?esc(ev.name):''}" ${isReb?'readonly style="background:#f4f6fb"':''} placeholder="ex.: Festa da Praça Central"/></div>
       <div class="grid2"><div class="field"><label>Início</label><input id="ev_start" type="date" value="${isReb?ev.start:todayStr()}"/></div><div class="field"><label>Fim</label><input id="ev_end" type="date" value="${isReb?ev.end:todayStr()}"/></div></div>
-      <div class="grid2"><div class="field"><label>🌙 Por noite</label><input id="ev_n" type="number" min="0" value="${isReb?ev.n:3}"/></div><div class="field"><label>🗓️ Dia extra (manhã/tarde)</label><input id="ev_dom" type="number" min="0" value="${isReb?ev.dom:2}"/></div></div>
+      <div class="grid2"><div class="field"><label>🌙 Por noite <span class="muted" style="font-weight:500">(banco)</span></label><input id="ev_n" type="number" min="0" value="${isReb?ev.n:3}"/></div><div class="field"><label>🗓️ Dia extra <span class="muted" style="font-weight:500">(banco)</span></label><input id="ev_dom" type="number" min="0" value="${isReb?ev.dom:2}"/></div></div>
       <div class="field"><label>Dias extras — loja fechada</label><div id="ev_days" class="chip-row" style="grid-template-columns:1fr 1fr;gap:6px"></div><div class="reason" style="font-size:11.5px;margin-top:6px">Domingos já entram (fixos). Marque os <b>feriados</b> (ex.: 10/08). Nesses dias a manhã/tarde também são distribuídas no rodízio.</div></div>
-      <div class="reason" style="font-size:12px">O sistema distribui no rodízio justo (banco + apoio) <b>as noites</b> e os <b>dias extras</b>. Os outros dias você preenche na grade pelo “+ add”.</div>`,
+      <div class="reason" style="font-size:12px">O sistema distribui só as <b>5 do banco</b> (rodízio justo por carga) nas <b>noites</b> e nos <b>dias extras</b>. O <b>apoio/gestão</b> (Ana, Henrique, Helena, Carol, Ivoni) você adiciona na mão pelo “+ add”, onde quiser.</div>`,
       async()=>{ if(!gate())return false; const name=isReb?ev.name:($('#ev_name').value||'').trim(); const st=$('#ev_start').value, en=$('#ev_end').value;
         if(!name){toast('Dê um nome ao evento.');return false;}
         if(!st||!en||en<st){toast('Confira as datas (fim não pode ser antes do início).');return false;}

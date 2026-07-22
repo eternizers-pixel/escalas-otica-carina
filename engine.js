@@ -600,8 +600,8 @@ window.Engine = (function () {
     const { employees=[], rules={}, vacations=[], existing=[], event={}, busyByDate={}, extraDates=[], noExtra=[] } = opts;
     const noExtraSet=new Set(noExtra);   // pessoas que não fazem domingo/feriado (ex.: Ivoni)
     const minPer = rules.min_per_shift || 4;
-    const banco   = employees.filter(e=>e.status==='ativa');       // batem ponto (contam para o mínimo da loja no dia)
-    const helpers = employees.filter(e=>e.status==='bastidores');  // bastidores (sem banco; não afetam o mínimo da loja)
+    const banco   = employees.filter(e=>e.status==='ativa');       // batem ponto — ÚNICOS no automático (rodízio por carga)
+    const helpers = [];  // bastidores/apoio (gestão) NÃO entram no automático — o gestor adiciona na mão
     const onVac=(e,d)=> vacations.some(v=>v.employee_id===e.id && d>=v.start_date && d<=v.end_date);
     const FULL=['integral','falta','atestado','afastamento'];
     const outDay={}; (existing||[]).forEach(it=>{ if(it&&it.date&&(FULL.includes(it.type)||it.shift==='dia_inteiro')){ (outDay[it.date]=outDay[it.date]||new Set()).add(it.employee_id); } });
