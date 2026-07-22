@@ -597,7 +597,7 @@ window.Engine = (function () {
   // Manhã/tarde são no horário do expediente (parte da equipe vai à praça) → mantém o mínimo na loja.
   // Noite é fora do expediente (as horas entram no banco pelo TiqueTaque; aqui só definimos quem vai).
   function buildEventSchedule(opts){
-    const { employees=[], rules={}, vacations=[], existing=[], event={} } = opts;
+    const { employees=[], rules={}, vacations=[], existing=[], event={}, busyByDate={} } = opts;
     const minPer = rules.min_per_shift || 4;
     const banco   = employees.filter(e=>e.status==='ativa');       // batem ponto (contam para o mínimo da loja no dia)
     const helpers = employees.filter(e=>e.status==='bastidores');  // bastidores (sem banco; não afetam o mínimo da loja)
@@ -607,12 +607,15 @@ window.Engine = (function () {
     const load={}, sh={manha:{},tarde:{},noite:{}}; [...banco,...helpers].forEach(e=>{ load[e.id]=0; sh.manha[e.id]=0; sh.tarde[e.id]=0; sh.noite[e.id]=0; });
     const days=[]; { let d=parse(event.start_date), end=parse(event.end_date), g=0; while(d<=end && g++<90){ days.push(fmt(d)); const n=new Date(d); n.setDate(n.getDate()+1); d=n; } }
     const need={ manha:Math.max(0,+event.need_manha||0), tarde:Math.max(0,+event.need_tarde||0), noite:Math.max(0,+event.need_noite||0) };
+    const wOf=(shift)=> shift==='noite'?1.5:1;   // a noite é mais pesada → conta mais na carga (quem pega noite faz menos turnos no total)
     const assignments=[]; const warnings=[];
-    const rankBy=(shift,todayAssigned)=>(list)=> list.filter(e=>!todayAssigned.has(e.id)).sort((a,b)=> (sh[shift][a.id]-sh[shift][b.id]) || (load[a.id]-load[b.id]) || String(a.name||'').localeCompare(b.name||''));
+    // equilibra pela CARGA (peso acumulado) primeiro; depois evita repetir o mesmo tipo de turno
+    const rankBy=(shift,todayAssigned)=>(list)=> list.filter(e=>!todayAssigned.has(e.id)).sort((a,b)=> (load[a.id]-load[b.id]) || (sh[shift][a.id]-sh[shift][b.id]) || String(a.name||'').localeCompare(b.name||''));
     for(const day of days){
       const outs=outDay[day]||new Set();
-      const bPool=banco.filter(e=>!onVac(e,day) && !outs.has(e.id));
-      const hPool=helpers.filter(e=>!onVac(e,day) && !outs.has(e.id));
+      const bz=busyByDate[day]||new Set(); // já ocupados no dia (manhã/tarde do evento) → não pegam a noite do mesmo dia
+      const bPool=banco.filter(e=>!onVac(e,day) && !outs.has(e.id) && !bz.has(e.id));
+      const hPool=helpers.filter(e=>!onVac(e,day) && !outs.has(e.id) && !bz.has(e.id));
       const todayAssigned=new Set();
       const doShift=(shift,daytime)=>{
         const count=need[shift]; if(count<=0) return;
@@ -628,7 +631,7 @@ window.Engine = (function () {
           const e = takeB ? bRank.shift() : hRank.shift();
           chosen.push(e); if(takeB) cb++; else ch++;
         }
-        chosen.forEach(e=>{ assignments.push({date:day,shift,employee_id:e.id,employee_name:e.name}); load[e.id]++; sh[shift][e.id]++; todayAssigned.add(e.id); });
+        chosen.forEach(e=>{ assignments.push({date:day,shift,employee_id:e.id,employee_name:e.name}); load[e.id]+=wOf(shift); sh[shift][e.id]++; todayAssigned.add(e.id); });
         if(chosen.length<count) warnings.push(`${day} · ${shift}: faltou ${count-chosen.length} (limite do mínimo da loja / bastidores disponíveis).`);
       };
       doShift('manha',true); doShift('tarde',true); doShift('noite',false);

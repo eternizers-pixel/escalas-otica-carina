@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v101 (Eventos: gravação/exclusão em lote — rápido; inclui bastidores + banco)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v102 (Eventos: sistema distribui SÓ a noite (rodízio justo, quem fez menos noites); manhã/tarde manuais na grade; botão Reequilibrar noite)
 // ============================================================
 (function(){
 "use strict";
@@ -901,34 +901,40 @@ ROUTES.eventos=async function(){
       <div class="pb" style="padding:0;overflow-x:auto"><table style="border-collapse:collapse;width:100%;min-width:460px">
         <thead><tr><th style="padding:8px 10px;border:1px solid var(--line);text-align:left;font-size:12px">Dia</th>${SHIFTS.map(s=>`<th style="padding:8px 10px;border:1px solid var(--line);text-align:left;font-size:12px">${s[1]}</th>`).join('')}</tr></thead>
         <tbody>${grid}</tbody></table></div>
-      ${isGestor()?`<div class="pb" style="padding-top:10px"><button class="btn sec sm" data-del-ev="${esc(ev.name)}" style="color:var(--red)">🗑 Excluir evento</button></div>`:''}</div>`;
+      ${isGestor()?`<div class="pb" style="padding-top:10px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn sec sm" data-reb-ev="${esc(ev.name)}">🔀 Reequilibrar</button><button class="btn sec sm" data-del-ev="${esc(ev.name)}" style="color:var(--red)">🗑 Excluir evento</button></div>`:''}</div>`;
   };
   $('#view').innerHTML=`
     <div class="toolbar"><button class="btn" id="addEv" ${isGestor()?'':'disabled'}>+ Novo evento</button></div>
-    ${box('info','A escala mistura o <b>banco de horas</b> (roxo) com o pessoal de <b>apoio/gestão</b> (verde: Ivoni, Carol, Ana, Henrique, Helena) — em geral 1 de cada. No dia, a loja segue com o mínimo por turno. À noite é fora do expediente — as horas de quem bate ponto entram no banco pelo TiqueTaque. Cada funcionária vê a escala dela no próprio login.')}
+    ${box('info','O sistema distribui <b>só a noite</b> (rodízio justo — quem fez menos noites vai primeiro — misturando <b>banco</b> roxo + <b>apoio/gestão</b> verde). <b>Manhã e tarde</b> você preenche na grade pelo “+ add”, é horário de serviço. A noite entra no banco de quem bate ponto pelo TiqueTaque. Cada funcionária vê a escala dela no login.')}
     ${events.length? events.map(eventCard).join('') : '<div class="reason" style="margin-top:6px">Nenhum evento cadastrado. Clique em “Novo evento” para montar a escala de manhã/tarde/noite.</div>'}`;
-  $('#addEv')?.addEventListener('click',()=>{
-    openModal('Novo evento',`
-      <div class="field"><label>Nome do evento</label><input id="ev_name" placeholder="ex.: Festa da Praça Central"/></div>
-      <div class="grid2"><div class="field"><label>Início</label><input id="ev_start" type="date" value="${todayStr()}"/></div><div class="field"><label>Fim</label><input id="ev_end" type="date" value="${todayStr()}"/></div></div>
-      <label style="font-weight:600;font-size:13px;margin:4px 0 0;display:block">Quantas funcionárias por turno (por dia)</label>
-      <div class="grid2" style="margin-top:6px"><div class="field"><label>☀️ Manhã</label><input id="ev_m" type="number" min="0" value="2"/></div><div class="field"><label>🌇 Tarde</label><input id="ev_t" type="number" min="0" value="2"/></div></div>
-      <div class="field"><label>🌙 Noite</label><input id="ev_n" type="number" min="0" value="3"/></div>
-      <div class="reason" style="font-size:12px">O sistema distribui com rodízio justo. Você pode ajustar (adicionar/remover) depois.</div>`,
-      async()=>{ if(!gate())return false; const name=($('#ev_name').value||'').trim(); const st=$('#ev_start').value, en=$('#ev_end').value;
+  const openEventModal=(ev)=>{ const isReb=!!ev;
+    openModal(isReb?`🔀 Reequilibrar noite — “${esc(ev.name)}”`:'Novo evento',`
+      <div class="field"><label>Nome do evento</label><input id="ev_name" value="${isReb?esc(ev.name):''}" ${isReb?'readonly style="background:#f4f6fb"':''} placeholder="ex.: Festa da Praça Central"/></div>
+      <div class="grid2"><div class="field"><label>Início</label><input id="ev_start" type="date" value="${isReb?ev.start:todayStr()}"/></div><div class="field"><label>Fim</label><input id="ev_end" type="date" value="${isReb?ev.end:todayStr()}"/></div></div>
+      <div class="field"><label>🌙 Quantas por noite <span class="muted" style="font-weight:500">(o sistema distribui)</span></label><input id="ev_n" type="number" min="0" value="${isReb?ev.n:3}"/></div>
+      <div class="reason" style="font-size:12px">O sistema distribui <b>só a noite</b>, com rodízio justo (quem fez menos noites vai primeiro), misturando banco + apoio. <b>Manhã e tarde</b> você preenche na grade pelo “+ add” — são horário de serviço.</div>`,
+      async()=>{ if(!gate())return false; const name=isReb?ev.name:($('#ev_name').value||'').trim(); const st=$('#ev_start').value, en=$('#ev_end').value;
         if(!name){toast('Dê um nome ao evento.');return false;}
         if(!st||!en||en<st){toast('Confira as datas (fim não pode ser antes do início).');return false;}
-        if(events.some(e=>e.name.toLowerCase()===name.toLowerCase())){toast('Já existe um evento com esse nome.');return false;}
+        if(!isReb && events.some(e=>e.name.toLowerCase()===name.toLowerCase())){toast('Já existe um evento com esse nome.');return false;}
+        // quem já está de manhã/tarde nesse evento não entra na noite do mesmo dia
+        const busyByDate={}; evItems.filter(i=>(i.reason||'Evento')===name && i.shift!=='noite').forEach(i=>{ (busyByDate[i.date]=busyByDate[i.date]||new Set()).add(i.employee_id); });
+        // reequilibrar: apaga só as NOITES atuais (mantém manhã/tarde que você preencheu)
+        if(isReb){ const oldNights=evItems.filter(i=>(i.reason||'Evento')===name && i.shift==='noite').map(i=>i.id); if(oldNights.length) await T('schedule_items').delete().in('id',oldNights); }
         const existing=allItems.filter(it=>it.date>=st && it.date<=en);
-        const res=Engine.buildEventSchedule({employees:emps,rules,vacations:vacs,existing,event:{start_date:st,end_date:en,need_manha:+$('#ev_m').value,need_tarde:+$('#ev_t').value,need_noite:+$('#ev_n').value}});
-        if(!res.assignments.length){toast('Ninguém disponível para montar a escala (confira datas/férias).');return false;}
+        const res=Engine.buildEventSchedule({employees:emps,rules,vacations:vacs,existing,busyByDate,event:{start_date:st,end_date:en,need_manha:0,need_tarde:0,need_noite:+$('#ev_n').value}});
+        if(!res.assignments.length){toast('Ninguém disponível para a noite (confira datas/férias).');return false;}
         const byMonth={}; res.assignments.forEach(a=>{ const d=Engine.parse(a.date); const k=d.getFullYear()+'-'+(d.getMonth()+1); (byMonth[k]=byMonth[k]||[]).push(a); });
         for(const k of Object.keys(byMonth)){ const [yy,mm]=k.split('-').map(Number); const sid=await schedForMonth(yy,mm); if(!sid) continue;
           const rows=byMonth[k].map(a=>({schedule_id:sid,employee_id:a.employee_id,employee_name:a.employee_name||nm[a.employee_id],date:a.date,shift:a.shift,type:'evento',hours:0,status:'aprovado',reason:name}));
           const r=await T('schedule_items').insert(rows); if(r.error){toast(r.error.message);return false;} }
-        toast(res.warnings.length?`Evento criado (${res.warnings.length} aviso(s) — confira os turnos).`:'Evento criado e escala montada!');
+        toast(isReb?'Noite reequilibrada!':'Evento criado — noites distribuídas! Agora preencha manhã/tarde na grade.');
         route(); return true; });
-  });
+  };
+  $('#addEv')?.addEventListener('click',()=>openEventModal(null));
+  $$('[data-reb-ev]').forEach(b=>b.onclick=()=>{ const name=b.dataset.rebEv; const ev=events.find(e=>e.name===name); if(!ev)return;
+    let n=0; ev.dates.forEach(d=>{ const c=ev.items.filter(i=>i.date===d&&i.shift==='noite').length; if(c>n)n=c; });
+    openEventModal({name, start:ev.dates[0], end:ev.dates[ev.dates.length-1], n:n||3}); });
   $$('[data-rm]').forEach(b=>b.onclick=async()=>{ if(!gate())return; await T('schedule_items').delete().eq('id',b.dataset.rm); toast('Removida do turno.'); route(); });
   $$('[data-add-date]').forEach(sel=>sel.onchange=async()=>{ if(!gate()){sel.value='';return;} const id=sel.value; if(!id)return; const e=active.find(x=>String(x.id)===String(id)); if(!e){sel.value='';return;}
     await saveAssign({date:sel.dataset.addDate,shift:sel.dataset.addShift,employee_id:e.id,employee_name:e.name}, sel.dataset.addEv); toast('Adicionada ao turno.'); route(); });
