@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v102 (Eventos: sistema distribui SÓ a noite (rodízio justo, quem fez menos noites); manhã/tarde manuais na grade; botão Reequilibrar noite)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v103 (Eventos: sistema distribui noites + domingo (loja fechada) no rodízio justo; sábado/dias úteis manhã-tarde manuais)
 // ============================================================
 (function(){
 "use strict";
@@ -905,36 +905,37 @@ ROUTES.eventos=async function(){
   };
   $('#view').innerHTML=`
     <div class="toolbar"><button class="btn" id="addEv" ${isGestor()?'':'disabled'}>+ Novo evento</button></div>
-    ${box('info','O sistema distribui <b>só a noite</b> (rodízio justo — quem fez menos noites vai primeiro — misturando <b>banco</b> roxo + <b>apoio/gestão</b> verde). <b>Manhã e tarde</b> você preenche na grade pelo “+ add”, é horário de serviço. A noite entra no banco de quem bate ponto pelo TiqueTaque. Cada funcionária vê a escala dela no login.')}
+    ${box('info','O sistema distribui no rodízio justo (<b>banco</b> roxo + <b>apoio/gestão</b> verde) <b>as noites</b> e o <b>dia de domingo</b> (loja fechada) — a noite pesa mais, então quem pega os piores faz menos no total. <b>Manhã e tarde dos outros dias</b> você preenche na grade pelo “+ add” (horário de serviço). A noite entra no banco de quem bate ponto pelo TiqueTaque. Cada funcionária vê a escala dela no login.')}
     ${events.length? events.map(eventCard).join('') : '<div class="reason" style="margin-top:6px">Nenhum evento cadastrado. Clique em “Novo evento” para montar a escala de manhã/tarde/noite.</div>'}`;
+  const isSun=(d)=>Engine.parse(d).getDay()===0;
   const openEventModal=(ev)=>{ const isReb=!!ev;
-    openModal(isReb?`🔀 Reequilibrar noite — “${esc(ev.name)}”`:'Novo evento',`
+    openModal(isReb?`🔀 Reequilibrar — “${esc(ev.name)}”`:'Novo evento',`
       <div class="field"><label>Nome do evento</label><input id="ev_name" value="${isReb?esc(ev.name):''}" ${isReb?'readonly style="background:#f4f6fb"':''} placeholder="ex.: Festa da Praça Central"/></div>
       <div class="grid2"><div class="field"><label>Início</label><input id="ev_start" type="date" value="${isReb?ev.start:todayStr()}"/></div><div class="field"><label>Fim</label><input id="ev_end" type="date" value="${isReb?ev.end:todayStr()}"/></div></div>
-      <div class="field"><label>🌙 Quantas por noite <span class="muted" style="font-weight:500">(o sistema distribui)</span></label><input id="ev_n" type="number" min="0" value="${isReb?ev.n:3}"/></div>
-      <div class="reason" style="font-size:12px">O sistema distribui <b>só a noite</b>, com rodízio justo (quem fez menos noites vai primeiro), misturando banco + apoio. <b>Manhã e tarde</b> você preenche na grade pelo “+ add” — são horário de serviço.</div>`,
+      <div class="grid2"><div class="field"><label>🌙 Por noite</label><input id="ev_n" type="number" min="0" value="${isReb?ev.n:3}"/></div><div class="field"><label>🗓️ Domingo (manhã/tarde)</label><input id="ev_dom" type="number" min="0" value="${isReb?ev.dom:2}"/></div></div>
+      <div class="reason" style="font-size:12px">O sistema distribui no rodízio justo (banco + apoio) <b>as noites</b> e <b>o dia de domingo</b> (loja fechada). <b>Manhã e tarde dos outros dias</b> você preenche na grade pelo “+ add” — são horário de serviço.</div>`,
       async()=>{ if(!gate())return false; const name=isReb?ev.name:($('#ev_name').value||'').trim(); const st=$('#ev_start').value, en=$('#ev_end').value;
         if(!name){toast('Dê um nome ao evento.');return false;}
         if(!st||!en||en<st){toast('Confira as datas (fim não pode ser antes do início).');return false;}
         if(!isReb && events.some(e=>e.name.toLowerCase()===name.toLowerCase())){toast('Já existe um evento com esse nome.');return false;}
-        // quem já está de manhã/tarde nesse evento não entra na noite do mesmo dia
-        const busyByDate={}; evItems.filter(i=>(i.reason||'Evento')===name && i.shift!=='noite').forEach(i=>{ (busyByDate[i.date]=busyByDate[i.date]||new Set()).add(i.employee_id); });
-        // reequilibrar: apaga só as NOITES atuais (mantém manhã/tarde que você preencheu)
-        if(isReb){ const oldNights=evItems.filter(i=>(i.reason||'Evento')===name && i.shift==='noite').map(i=>i.id); if(oldNights.length) await T('schedule_items').delete().in('id',oldNights); }
+        // manuais (manhã/tarde de dias úteis/sábado) → essas pessoas não entram nos extras do mesmo dia
+        const busyByDate={}; evItems.filter(i=>(i.reason||'Evento')===name && i.shift!=='noite' && !isSun(i.date)).forEach(i=>{ (busyByDate[i.date]=busyByDate[i.date]||new Set()).add(i.employee_id); });
+        // reequilibrar: apaga só os EXTRAS (noites de todo dia + manhã/tarde de domingo); mantém o que você preencheu na mão
+        if(isReb){ const del=evItems.filter(i=>(i.reason||'Evento')===name && (i.shift==='noite' || isSun(i.date))).map(i=>i.id); if(del.length) await T('schedule_items').delete().in('id',del); }
         const existing=allItems.filter(it=>it.date>=st && it.date<=en);
-        const res=Engine.buildEventSchedule({employees:emps,rules,vacations:vacs,existing,busyByDate,event:{start_date:st,end_date:en,need_manha:0,need_tarde:0,need_noite:+$('#ev_n').value}});
-        if(!res.assignments.length){toast('Ninguém disponível para a noite (confira datas/férias).');return false;}
+        const res=Engine.buildEventSchedule({employees:emps,rules,vacations:vacs,existing,busyByDate,event:{start_date:st,end_date:en,need_noite:+$('#ev_n').value,need_dom:+$('#ev_dom').value}});
+        if(!res.assignments.length){toast('Ninguém disponível para os turnos automáticos (confira datas/férias).');return false;}
         const byMonth={}; res.assignments.forEach(a=>{ const d=Engine.parse(a.date); const k=d.getFullYear()+'-'+(d.getMonth()+1); (byMonth[k]=byMonth[k]||[]).push(a); });
         for(const k of Object.keys(byMonth)){ const [yy,mm]=k.split('-').map(Number); const sid=await schedForMonth(yy,mm); if(!sid) continue;
           const rows=byMonth[k].map(a=>({schedule_id:sid,employee_id:a.employee_id,employee_name:a.employee_name||nm[a.employee_id],date:a.date,shift:a.shift,type:'evento',hours:0,status:'aprovado',reason:name}));
           const r=await T('schedule_items').insert(rows); if(r.error){toast(r.error.message);return false;} }
-        toast(isReb?'Noite reequilibrada!':'Evento criado — noites distribuídas! Agora preencha manhã/tarde na grade.');
+        toast(isReb?'Reequilibrado!':'Evento criado — noites e domingo distribuídos! Preencha manhã/tarde dos outros dias na grade.');
         route(); return true; });
   };
   $('#addEv')?.addEventListener('click',()=>openEventModal(null));
   $$('[data-reb-ev]').forEach(b=>b.onclick=()=>{ const name=b.dataset.rebEv; const ev=events.find(e=>e.name===name); if(!ev)return;
-    let n=0; ev.dates.forEach(d=>{ const c=ev.items.filter(i=>i.date===d&&i.shift==='noite').length; if(c>n)n=c; });
-    openEventModal({name, start:ev.dates[0], end:ev.dates[ev.dates.length-1], n:n||3}); });
+    let n=0,dom=0; ev.dates.forEach(d=>{ const cn=ev.items.filter(i=>i.date===d&&i.shift==='noite').length; if(cn>n)n=cn; if(isSun(d)){ const cm=ev.items.filter(i=>i.date===d&&i.shift==='manha').length; if(cm>dom)dom=cm; } });
+    openEventModal({name, start:ev.dates[0], end:ev.dates[ev.dates.length-1], n:n||3, dom:dom||2}); });
   $$('[data-rm]').forEach(b=>b.onclick=async()=>{ if(!gate())return; await T('schedule_items').delete().eq('id',b.dataset.rm); toast('Removida do turno.'); route(); });
   $$('[data-add-date]').forEach(sel=>sel.onchange=async()=>{ if(!gate()){sel.value='';return;} const id=sel.value; if(!id)return; const e=active.find(x=>String(x.id)===String(id)); if(!e){sel.value='';return;}
     await saveAssign({date:sel.dataset.addDate,shift:sel.dataset.addShift,employee_id:e.id,employee_name:e.name}, sel.dataset.addEv); toast('Adicionada ao turno.'); route(); });
