@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v116 (Eventos: chips compactos + botão "Enviar pro WhatsApp" por dia/turno)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v117 (Eventos: botão só copia a escala pro WhatsApp — não abre o app)
 // ============================================================
 (function(){
 "use strict";
@@ -913,7 +913,7 @@ ROUTES.eventos=async function(){
         <tbody>${grid}</tbody></table></div>
       ${isGestor()?'<div class="reason" style="font-size:11px;padding:8px 12px 0">💡 Toque numa pessoa para <b>trocar</b> o turno · no ✕ para remover.</div>':''}
       ${logHtml}
-      <div class="pb" style="padding-top:10px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn sm" data-wa-ev="${esc(ev.name)}">📲 Enviar pro WhatsApp</button>${isGestor()?`<button class="btn sec sm" data-reb-ev="${esc(ev.name)}">🔀 Reequilibrar</button><button class="btn sec sm" data-del-ev="${esc(ev.name)}" style="color:var(--red)">🗑 Excluir evento</button>`:''}</div></div>`;
+      <div class="pb" style="padding-top:10px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn sm" data-wa-ev="${esc(ev.name)}">📋 Copiar pro WhatsApp</button>${isGestor()?`<button class="btn sec sm" data-reb-ev="${esc(ev.name)}">🔀 Reequilibrar</button><button class="btn sec sm" data-del-ev="${esc(ev.name)}" style="color:var(--red)">🗑 Excluir evento</button>`:''}</div></div>`;
   };
   $('#view').innerHTML=`
     <div class="toolbar"><button class="btn" id="addEv" ${isGestor()?'':'disabled'}>+ Novo evento</button></div>
@@ -978,8 +978,8 @@ ROUTES.eventos=async function(){
     const SH=[['manha','☀️ Manhã','9h–13h'],['tarde','🌇 Tarde','13h–17h'],['noite','🌙 Noite','17h–21h']];
     let txt=`🎪 *${name}*\n📅 ${dBR(ev.dates[0])} a ${dBR(ev.dates[ev.dates.length-1])}\n`;
     ev.dates.forEach(d=>{ let blk=''; SH.forEach(([sh,lbl,tm])=>{ const ppl=ev.items.filter(i=>i.date===d&&i.shift===sh).map(i=>fnm(nm[i.employee_id]||i.employee_name||'—')); if(ppl.length) blk+=`${lbl} (${tm}): ${ppl.join(', ')}\n`; }); if(blk) txt+=`\n*${Engine.DOW[Engine.parse(d).getDay()]} ${dBR(d)}*\n`+blk; });
-    try{ await navigator.clipboard.writeText(txt); }catch(_){}
-    window.open('https://wa.me/?text='+encodeURIComponent(txt),'_blank'); toast('Escala copiada — abri o WhatsApp pra escolher o grupo.'); });
+    try{ await navigator.clipboard.writeText(txt); toast('Escala copiada! É só colar no WhatsApp.'); }
+    catch(_){ openModal('📋 Copiar escala',`<div class="reason" style="margin-bottom:8px">Selecione tudo e copie (Ctrl+C), depois cole no WhatsApp:</div><textarea readonly style="width:100%;height:220px;padding:10px;border:1px solid var(--line);border-radius:10px;font-size:13px">${esc(txt)}</textarea>`,async()=>true); setTimeout(()=>{ const t=document.querySelector('#modalRoot textarea'); if(t){t.focus();t.select();} },60); } });
 };
 
 // ---------- MOTOR DE FOLGAS ----------
