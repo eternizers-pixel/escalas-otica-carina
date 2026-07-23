@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v113 (Eventos: horários nos turnos — manhã 9–13, tarde 13–17, noite 17–21 — grade + tela da funcionária)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v114 (Eventos: trocar turno clicando na pessoa → escolhe com quem trocar)
 // ============================================================
 (function(){
 "use strict";
@@ -896,7 +896,7 @@ ROUTES.eventos=async function(){
     const grid=ev.dates.map(date=>{
       const cells=SHIFTS.map(([sh])=>{
         const people=ev.items.filter(i=>i.date===date && i.shift===sh);
-        const chips=people.map(p=>{ const bast=bastId.has(p.employee_id); return `<span class="ev-chip${bast?' bast':''}" title="${bast?'Bastidores':'Banco de horas'}">${esc(fnm(nm[p.employee_id]||p.employee_name||'—'))}${isGestor()?`<a class="ev-x" data-rm="${p.id}">✕</a>`:''}</span>`; }).join('')||'<span class="muted" style="font-size:12px">—</span>';
+        const chips=people.map(p=>{ const bast=bastId.has(p.employee_id); const nmTxt=esc(fnm(nm[p.employee_id]||p.employee_name||'—')); return `<span class="ev-chip${bast?' bast':''}" title="${bast?'Bastidores':'Banco de horas'}">${isGestor()?`<a data-sw="${p.id}" style="cursor:pointer;text-decoration:none;color:inherit" title="Trocar este turno">${nmTxt}</a>`:nmTxt}${isGestor()?`<a class="ev-x" data-rm="${p.id}">✕</a>`:''}</span>`; }).join('')||'<span class="muted" style="font-size:12px">—</span>';
         const add=isGestor()?`<select class="ev-add" data-add-date="${date}" data-add-shift="${sh}" data-add-ev="${esc(ev.name)}" style="font-size:11.5px;padding:3px 6px;border:1px dashed var(--line);border-radius:7px;color:var(--muted);background:#fff;margin-top:5px;max-width:100%"><option value="">+ add</option><optgroup label="Banco de horas">${active.filter(e=>!bastId.has(e.id)).map(e=>`<option value="${e.id}">${esc(e.name)}</option>`).join('')}</optgroup><optgroup label="Bastidores">${active.filter(e=>bastId.has(e.id)).map(e=>`<option value="${e.id}">${esc(e.name)}</option>`).join('')}</optgroup></select>`:'';
         return `<td style="vertical-align:top;padding:7px 8px;border:1px solid var(--line)"><div style="display:flex;flex-wrap:wrap;gap:4px">${chips}</div>${add}</td>`;
       }).join('');
@@ -911,6 +911,7 @@ ROUTES.eventos=async function(){
       <div class="pb" style="padding:0;overflow-x:auto"><table style="border-collapse:collapse;width:100%;min-width:460px">
         <thead><tr><th style="padding:8px 10px;border:1px solid var(--line);text-align:left;font-size:12px">Dia</th>${SHIFTS.map(s=>`<th style="padding:8px 10px;border:1px solid var(--line);text-align:left;font-size:12px">${s[1]} <span class="muted" style="font-weight:500;font-size:10.5px">${SHIFT_TIME[s[0]]||''}</span></th>`).join('')}</tr></thead>
         <tbody>${grid}</tbody></table></div>
+      ${isGestor()?'<div class="reason" style="font-size:11px;padding:8px 12px 0">💡 Toque numa pessoa para <b>trocar</b> o turno · no ✕ para remover.</div>':''}
       ${logHtml}
       ${isGestor()?`<div class="pb" style="padding-top:10px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn sec sm" data-reb-ev="${esc(ev.name)}">🔀 Reequilibrar</button><button class="btn sec sm" data-del-ev="${esc(ev.name)}" style="color:var(--red)">🗑 Excluir evento</button></div>`:''}</div>`;
   };
@@ -955,6 +956,19 @@ ROUTES.eventos=async function(){
     let n=0,dom=0; ev.dates.forEach(d=>{ const cn=ev.items.filter(i=>i.date===d&&i.shift==='noite').length; if(cn>n)n=cn; if(isExtra(d)){ const cm=ev.items.filter(i=>i.date===d&&i.shift==='manha').length; if(cm>dom)dom=cm; } });
     openEventModal({name, start:ev.dates[0], end:ev.dates[ev.dates.length-1], n:n||3, dom:dom||2}); });
   $$('[data-rm]').forEach(b=>b.onclick=async()=>{ if(!gate())return; await T('schedule_items').delete().eq('id',b.dataset.rm); toast('Removida do turno.'); route(); });
+  // TROCA — clicar numa pessoa abre "trocar com quem?" (outros turnos já preenchidos do evento)
+  $$('[data-sw]').forEach(el=>el.onclick=()=>{ if(!isGestor())return;
+    const it=evItems.find(x=>String(x.id)===String(el.dataset.sw)); if(!it)return;
+    const evName=it.reason||'Evento';
+    const lab=(x)=>`${fnm(nm[x.employee_id]||x.employee_name||'—')} · ${Engine.DOW[Engine.parse(x.date).getDay()]} ${dBR(x.date)} · ${SHIFT_TIME[x.shift]||x.shift}`;
+    const mates=evItems.filter(x=>(x.reason||'Evento')===evName && String(x.id)!==String(it.id));
+    if(!mates.length){ toast('Não há outro turno preenchido pra trocar.'); return; }
+    openModal('🔁 Trocar turno',`<div class="field"><div class="reason" style="margin-bottom:10px">Trocar <b>${esc(lab(it))}</b> com quem?</div><select id="swWith" style="width:100%;padding:10px;border:1px solid var(--line);border-radius:10px;font-size:13px">${mates.map(x=>`<option value="${x.id}">${esc(lab(x))}</option>`).join('')}</select></div>`,
+      async()=>{ if(!gate())return false; const b=mates.find(x=>String(x.id)===String($('#swWith').value)); if(!b)return false;
+        const r1=await T('schedule_items').update({employee_id:b.employee_id,employee_name:b.employee_name}).eq('id',it.id);
+        const r2=await T('schedule_items').update({employee_id:it.employee_id,employee_name:it.employee_name}).eq('id',b.id);
+        if(r1.error||r2.error){ toast((r1.error||r2.error).message); return false; }
+        toast('Troca feita!'); route(); return true; }); });
   $$('[data-add-date]').forEach(sel=>sel.onchange=async()=>{ if(!gate()){sel.value='';return;} const id=sel.value; if(!id)return; const e=active.find(x=>String(x.id)===String(id)); if(!e){sel.value='';return;}
     await saveAssign({date:sel.dataset.addDate,shift:sel.dataset.addShift,employee_id:e.id,employee_name:e.name}, sel.dataset.addEv); toast('Adicionada ao turno.'); route(); });
   $$('[data-del-ev]').forEach(b=>b.onclick=async()=>{ if(!gate())return; const name=b.dataset.delEv; if(!confirm('Excluir o evento "'+name+'" e toda a escala dele?'))return;
