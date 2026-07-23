@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v114 (Eventos: trocar turno clicando na pessoa → escolhe com quem trocar)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v115 (Calendário: mostra os dias de evento com selo 🎪 + legenda)
 // ============================================================
 (function(){
 "use strict";
@@ -1524,13 +1524,15 @@ ROUTES.calendario=async function(){
   async function draw(){
     const first=new Date(year,month-1,1), startDow=first.getDay(), dim=Engine.daysInMonth(year,month);
     const mm=String(month).padStart(2,'0');
-    const [items,vacs,rules,blk,emps,rot]=await Promise.all([
+    const [items,vacs,rules,blk,emps,rot,evItems]=await Promise.all([
       getAll('schedule_items',b=>b.gte('date',`${year}-${mm}-01`).lte('date',`${year}-${mm}-${dim}`).neq('type','evento')),
       getAll('vacation_periods'),T('store_rules').select('*').eq('id',1).maybeSingle().then(r=>r.data||{}),getAll('blocked_dates'),
       getAll('employees',b=>b.eq('is_simulation',S.sim)),
-      getAll('saturday_rotation',b=>b.eq('year',year).eq('month',month))]);
+      getAll('saturday_rotation',b=>b.eq('year',year).eq('month',month)),
+      getAll('schedule_items',b=>b.gte('date',`${year}-${mm}-01`).lte('date',`${year}-${mm}-${dim}`).eq('type','evento'))]);
     const mset=await T('month_settings').select('*').eq('year',year).eq('month',month).maybeSingle().then(r=>r.data||null);
     const nm=Object.fromEntries(emps.map(e=>[e.id,e.name]));
+    const evByDay={}; (evItems||[]).forEach(x=>{ (evByDay[x.date]=evByDay[x.date]||new Set()).add(x.reason||'Evento'); });
     const calLibHol=new Set(String(rules.holidays_allowed||'').split(',').map(s=>s.trim()).filter(Boolean));
     const satMode=(mset&&mset.sat_mode)||rules.saturday_open_mode||'dois_primeiros';
     const sats=Engine.openSaturdays(year,month,satMode).map(Engine.fmt);
@@ -1539,6 +1541,7 @@ ROUTES.calendario=async function(){
     for(let d=1;d<=dim;d++){
       const ds=`${year}-${mm}-${String(d).padStart(2,'0')}`; const dow=new Date(year,month-1,d).getDay();
       let ev='';
+      if(evByDay[ds]) [...evByDay[ds]].forEach(n=>{ ev+=`<span class="ev" style="background:var(--brand-soft);color:var(--brand-d);border:1px solid var(--brand);font-weight:700" title="Evento">🎪 ${esc(n)}</span>`; });
       items.filter(x=>x.date===ds).sort((a,b)=>folgaSortKey(a,rules)-folgaSortKey(b,rules)).forEach(x=>{ const fn=(x.employee_name||'').split(' ')[0]; const t=folgaTimeLabel(x,rules); ev+=`<span class="ev folga" title="${esc(x.employee_name||'')} — ${esc(t)}">${esc(fn)}<span class="evt">${esc(t)}</span></span>`; });
       vacs.filter(v=>ds>=v.start_date&&ds<=v.end_date).forEach(v=>{ const fn=(nm[v.employee_id]||'').split(' ')[0]; ev+=`<span class="ev fer">${esc(fn)}<span class="evt">Férias</span></span>`; });
       rot.filter(r=>r.saturday_date===ds).forEach(r=>{ const fn=(r.employee_name||nm[r.employee_id]||'').split(' ')[0]; ev+=`<span class="ev sab" title="${esc(r.employee_name||'')}">${esc(fn)}</span>`; });
@@ -1563,7 +1566,7 @@ ROUTES.calendario=async function(){
     $('#view').innerHTML=`
     <div class="toolbar"><button class="btn sec sm" id="prev">←</button><b style="min-width:140px;text-align:center">${MONTHS[month-1]} ${year}</b><button class="btn sec sm" id="next">→</button>
       <button class="btn sm" onclick="location.hash='#relsemana'">📋 Relatório semanal</button><div class="spacer"></div>
-      <div class="legend"><span><i class="dot" style="background:var(--green)"></i>Folga</span><span><i class="dot" style="background:var(--amber)"></i>Férias</span><span><i class="dot" style="background:var(--purple)"></i>Sábado</span><span><i class="dot" style="background:var(--red)"></i>Bloqueio</span></div></div>
+      <div class="legend"><span><i class="dot" style="background:var(--brand)"></i>Evento</span><span><i class="dot" style="background:var(--green)"></i>Folga</span><span><i class="dot" style="background:var(--amber)"></i>Férias</span><span><i class="dot" style="background:var(--purple)"></i>Sábado</span><span><i class="dot" style="background:var(--red)"></i>Bloqueio</span></div></div>
     ${body}`;
     $('#prev').onclick=()=>{month--;if(month<1){month=12;year--;}draw();};
     $('#next').onclick=()=>{month++;if(month>12){month=1;year++;}draw();};
