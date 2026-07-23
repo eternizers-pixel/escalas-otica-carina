@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v115 (Calendário: mostra os dias de evento com selo 🎪 + legenda)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v116 (Eventos: chips compactos + botão "Enviar pro WhatsApp" por dia/turno)
 // ============================================================
 (function(){
 "use strict";
@@ -898,7 +898,7 @@ ROUTES.eventos=async function(){
         const people=ev.items.filter(i=>i.date===date && i.shift===sh);
         const chips=people.map(p=>{ const bast=bastId.has(p.employee_id); const nmTxt=esc(fnm(nm[p.employee_id]||p.employee_name||'—')); return `<span class="ev-chip${bast?' bast':''}" title="${bast?'Bastidores':'Banco de horas'}">${isGestor()?`<a data-sw="${p.id}" style="cursor:pointer;text-decoration:none;color:inherit" title="Trocar este turno">${nmTxt}</a>`:nmTxt}${isGestor()?`<a class="ev-x" data-rm="${p.id}">✕</a>`:''}</span>`; }).join('')||'<span class="muted" style="font-size:12px">—</span>';
         const add=isGestor()?`<select class="ev-add" data-add-date="${date}" data-add-shift="${sh}" data-add-ev="${esc(ev.name)}" style="font-size:11.5px;padding:3px 6px;border:1px dashed var(--line);border-radius:7px;color:var(--muted);background:#fff;margin-top:5px;max-width:100%"><option value="">+ add</option><optgroup label="Banco de horas">${active.filter(e=>!bastId.has(e.id)).map(e=>`<option value="${e.id}">${esc(e.name)}</option>`).join('')}</optgroup><optgroup label="Bastidores">${active.filter(e=>bastId.has(e.id)).map(e=>`<option value="${e.id}">${esc(e.name)}</option>`).join('')}</optgroup></select>`:'';
-        return `<td style="vertical-align:top;padding:7px 8px;border:1px solid var(--line)"><div style="display:flex;flex-wrap:wrap;gap:4px">${chips}</div>${add}</td>`;
+        return `<td style="vertical-align:top;padding:6px 7px;border:1px solid var(--line)"><div style="display:flex;flex-wrap:wrap;gap:3px">${chips}</div>${add}</td>`;
       }).join('');
       return `<tr style="${isExtra(date)?'background:var(--amber-soft)':''}"><td style="padding:7px 10px;border:1px solid var(--line);font-weight:700;white-space:nowrap">${dBR(date)}<div class="muted" style="font-size:11px;font-weight:500;text-transform:capitalize">${Engine.DOW[Engine.parse(date).getDay()]}${isExtra(date)?' · <b style="color:#a9720a">extra</b>':''}</div></td>${cells}</tr>`;
     }).join('');
@@ -913,7 +913,7 @@ ROUTES.eventos=async function(){
         <tbody>${grid}</tbody></table></div>
       ${isGestor()?'<div class="reason" style="font-size:11px;padding:8px 12px 0">💡 Toque numa pessoa para <b>trocar</b> o turno · no ✕ para remover.</div>':''}
       ${logHtml}
-      ${isGestor()?`<div class="pb" style="padding-top:10px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn sec sm" data-reb-ev="${esc(ev.name)}">🔀 Reequilibrar</button><button class="btn sec sm" data-del-ev="${esc(ev.name)}" style="color:var(--red)">🗑 Excluir evento</button></div>`:''}</div>`;
+      <div class="pb" style="padding-top:10px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn sm" data-wa-ev="${esc(ev.name)}">📲 Enviar pro WhatsApp</button>${isGestor()?`<button class="btn sec sm" data-reb-ev="${esc(ev.name)}">🔀 Reequilibrar</button><button class="btn sec sm" data-del-ev="${esc(ev.name)}" style="color:var(--red)">🗑 Excluir evento</button>`:''}</div></div>`;
   };
   $('#view').innerHTML=`
     <div class="toolbar"><button class="btn" id="addEv" ${isGestor()?'':'disabled'}>+ Novo evento</button></div>
@@ -973,6 +973,13 @@ ROUTES.eventos=async function(){
     await saveAssign({date:sel.dataset.addDate,shift:sel.dataset.addShift,employee_id:e.id,employee_name:e.name}, sel.dataset.addEv); toast('Adicionada ao turno.'); route(); });
   $$('[data-del-ev]').forEach(b=>b.onclick=async()=>{ if(!gate())return; const name=b.dataset.delEv; if(!confirm('Excluir o evento "'+name+'" e toda a escala dele?'))return;
     const ids=evItems.filter(i=>(i.reason||'Evento')===name).map(i=>i.id); if(ids.length) await T('schedule_items').delete().in('id',ids); toast('Evento excluído.'); route(); });
+  // WHATSAPP — texto por dia/turno com quem está em cada um
+  $$('[data-wa-ev]').forEach(b=>b.onclick=async()=>{ const name=b.dataset.waEv; const ev=events.find(e=>e.name===name); if(!ev)return;
+    const SH=[['manha','☀️ Manhã','9h–13h'],['tarde','🌇 Tarde','13h–17h'],['noite','🌙 Noite','17h–21h']];
+    let txt=`🎪 *${name}*\n📅 ${dBR(ev.dates[0])} a ${dBR(ev.dates[ev.dates.length-1])}\n`;
+    ev.dates.forEach(d=>{ let blk=''; SH.forEach(([sh,lbl,tm])=>{ const ppl=ev.items.filter(i=>i.date===d&&i.shift===sh).map(i=>fnm(nm[i.employee_id]||i.employee_name||'—')); if(ppl.length) blk+=`${lbl} (${tm}): ${ppl.join(', ')}\n`; }); if(blk) txt+=`\n*${Engine.DOW[Engine.parse(d).getDay()]} ${dBR(d)}*\n`+blk; });
+    try{ await navigator.clipboard.writeText(txt); }catch(_){}
+    window.open('https://wa.me/?text='+encodeURIComponent(txt),'_blank'); toast('Escala copiada — abri o WhatsApp pra escolher o grupo.'); });
 };
 
 // ---------- MOTOR DE FOLGAS ----------
