@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v118 (Eventos: remove a frase "domingo não pega feriado" do log)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v119 (Relatório da semana: não mistura eventos — só folgas/sábados/férias)
 // ============================================================
 (function(){
 "use strict";
@@ -1334,7 +1334,7 @@ function weekReportText(monday, emps, items, rot, vacs, rules){
     const dow=Engine.parse(ds).getDay();
     if(dow===0) return; // domingo: loja fechada
     const lines=[];
-    items.filter(it=>it.date===ds).sort((a,b)=>folgaSortKey(a,rules)-folgaSortKey(b,rules))
+    items.filter(it=>it.date===ds && it.type!=='evento').sort((a,b)=>folgaSortKey(a,rules)-folgaSortKey(b,rules))
       .forEach(it=>lines.push(`${first(it.employee_name||nameOf(it.employee_id))} — ${lblOf(it)}`));
     const sab=rot.filter(r=>r.saturday_date===ds);
     if(sab.length) lines.push(`Trabalham (${ss}–${se}): ${sab.map(r=>first(r.employee_name||nameOf(r.employee_id))).join(', ')}`);
@@ -1356,7 +1356,7 @@ ROUTES.relsemana=async function(){
     const [emps,rules,items,rot,vacs]=await Promise.all([
       getAll('employees',b=>b.eq('is_simulation',S.sim).order('name')),
       T('store_rules').select('*').eq('id',1).maybeSingle().then(r=>r.data||{}),
-      getAll('schedule_items',b=>b.gte('date',start).lte('date',end)),
+      getAll('schedule_items',b=>b.gte('date',start).lte('date',end).neq('type','evento')),
       getAll('saturday_rotation',b=>b.gte('saturday_date',start).lte('saturday_date',end)),
       getAll('vacation_periods')]);
     const text=weekReportText(monday,emps,items,rot,vacs,rules);
