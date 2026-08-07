@@ -303,6 +303,58 @@ label{display:block;font-size:12.5px;color:var(--muted);margin:0 0 5px;font-weig
   table.rt td.row-actions::before{content:none}
   .lf-row{flex-direction:column}
 }
+/* ===== PAINEL DE TV (Meta da equipe + escala da semana) ===== */
+body.tv-mode .apphead,body.tv-mode #simBanner{display:none!important}
+body.tv-mode .content{padding:0!important;max-width:none!important;margin:0!important;height:100dvh;overflow:hidden}
+body.tv-mode #app{height:100dvh;overflow:hidden}
+.tv-root{--tvblue:#2563eb;--tvblue2:#1d4ed8;--tvblue3:#1e3a8a;--tvblue-soft:#e8f0ff;--tvtext:#1e2a44;--tvsoft:#48566f;--tvmuted:#7c88a0;--tvtrack:#e6ecf5;--tvborder:#e3e9f2;--tvok:#12855a;--tvok-soft:#e6f6ee;--tvwarn:#a9781f;--tvwarn-soft:#fbf1dd;--tvdanger:#c23b38;--tvdanger-soft:#fdeaea;--ring:clamp(120px,21vh,230px);height:100dvh;overflow:hidden;color:var(--tvtext);font-family:"Inter","Segoe UI",system-ui,sans-serif;background:radial-gradient(1100px 600px at 85% -10%,#eef4ff,transparent 60%),linear-gradient(170deg,#fff,#e9eef6);display:flex;flex-direction:column}
+.tv-top{flex:0 0 55%;min-height:0;display:flex;flex-direction:column;gap:clamp(6px,1.3vh,15px);padding:clamp(10px,2vh,22px) clamp(16px,3vw,44px) clamp(4px,.8vh,10px)}
+.tv-bot{flex:1;min-height:0;background:#fff;border-top:1px solid var(--tvborder);padding:clamp(8px,1.4vh,16px) clamp(16px,3vw,40px) clamp(10px,1.6vh,18px);overflow:hidden;display:flex;flex-direction:column;gap:clamp(5px,.9vh,10px)}
+.tv-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
+.tv-brand{display:flex;align-items:center;gap:12px}
+.tv-brand img{height:clamp(24px,3.8vh,42px);width:auto;display:block}
+.tv-bsub{font-size:clamp(9px,1vh,12px);letter-spacing:.16em;text-transform:uppercase;color:var(--tvblue2);font-weight:800}
+.tv-btitle{font-size:clamp(14px,1.8vh,21px);font-weight:800;line-height:1.05}
+.tv-hr{display:flex;flex-direction:column;align-items:flex-end;gap:2px}
+.tv-month{font-size:clamp(9px,1vh,12px);letter-spacing:.14em;text-transform:uppercase;color:var(--tvblue2);font-weight:800}
+.tv-clock{font-size:clamp(16px,2.4vh,28px);font-weight:800;line-height:1;font-variant-numeric:tabular-nums}
+.tv-upd{font-size:clamp(9px,1vh,11px);color:var(--tvmuted)}
+.tv-editbtn{margin-left:4px;display:inline-flex;align-items:center;gap:6px;padding:6px 13px;border-radius:999px;border:none;background:var(--tvblue);color:#fff;font-size:clamp(11px,1.2vh,13px);font-weight:700;cursor:pointer}
+.tv-exit{display:inline-flex;align-items:center;gap:5px;padding:5px 11px;border-radius:999px;border:1px solid var(--tvborder);background:#fff;color:var(--tvsoft);font-size:clamp(10px,1.1vh,12px);font-weight:600;cursor:pointer}
+.tv-hero{flex:1;min-height:0;position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:clamp(3px,.9vh,11px);background:#fff;border:1px solid var(--tvborder);border-radius:24px;box-shadow:0 10px 30px rgba(30,45,85,.06);padding:clamp(8px,1.4vh,18px)}
+.tv-hero.win{border-color:#bfead4;box-shadow:0 10px 40px rgba(18,133,90,.14)}
+.tv-ring{position:relative;width:var(--ring);height:var(--ring);flex:0 0 auto}
+.tv-ring svg{width:100%;height:100%;transform:rotate(-90deg)}
+.tv-ring-c{position:absolute;inset:0;display:flex;align-items:center;justify-content:center}
+.tv-pct{font-size:calc(var(--ring)*.205);font-weight:900;line-height:1;color:var(--tvblue3);letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+.tv-ringl{font-size:clamp(10px,1.3vh,15px);letter-spacing:.16em;text-transform:uppercase;color:var(--tvblue2);font-weight:800;text-align:center}
+.tv-faltam{font-size:clamp(13px,1.8vh,22px);color:var(--tvsoft);font-weight:600;text-align:center}
+.tv-faltam b{color:var(--tvblue2)}
+.tv-pace{display:inline-flex;align-items:center;gap:8px;padding:6px 16px;border-radius:999px;font-weight:800;font-size:clamp(12px,1.6vh,19px);text-align:center}
+.tv-pace.ok{background:var(--tvok-soft);color:var(--tvok)}.tv-pace.info{background:var(--tvblue-soft);color:var(--tvblue2)}.tv-pace.warn{background:var(--tvwarn-soft);color:var(--tvwarn)}.tv-pace.dang{background:var(--tvdanger-soft);color:var(--tvdanger)}
+.tv-cel-t{font-size:clamp(20px,2.8vh,40px);font-weight:900;color:var(--tvok);text-align:center}
+.tv-cel-s{font-size:clamp(12px,1.5vh,20px);color:var(--tvsoft);font-weight:700;text-align:center;margin-top:2px}
+.tv-delta{display:inline-flex;align-items:center;gap:6px;padding:3px 12px;border-radius:999px;font-size:clamp(10px,1.4vh,14px);font-weight:800}
+.tv-delta.up{background:var(--tvok-soft);color:var(--tvok)}.tv-delta.down{background:var(--tvdanger-soft);color:var(--tvdanger)}.tv-delta.flat{background:#eef2f7;color:var(--tvmuted)}
+.tv-ctx{font-size:clamp(10px,1.3vh,14px);color:var(--tvsoft);text-align:center}.tv-ctx b{color:var(--tvblue3);font-weight:800}
+.tv-barwrap{position:relative;padding:0 clamp(16px,3vw,44px) clamp(6px,1.2vh,12px)}
+.tv-bar{position:relative;height:clamp(14px,2.1vh,26px);background:var(--tvtrack);border-radius:999px;overflow:hidden}
+.tv-bar>span{position:absolute;inset:0 auto 0 0;background:linear-gradient(90deg,#3b82f6,#1d4ed8);border-radius:999px;transition:width .9s cubic-bezier(.22,1,.36,1)}
+.tv-bar.done>span{background:linear-gradient(90deg,#17b06b,#0f8a53)}
+.tv-pmark{position:absolute;top:0;bottom:0;width:3px;background:#0b1f47;transform:translateX(-50%);border-radius:2px;box-shadow:0 0 0 2px rgba(255,255,255,.85);z-index:2}
+.tv-marks{position:relative;height:15px;margin-top:4px}
+.tv-mark{position:absolute;transform:translateX(-50%);font-size:clamp(9px,1.1vh,12px);color:var(--tvmuted);font-weight:700}.tv-mark.on{color:var(--tvblue2)}
+.tv-bot h4{margin:0;font-size:clamp(11px,1.4vh,15px);font-weight:800;color:var(--tvblue2);letter-spacing:.05em;text-transform:uppercase}
+.tv-week{flex:1;min-height:0;display:grid;grid-template-columns:repeat(6,1fr);gap:clamp(6px,.7vw,12px)}
+.tv-day{min-width:0;background:#f7f9fc;border:1px solid var(--tvborder);border-radius:14px;padding:clamp(6px,1vh,12px);display:flex;flex-direction:column;gap:4px;overflow:hidden}
+.tv-day.sat{background:#eef4ff;border-color:#cfe0ff}
+.tv-day.today{outline:2px solid var(--tvblue);outline-offset:-2px}
+.tv-dh{font-size:clamp(11px,1.4vh,15px);font-weight:800;color:var(--tvtext);line-height:1.1}
+.tv-dh small{display:block;font-size:clamp(9px,1vh,11px);color:var(--tvmuted);font-weight:600}
+.tv-li{font-size:clamp(10px,1.25vh,14px);color:var(--tvsoft);line-height:1.28}
+.tv-li b{color:var(--tvtext)}
+.tv-li.work{color:var(--tvblue2);font-weight:700}
+.tv-none{font-size:clamp(10px,1.2vh,13px);color:var(--tvmuted)}
 </style>
 </head>
 <body>

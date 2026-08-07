@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v119 (Relatório da semana: não mistura eventos — só folgas/sábados/férias)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v120 (Painel de TV: meta da equipe em % + escala da semana; RPC esc_meta_set)
 // ============================================================
 (function(){
 "use strict";
@@ -189,8 +189,9 @@ const NAV=[
   ['regras','🏪','p','Regras da loja','Horários, turnos e limites'],
   ['relatorios','📈','p','Relatórios','Resumo e índice de justiça'],
   ['relsemana','📋','t','Relatório da semana','Texto pronto para o grupo'],
+  ['painel','📺','t','Painel na TV','Meta da equipe + escala da semana (modo TV)'],
 ];
-const HOME_TOP=['dashboard','folgas','escala','sabados'];
+const HOME_TOP=['dashboard','folgas','escala','sabados','painel'];
 const HOME_BOTTOM=['relatorios','calendario','pedidos','config'];
 const HOME_KEYS=[...HOME_TOP,...HOME_BOTTOM];
 const CONFIG_KEYS=['funcionarias','acessos','ferias','eventos','tiquetaque','regras'];
@@ -203,6 +204,7 @@ const ROUTES={};
 function route(){
   const k=(location.hash||'#home').slice(1);
   updateSimBanner();
+  document.body.classList.toggle('tv-mode', k==='painel'); // painel = tela cheia (esconde menu)
   if(S.role==='funcionaria'){ $('#backBtn').classList.add('hidden'); $('#pageTitle').textContent='Minha área'; renderFuncionaria(); return; }
   if(S.role==='gestor') setupNotifs();
   if(k==='home'){ $('#backBtn').classList.add('hidden'); $('#pageTitle').textContent=''; renderHome(); return; }
@@ -1375,6 +1377,146 @@ ROUTES.relsemana=async function(){
     $('#wkCopy').onclick=async()=>{ try{ await navigator.clipboard.writeText(text); toast('Relatório copiado! É só colar no grupo.'); }catch(_){ const r=document.createRange(); r.selectNode($('#wkText')); getSelection().removeAllRanges(); getSelection().addRange(r); toast('Texto selecionado — aperte Ctrl+C.'); } };
   }
   draw();
+};
+
+// ---------- PAINEL DE TV (Meta da equipe + escala da semana) ----------
+ROUTES.painel=async function(){
+  const fNum=(v,d=2)=>new Intl.NumberFormat('pt-BR',{minimumFractionDigits:d,maximumFractionDigits:d}).format(isFinite(+v)?+v:0);
+  const fPct=(v,fl=false,dec=2)=>{ let n=isFinite(+v)?+v:0; if(fl){const f=Math.pow(10,dec); n=Math.floor(n*f)/f;} return fNum(n,dec)+'%'; };
+  const parseNum=(s)=>{ if(typeof s==='number')return s; if(!s)return 0; let t=String(s).replace(/[R$\s]/g,''); const c=t.indexOf(',')>=0,d=t.indexOf('.')>=0; if(c&&d)t=t.replace(/\./g,'').replace(',','.'); else if(c)t=t.replace(',','.'); const n=parseFloat(t); return isFinite(n)?n:0; };
+  const bdays=(a,b)=>{ let s=new Date(a),e=new Date(b); if(e<s)return 0; let c=0,d=new Date(s); while(d<=e){const w=d.getDay(); if(w!==0&&w!==6)c++; d.setDate(d.getDate()+1);} return c; };
+  const MIL=[25,50,75,90,100], C=2*Math.PI*45;
+  const monthName=(m)=>MONTHS[((m-1)%12+12)%12]||'';
+  const now0=new Date(); const curMes=now0.getMonth()+1, curAno=now0.getFullYear();
+
+  const loadMeta=async()=>{
+    const [m,prev]=await Promise.all([
+      T('meta_empresa').select('*').eq('mes',curMes).eq('ano',curAno).maybeSingle().then(r=>r.data||null),
+      T('meta_diaria').select('data,acumulado').lt('data',todayStr()).order('data',{ascending:false}).limit(1).then(r=>(r.data&&r.data[0])||null)
+    ]);
+    return {m,prev};
+  };
+  const today=new Date(); const dw=(today.getDay()+6)%7; const monday=new Date(today.getFullYear(),today.getMonth(),today.getDate()-dw);
+  const wStart=Engine.fmt(monday), wEnd=Engine.fmt(new Date(monday.getFullYear(),monday.getMonth(),monday.getDate()+6));
+  const loadWeek=async()=>{
+    const [emps,rules,items,rot]=await Promise.all([
+      getAll('employees',b=>b.eq('is_simulation',S.sim)),
+      T('store_rules').select('*').eq('id',1).maybeSingle().then(r=>r.data||{}),
+      getAll('schedule_items',b=>b.gte('date',wStart).lte('date',wEnd).neq('type','evento')),
+      getAll('saturday_rotation',b=>b.gte('saturday_date',wStart).lte('saturday_date',wEnd))
+    ]);
+    return {emps,rules,items,rot};
+  };
+
+  let META=await loadMeta(), WK=await loadWeek();
+
+  const paceOf=(pct,fr,elapsed)=>{
+    if(pct>=100)return{label:'Meta batida! 🎉',tone:'ok'};
+    if(elapsed<=0)return{label:'Estamos começando o mês!',tone:'info'};
+    const diff=pct-fr*100;
+    if(diff>=8)return{label:'Acima do ritmo necessário!',tone:'ok'};
+    if(diff>=-3)return{label:'Dentro do ritmo!',tone:'info'};
+    if(diff>=-12)return{label:'Bora acelerar!',tone:'warn'};
+    return{label:'Dá pra recuperar, vamos com tudo!',tone:'dang'};
+  };
+  const prog=(cfg,nowd)=>{
+    const total=Math.max(0,+cfg.dias_uteis||0);
+    const s=new Date(cfg.ano,cfg.mes-1,1), e=new Date(cfg.ano,cfg.mes,0);
+    if(nowd<s)return{total,elapsed:0,fraction:0};
+    if(nowd>=e)return{total,elapsed:total,fraction:1};
+    const ct=bdays(s,e),ec=bdays(s,nowd); const fr=ct>0?Math.min(1,ec/ct):0;
+    return{total,elapsed:Math.min(total,Math.round(total*fr)),fraction:fr};
+  };
+
+  const weekHtml=()=>{
+    const {emps,rules,items,rot}=WK;
+    const nameOf=id=>{const e=emps.find(x=>x.id===id);return e?(e.name.split(' ')[0]||e.name):'';};
+    const first=n=>(String(n||'').split(' ')[0]||n||'');
+    const ss=(rules.saturday_start||'14:00').slice(0,5), se=(rules.saturday_end||'17:00').slice(0,5);
+    const dlong=['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];
+    const lblOf=it=> it.type==='meio_turno' ? 'meio turno '+(it.shift==='manha'?'manhã':'tarde') : folgaTimeLabel(it,rules);
+    let cols='';
+    for(let i=0;i<6;i++){
+      const d=new Date(monday.getFullYear(),monday.getMonth(),monday.getDate()+i); const ds=Engine.fmt(d); const wd=d.getDay();
+      const lis=[];
+      items.filter(it=>it.date===ds).sort((a,b)=>folgaSortKey(a,rules)-folgaSortKey(b,rules)).forEach(it=>lis.push(`<div class="tv-li"><b>${esc(first(it.employee_name||nameOf(it.employee_id)))}</b> — ${esc(lblOf(it))}</div>`));
+      const sab=rot.filter(r=>r.saturday_date===ds);
+      if(sab.length) lis.push(`<div class="tv-li work">Trabalham ${ss}–${se}: ${sab.map(r=>esc(first(r.employee_name||nameOf(r.employee_id)))).join(', ')}</div>`);
+      const isToday=ds===todayStr();
+      cols+=`<div class="tv-day${wd===6?' sat':''}${isToday?' today':''}"><div class="tv-dh">${dlong[wd]}<small>${ds.split('-').reverse().slice(0,2).join('/')}${isToday?' · hoje':''}</small></div>${lis.join('')||'<div class="tv-none">Sem alterações</div>'}</div>`;
+    }
+    return cols;
+  };
+
+  const setClock=()=>{ const ck=$('#tvClock'); if(ck) ck.textContent=new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}); };
+
+  const render=()=>{
+    const nowd=new Date();
+    const m=META.m||{mes:curMes,ano:curAno,meta:0,acumulado:0,dias_uteis:0,premiacao:'',atualizado_em:null};
+    const goal=+m.meta||0, acc=+m.acumulado||0;
+    const pct=goal>0?acc/goal*100:0;
+    const achieved=goal>0&&acc>=goal;
+    const pr=prog(m,nowd), pc=paceOf(pct,pr.fraction,pr.elapsed);
+    const faltam=Math.max(0,100-pct), onPace=pr.fraction*100;
+    let deltaHtml='';
+    if(goal>0 && META.prev){ const dp=(acc-(+META.prev.acumulado||0))/goal*100;
+      if(dp>0.0049) deltaHtml=`<span class="tv-delta up">▲ ${fPct(dp)} hoje</span>`;
+      else if(dp<-0.0049) deltaHtml=`<span class="tv-delta down">▼ ${fPct(-dp)} hoje</span>`;
+      else deltaHtml=`<span class="tv-delta flat">• sem variação hoje</span>`; }
+    const dashoff=C*(1-Math.min(100,Math.max(0,pct))/100);
+    const upd=m.atualizado_em?('Atualizado '+new Date(m.atualizado_em).toLocaleDateString('pt-BR',{day:'2-digit',month:'long'})):'—';
+    const noMeta=!META.m;
+
+    $('#view').innerHTML=`<div class="tv-root">
+      <div class="tv-top">
+        <div class="tv-head">
+          <div class="tv-brand"><img src="logo.png" onerror="this.style.display='none'"/><div><div class="tv-bsub">Ótica Carina</div><div class="tv-btitle">Meta da Equipe</div></div>${isGestor()?`<button class="tv-editbtn" id="tvEdit">✎ Editar</button>`:''}</div>
+          <div class="tv-hr"><div class="tv-month">${esc(monthName(m.mes)+' de '+m.ano)}</div><div class="tv-clock" id="tvClock">--:--</div><div class="tv-upd">${esc(upd)}</div><button class="tv-exit" id="tvExit" style="margin-top:4px">⤢ Sair do painel</button></div>
+        </div>
+        <div class="tv-hero${achieved?' win':''}">
+          ${achieved?`<div class="tv-cel-t">🎉 META CONQUISTADA!</div><div class="tv-cel-s">${esc(m.premiacao||'Parabéns, equipe!')}</div>`:''}
+          <div class="tv-ring"><svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="45" fill="none" stroke="var(--tvtrack)" stroke-width="7"></circle><circle cx="50" cy="50" r="45" fill="none" stroke="${achieved?'#12855a':'url(#tvg)'}" stroke-width="7" stroke-linecap="round" style="stroke-dasharray:${C};stroke-dashoffset:${dashoff};transition:stroke-dashoffset .9s cubic-bezier(.22,1,.36,1)"></circle><defs><linearGradient id="tvg" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#3b82f6"></stop><stop offset="100%" stop-color="#1d4ed8"></stop></linearGradient></defs></svg><div class="tv-ring-c"><div class="tv-pct">${fPct(pct,true,pct>=100?0:2)}</div></div></div>
+          <div class="tv-ringl">da meta da equipe</div>
+          ${deltaHtml}
+          <div class="tv-faltam">${achieved?'<b>Meta batida!</b>':('Faltam <b>'+fPct(faltam)+'</b> para bater a meta')}</div>
+          <span class="tv-pace ${pc.tone}">${esc(pc.label)}</span>
+          ${(!achieved&&pr.elapsed>0)?`<div class="tv-ctx">No ritmo do mês, hoje seria <b>${fPct(onPace)}</b> · a equipe está em <b>${fPct(pct,true)}</b></div>`:''}
+          ${noMeta&&isGestor()?`<div class="tv-ctx" style="color:var(--tvmuted)">Toque em <b>Editar</b> para definir a meta do mês.</div>`:''}
+        </div>
+        <div class="tv-barwrap">
+          <div class="tv-bar${achieved?' done':''}"><span style="width:${Math.min(100,pct)}%"></span>${(!achieved&&pr.elapsed>0)?`<i class="tv-pmark" style="left:${Math.min(100,onPace)}%"></i>`:''}</div>
+          <div class="tv-marks">${MIL.map(p=>`<span class="tv-mark${pct>=p?' on':''}" style="left:${Math.min(100,p)}%">${p}%</span>`).join('')}</div>
+        </div>
+      </div>
+      <div class="tv-bot">
+        <h4>Escala da semana · ${wStart.split('-').reverse().slice(0,2).join('/')} a ${wEnd.split('-').reverse().slice(0,2).join('/')}</h4>
+        <div class="tv-week">${weekHtml()}</div>
+      </div>
+    </div>`;
+    setClock();
+    const ex=$('#tvExit'); if(ex) ex.onclick=()=>{ location.hash='#home'; };
+    const eb=$('#tvEdit'); if(eb) eb.onclick=openEdit;
+  };
+
+  function openEdit(){
+    const m=META.m||{mes:curMes,ano:curAno,meta:0,acumulado:0,dias_uteis:0,premiacao:''};
+    openModal('Editar meta e acumulado',
+      `<div class="field"><label>Acumulado atual da equipe (R$)</label><input id="me_acc" inputmode="decimal" value="${m.acumulado?fNum(m.acumulado):''}"/><div class="reason" style="font-size:11.5px">É este valor que você atualiza todo dia. Fica escondido no painel — só a % aparece.</div></div>
+       <div class="field"><label>Meta mensal da equipe (R$)</label><input id="me_goal" inputmode="decimal" value="${m.meta?fNum(m.meta):''}"/></div>
+       <div class="grid2"><div class="field"><label>Mês</label><select id="me_mes">${MONTHS.map((mn,i)=>`<option value="${i+1}" ${(i+1)===(+m.mes)?'selected':''}>${esc(mn)}</option>`).join('')}</select></div>
+       <div class="field"><label>Ano</label><input id="me_ano" type="number" value="${m.ano||curAno}"/></div></div>
+       <div class="field"><label>Dias úteis no mês</label><input id="me_bd" type="number" value="${m.dias_uteis||''}"/><div class="reason" style="font-size:11.5px">Usado só para calcular se está acima ou abaixo do ritmo.</div></div>
+       <div class="field"><label>Premiação da meta</label><input id="me_prem" value="${esc(m.premiacao||'')}"/></div>`,
+      async()=>{ if(!gate())return false;
+        const p_mes=parseInt($('#me_mes').value,10)||curMes, p_ano=parseInt($('#me_ano').value,10)||curAno;
+        const {error}=await sb.rpc('esc_meta_set',{p_mes,p_ano,p_meta:parseNum($('#me_goal').value),p_acumulado:parseNum($('#me_acc').value),p_dias_uteis:parseInt($('#me_bd').value,10)||0,p_premiacao:$('#me_prem').value||''});
+        if(error){ toast(error.message); return false; }
+        toast('Meta atualizada!'); META=await loadMeta(); render(); return true; });
+  }
+
+  render();
+  clearInterval(window.__tvC); window.__tvC=setInterval(()=>{ if(location.hash!=='#painel'){clearInterval(window.__tvC);return;} setClock(); },1000);
+  clearInterval(window.__tvR); window.__tvR=setInterval(async()=>{ if(location.hash!=='#painel'){clearInterval(window.__tvR);return;} try{META=await loadMeta(); WK=await loadWeek(); render();}catch(e){} },60000);
 };
 
 // ---------- SÁBADOS (editável + navegação de mês) ----------
