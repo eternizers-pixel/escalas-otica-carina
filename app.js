@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v123 (Painel: badge só %, frase do ritmo mais clara, dias azul + nomes preto, Editar não fecha clicando fora)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v124 (Painel: fonte de nome/horário das folgas um pouco menor)
 // ============================================================
 (function(){
 "use strict";
