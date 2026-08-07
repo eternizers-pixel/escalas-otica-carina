@@ -308,8 +308,8 @@ body.tv-mode .apphead,body.tv-mode #simBanner{display:none!important}
 body.tv-mode .content{padding:0!important;max-width:none!important;margin:0!important;height:100dvh;overflow:hidden}
 body.tv-mode #app{height:100dvh;overflow:hidden}
 .tv-root{--tvblue:#2563eb;--tvblue2:#1d4ed8;--tvblue3:#1e3a8a;--tvblue-soft:#e8f0ff;--tvtext:#1e2a44;--tvsoft:#48566f;--tvmuted:#7c88a0;--tvtrack:#e6ecf5;--tvborder:#e3e9f2;--tvok:#12855a;--tvok-soft:#e6f6ee;--tvwarn:#a9781f;--tvwarn-soft:#fbf1dd;--tvdanger:#c23b38;--tvdanger-soft:#fdeaea;--ring:clamp(120px,21vh,230px);height:100dvh;overflow:hidden;color:var(--tvtext);font-family:"Inter","Segoe UI",system-ui,sans-serif;background:radial-gradient(1100px 600px at 85% -10%,#eef4ff,transparent 60%),linear-gradient(170deg,#fff,#e9eef6);display:flex;flex-direction:column}
-.tv-top{flex:0 0 55%;min-height:0;display:flex;flex-direction:column;gap:clamp(6px,1.3vh,15px);padding:clamp(10px,2vh,22px) clamp(16px,3vw,44px) clamp(4px,.8vh,10px)}
-.tv-bot{flex:1;min-height:0;background:#fff;border-top:1px solid var(--tvborder);padding:clamp(8px,1.4vh,16px) clamp(16px,3vw,40px) clamp(10px,1.6vh,18px);overflow:hidden;display:flex;flex-direction:column;gap:clamp(5px,.9vh,10px)}
+.tv-top{flex:0 0 52%;min-height:0;display:flex;flex-direction:column;gap:clamp(6px,1.3vh,15px);padding:clamp(10px,2vh,22px) clamp(16px,3vw,44px) clamp(4px,.8vh,10px)}
+.tv-bot{flex:1;min-height:0;background:#fff;border-top:1px solid var(--tvborder);padding:clamp(10px,1.8vh,20px) clamp(16px,3vw,40px) clamp(12px,2vh,22px);overflow:hidden;display:flex;flex-direction:column;gap:clamp(7px,1.2vh,14px)}
 .tv-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
 .tv-brand{display:flex;align-items:center;gap:12px}
 .tv-brand img{height:clamp(24px,3.8vh,42px);width:auto;display:block}
@@ -344,17 +344,17 @@ body.tv-mode #app{height:100dvh;overflow:hidden}
 .tv-pmark{position:absolute;top:0;bottom:0;width:3px;background:#0b1f47;transform:translateX(-50%);border-radius:2px;box-shadow:0 0 0 2px rgba(255,255,255,.85);z-index:2}
 .tv-marks{position:relative;height:15px;margin-top:4px}
 .tv-mark{position:absolute;transform:translateX(-50%);font-size:clamp(9px,1.1vh,12px);color:var(--tvmuted);font-weight:700}.tv-mark.on{color:var(--tvblue2)}
-.tv-bot h4{margin:0;font-size:clamp(11px,1.4vh,15px);font-weight:800;color:var(--tvblue2);letter-spacing:.05em;text-transform:uppercase}
-.tv-week{flex:1;min-height:0;display:grid;grid-template-columns:repeat(6,1fr);gap:clamp(6px,.7vw,12px)}
-.tv-day{min-width:0;background:#f7f9fc;border:1px solid var(--tvborder);border-radius:14px;padding:clamp(6px,1vh,12px);display:flex;flex-direction:column;gap:4px;overflow:hidden}
-.tv-day.sat{background:#eef4ff;border-color:#cfe0ff}
-.tv-day.today{outline:2px solid var(--tvblue);outline-offset:-2px}
-.tv-dh{font-size:clamp(11px,1.4vh,15px);font-weight:800;color:var(--tvtext);line-height:1.1}
-.tv-dh small{display:block;font-size:clamp(9px,1vh,11px);color:var(--tvmuted);font-weight:600}
-.tv-li{font-size:clamp(10px,1.25vh,14px);color:var(--tvsoft);line-height:1.28}
-.tv-li b{color:var(--tvtext)}
-.tv-li.work{color:var(--tvblue2);font-weight:700}
-.tv-none{font-size:clamp(10px,1.2vh,13px);color:var(--tvmuted)}
+.tv-bot h4{margin:0;font-size:clamp(13px,1.9vh,20px);font-weight:800;color:var(--tvblue2);letter-spacing:.05em;text-transform:uppercase}
+.tv-week{flex:1;min-height:0;display:grid;grid-template-columns:repeat(6,1fr);gap:clamp(8px,.9vw,16px)}
+.tv-day{min-width:0;background:#f7f9fc;border:1.5px solid var(--tvborder);border-radius:16px;padding:clamp(10px,1.7vh,20px) clamp(9px,1.1vw,16px);display:flex;flex-direction:column;gap:clamp(6px,1vh,12px);overflow:hidden}
+.tv-day.sat{background:#eef4ff;border-color:#bcd4ff}
+.tv-day.today{outline:3px solid var(--tvblue);outline-offset:-2px;background:#fff}
+.tv-dh{font-size:clamp(15px,2.3vh,27px);font-weight:800;color:var(--tvtext);line-height:1.05}
+.tv-dh small{display:block;font-size:clamp(11px,1.35vh,16px);color:var(--tvmuted);font-weight:700;margin-top:2px}
+.tv-li{font-size:clamp(13px,1.8vh,21px);color:var(--tvsoft);line-height:1.32;font-weight:600}
+.tv-li b{color:var(--tvtext);font-weight:800}
+.tv-li.work{color:var(--tvblue2);font-weight:800}
+.tv-none{font-size:clamp(12px,1.55vh,18px);color:var(--tvmuted)}
 </style>
 </head>
 <body>

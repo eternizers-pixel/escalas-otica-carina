@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v120 (Painel de TV: meta da equipe em % + escala da semana; RPC esc_meta_set)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v121 (Painel: botão de acesso na home + escala da semana bem maior/visual)
 // ============================================================
 (function(){
 "use strict";
@@ -232,8 +232,9 @@ function renderHome(){
     <img src="logo.png" class="home-logo" alt="Ótica Carina" />
     <div class="tag">Sistema de Escalas &amp; Banco de Horas</div>
     <div style="margin-top:12px;display:flex;gap:20px;justify-content:center;flex-wrap:wrap">
+      <a href="#painel" class="btn">📺 Abrir Painel na TV</a>
       <a href="#tiquetaque" class="btn sec">🔄 Sincronizar banco (TiqueTaque)</a>
-      <a href="#relsemana" class="btn">📋 Relatório da semana (grupo)</a>
+      <a href="#relsemana" class="btn sec">📋 Relatório da semana (grupo)</a>
     </div>
   </div>
   ${cardsFor(HOME_TOP,'cols4')}${cardsFor(HOME_BOTTOM,'cols4')}`;
