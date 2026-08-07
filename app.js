@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v121 (Painel: botão de acesso na home + escala da semana bem maior/visual)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v122 (Painel: só botão (sem card), Editar com hoje/ontem + inverter, topo maior, folgas fonte maior)
 // ============================================================
 (function(){
 "use strict";
@@ -191,7 +191,7 @@ const NAV=[
   ['relsemana','📋','t','Relatório da semana','Texto pronto para o grupo'],
   ['painel','📺','t','Painel na TV','Meta da equipe + escala da semana (modo TV)'],
 ];
-const HOME_TOP=['dashboard','folgas','escala','sabados','painel'];
+const HOME_TOP=['dashboard','folgas','escala','sabados'];
 const HOME_BOTTOM=['relatorios','calendario','pedidos','config'];
 const HOME_KEYS=[...HOME_TOP,...HOME_BOTTOM];
 const CONFIG_KEYS=['funcionarias','acessos','ferias','eventos','tiquetaque','regras'];
@@ -1501,8 +1501,11 @@ ROUTES.painel=async function(){
 
   function openEdit(){
     const m=META.m||{mes:curMes,ano:curAno,meta:0,acumulado:0,dias_uteis:0,premiacao:''};
+    const ontemVal=(META.prev&&META.prev.acumulado!=null)?fNum(META.prev.acumulado):'';
     openModal('Editar meta e acumulado',
-      `<div class="field"><label>Acumulado atual da equipe (R$)</label><input id="me_acc" inputmode="decimal" value="${m.acumulado?fNum(m.acumulado):''}"/><div class="reason" style="font-size:11.5px">É este valor que você atualiza todo dia. Fica escondido no painel — só a % aparece.</div></div>
+      `<div class="field"><label>Acumulado de HOJE (R$)</label><input id="me_acc_hoje" inputmode="decimal" value="${m.acumulado?fNum(m.acumulado):''}"/><div class="reason" style="font-size:11.5px">É este que você atualiza todo dia. Fica escondido no painel — só a % aparece.</div></div>
+       <div style="display:flex;justify-content:center;margin:-2px 0 10px"><button type="button" id="me_inv" class="btn ghost sm" style="width:auto">🔄 Passar hoje → ontem</button></div>
+       <div class="field"><label>Acumulado de ONTEM (R$)</label><input id="me_acc_ontem" inputmode="decimal" value="${ontemVal}"/><div class="reason" style="font-size:11.5px">Serve para a variação (▲/▼) de hoje. Deixe em branco para não mexer no de ontem.</div></div>
        <div class="field"><label>Meta mensal da equipe (R$)</label><input id="me_goal" inputmode="decimal" value="${m.meta?fNum(m.meta):''}"/></div>
        <div class="grid2"><div class="field"><label>Mês</label><select id="me_mes">${MONTHS.map((mn,i)=>`<option value="${i+1}" ${(i+1)===(+m.mes)?'selected':''}>${esc(mn)}</option>`).join('')}</select></div>
        <div class="field"><label>Ano</label><input id="me_ano" type="number" value="${m.ano||curAno}"/></div></div>
@@ -1510,9 +1513,12 @@ ROUTES.painel=async function(){
        <div class="field"><label>Premiação da meta</label><input id="me_prem" value="${esc(m.premiacao||'')}"/></div>`,
       async()=>{ if(!gate())return false;
         const p_mes=parseInt($('#me_mes').value,10)||curMes, p_ano=parseInt($('#me_ano').value,10)||curAno;
-        const {error}=await sb.rpc('esc_meta_set',{p_mes,p_ano,p_meta:parseNum($('#me_goal').value),p_acumulado:parseNum($('#me_acc').value),p_dias_uteis:parseInt($('#me_bd').value,10)||0,p_premiacao:$('#me_prem').value||''});
+        const ontemRaw=($('#me_acc_ontem').value||'').trim();
+        const p_ont=ontemRaw===''?null:parseNum(ontemRaw);
+        const {error}=await sb.rpc('esc_meta_set',{p_mes,p_ano,p_meta:parseNum($('#me_goal').value),p_acumulado:parseNum($('#me_acc_hoje').value),p_dias_uteis:parseInt($('#me_bd').value,10)||0,p_premiacao:$('#me_prem').value||'',p_acumulado_ontem:p_ont});
         if(error){ toast(error.message); return false; }
         toast('Meta atualizada!'); META=await loadMeta(); render(); return true; });
+    const inv=$('#me_inv'); if(inv) inv.onclick=()=>{ const h=$('#me_acc_hoje'), o=$('#me_acc_ontem'); if(h&&o){ o.value=h.value; h.focus(); try{h.select();}catch(_){} toast('Passei hoje → ontem. Agora atualize o de hoje.'); } };
   }
 
   render();
