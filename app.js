@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v122 (Painel: só botão (sem card), Editar com hoje/ontem + inverter, topo maior, folgas fonte maior)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v123 (Painel: badge só %, frase do ritmo mais clara, dias azul + nomes preto, Editar não fecha clicando fora)
 // ============================================================
 (function(){
 "use strict";
@@ -1461,9 +1461,9 @@ ROUTES.painel=async function(){
     const faltam=Math.max(0,100-pct), onPace=pr.fraction*100;
     let deltaHtml='';
     if(goal>0 && META.prev){ const dp=(acc-(+META.prev.acumulado||0))/goal*100;
-      if(dp>0.0049) deltaHtml=`<span class="tv-delta up">▲ ${fPct(dp)} hoje</span>`;
-      else if(dp<-0.0049) deltaHtml=`<span class="tv-delta down">▼ ${fPct(-dp)} hoje</span>`;
-      else deltaHtml=`<span class="tv-delta flat">• sem variação hoje</span>`; }
+      if(dp>0.0049) deltaHtml=`<span class="tv-delta up">▲ ${fPct(dp)}</span>`;
+      else if(dp<-0.0049) deltaHtml=`<span class="tv-delta down">▼ ${fPct(-dp)}</span>`;
+      else deltaHtml=`<span class="tv-delta flat">• sem variação</span>`; }
     const dashoff=C*(1-Math.min(100,Math.max(0,pct))/100);
     const upd=m.atualizado_em?('Atualizado '+new Date(m.atualizado_em).toLocaleDateString('pt-BR',{day:'2-digit',month:'long'})):'—';
     const noMeta=!META.m;
@@ -1481,7 +1481,7 @@ ROUTES.painel=async function(){
           ${deltaHtml}
           <div class="tv-faltam">${achieved?'<b>Meta batida!</b>':('Faltam <b>'+fPct(faltam)+'</b> para bater a meta')}</div>
           <span class="tv-pace ${pc.tone}">${esc(pc.label)}</span>
-          ${(!achieved&&pr.elapsed>0)?`<div class="tv-ctx">No ritmo do mês, hoje seria <b>${fPct(onPace)}</b> · a equipe está em <b>${fPct(pct,true)}</b></div>`:''}
+          ${(!achieved&&pr.elapsed>0)?`<div class="tv-ctx">Onde deveríamos estar hoje: <b>${fPct(onPace)}</b> · onde estamos: <b>${fPct(pct,true)}</b></div>`:''}
           ${noMeta&&isGestor()?`<div class="tv-ctx" style="color:var(--tvmuted)">Toque em <b>Editar</b> para definir a meta do mês.</div>`:''}
         </div>
         <div class="tv-barwrap">
@@ -1517,7 +1517,7 @@ ROUTES.painel=async function(){
         const p_ont=ontemRaw===''?null:parseNum(ontemRaw);
         const {error}=await sb.rpc('esc_meta_set',{p_mes,p_ano,p_meta:parseNum($('#me_goal').value),p_acumulado:parseNum($('#me_acc_hoje').value),p_dias_uteis:parseInt($('#me_bd').value,10)||0,p_premiacao:$('#me_prem').value||'',p_acumulado_ontem:p_ont});
         if(error){ toast(error.message); return false; }
-        toast('Meta atualizada!'); META=await loadMeta(); render(); return true; });
+        toast('Meta atualizada!'); META=await loadMeta(); render(); return true; }, {lockBackdrop:true});
     const inv=$('#me_inv'); if(inv) inv.onclick=()=>{ const h=$('#me_acc_hoje'), o=$('#me_acc_ontem'); if(h&&o){ o.value=h.value; h.focus(); try{h.select();}catch(_){} toast('Passei hoje → ontem. Agora atualize o de hoje.'); } };
   }
 
@@ -1924,12 +1924,12 @@ ROUTES.simulacao=async function(){ location.hash='#home'; return;
 };
 
 // ---------- Modal ----------
-function openModal(title,body,onSave){
+function openModal(title,body,onSave,opts){
   const root=$('#modalRoot');
   root.innerHTML=`<div class="modal-bg"><div class="modal"><div class="mh"><h3>${esc(title)}</h3><button class="x" id="mClose">×</button></div><div class="mb">${body}</div><div class="mf"><button class="btn sec" id="mCancel">Cancelar</button><button class="btn" id="mSave">Salvar</button></div></div></div>`;
   const close=()=>root.innerHTML='';
   $('#mClose').onclick=close; $('#mCancel').onclick=close;
-  $('.modal-bg').onclick=(e)=>{ if(e.target.classList.contains('modal-bg')) close(); };
+  if(!(opts&&opts.lockBackdrop)) $('.modal-bg').onclick=(e)=>{ if(e.target.classList.contains('modal-bg')) close(); };
   $('#mSave').onclick=async()=>{ const ok=await onSave(); if(ok!==false) close(); };
 }
 
