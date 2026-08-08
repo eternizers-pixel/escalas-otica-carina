@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v124 (Painel: fonte de nome/horário das folgas um pouco menor)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v125 (Painel fonte menor; Folgas aprovadas: só próximas + botão "ver as que já passaram")
 // ============================================================
 (function(){
 "use strict";
@@ -1186,16 +1186,9 @@ ROUTES.escala=async function(){
   const map=Object.fromEntries(emps.map(e=>[e.id,e.name]));
   const timeKey=it=>{const m=folgaTimeLabel(it,rules).match(/(\d{2}):(\d{2})/);return m?(+m[1]*60+ +m[2]):9999;};
   items.sort((a,b)=>(a.date||'').localeCompare(b.date||'')||timeKey(a)-timeKey(b));
-  $('#view').innerHTML=`
-  <div class="toolbar"><button class="btn" id="addFolga" ${isGestor()?'':'disabled'}>+ Lançar folga</button>
-    ${(isGestor()&&items.length)?`<button class="btn sec" id="delAllF" style="color:var(--red)">🗑️ Remover tudo</button>`:''}
-    <div class="spacer"></div><span class="muted">${items.length} folga(s) a partir deste mês</span></div>
-  ${box('info','Todas as folgas aprovadas. <b>Editar</b> troca o dia/horário, <b>Remover</b> apaga — útil quando a funcionária pede um dia diferente do que o sistema sugeriu. Você também pode <b>lançar</b> uma folga do zero.')}
-  <div class="escala-grid">
-    ${(()=>{ const byDay={}; items.forEach(it=>{(byDay[it.date]=byDay[it.date]||[]).push(it);});
-      return Object.keys(byDay).sort().map(date=>{
-        const dia=Engine.DOW[Engine.parse(date).getDay()]; const dataBR=date.split('-').reverse().join('/');
-        const cards=byDay[date].map(it=>`<div class="card" style="margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+  const hoje=todayStr();
+  const future=items.filter(it=>(it.date||'')>=hoje), past=items.filter(it=>(it.date||'')<hoje);
+  const cardHtml=(it)=>`<div class="card" style="margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
           <div style="min-width:0">
             <div style="font-weight:700">${esc(it.employee_name||map[it.employee_id]||'')}</div>
             <div class="muted" style="font-size:13px;margin-top:2px"><b style="color:var(--ink)">${folgaTimeLabel(it,rules)}</b> · ${TYPE_LABEL[it.type]||it.type}${it.hours?' '+it.hours+'h':''}</div>
@@ -1203,11 +1196,20 @@ ROUTES.escala=async function(){
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
             <span class="pill ${it.status==='aprovado'?'ativa':it.status==='recusado'?'afastada':'ferias'}">${it.status==='aprovado'?'Aprovado':it.status}</span>
             ${isGestor()?`<button class="btn ghost sm" data-swapf="${it.id}">🔁 Trocar</button><button class="btn ghost sm" data-edf="${it.id}">Editar</button><button class="btn ghost sm" style="color:var(--red)" data-delf="${it.id}">Remover</button>`:''}
-          </div></div>`).join('');
-        return `<div class="panel" style="margin:0"><div class="ph" style="background:var(--brand-soft)"><h3 style="color:var(--brand-d);text-transform:capitalize;margin:0">${dia} · ${dataBR}</h3></div><div class="pb">${cards}</div></div>`;
-      }).join('');
-    })()||'<p class="muted" style="margin:0">Nenhuma folga registrada. Aprove no Motor de folgas ou clique em “Lançar folga”.</p>'}
-  </div>`;
+          </div></div>`;
+  const daysHtml=(list)=>{ const byDay={}; list.forEach(it=>{(byDay[it.date]=byDay[it.date]||[]).push(it);});
+      return Object.keys(byDay).sort().map(date=>{
+        const dia=Engine.DOW[Engine.parse(date).getDay()]; const dataBR=date.split('-').reverse().join('/');
+        return `<div class="panel" style="margin:0"><div class="ph" style="background:var(--brand-soft)"><h3 style="color:var(--brand-d);text-transform:capitalize;margin:0">${dia} · ${dataBR}</h3></div><div class="pb">${byDay[date].map(cardHtml).join('')}</div></div>`;
+      }).join(''); };
+  $('#view').innerHTML=`
+  <div class="toolbar"><button class="btn" id="addFolga" ${isGestor()?'':'disabled'}>+ Lançar folga</button>
+    ${(isGestor()&&items.length)?`<button class="btn sec" id="delAllF" style="color:var(--red)">🗑️ Remover tudo</button>`:''}
+    <div class="spacer"></div><span class="muted">${future.length} folga(s) próximas</span></div>
+  ${box('info','Folgas aprovadas de hoje em diante. <b>Editar</b> troca o dia/horário, <b>Remover</b> apaga, <b>Trocar</b> passa pra outra funcionária. As que já passaram ficam no botão abaixo.')}
+  <div class="escala-grid">${daysHtml(future)||'<p class="muted" style="margin:0">Nenhuma folga próxima. Aprove no Motor de folgas ou clique em “Lançar folga”.</p>'}</div>
+  ${past.length?`<div style="margin-top:16px"><button class="btn sec sm" id="showPast">👁 Ver ${past.length} folga(s) que já passaram</button></div><div id="pastWrap" class="escala-grid" style="display:none;margin-top:12px">${daysHtml(past)}</div>`:''}`;
+  $('#showPast')?.addEventListener('click',()=>{ const w=$('#pastWrap'),b=$('#showPast'); if(!w)return; const show=(w.style.display==='none'); w.style.display=show?'grid':'none'; b.textContent=show?'🙈 Ocultar as que já passaram':`👁 Ver ${past.length} folga(s) que já passaram`; });
   $('#addFolga')?.addEventListener('click',()=>folgaModal(null,emps,rules));
   $('#delAllF')?.addEventListener('click',async()=>{ if(!gate())return;
     if(!confirm(`Remover TODAS as ${items.length} folgas aprovadas a partir deste mês? Esta ação não pode ser desfeita.`))return;
