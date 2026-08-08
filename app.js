@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v125 (Painel fonte menor; Folgas aprovadas: só próximas + botão "ver as que já passaram")
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v126 (Folgas: botão sem contagem; Painel: navegar semana (← → Semana atual) na escala de baixo)
 // ============================================================
 (function(){
 "use strict";
@@ -1208,8 +1208,8 @@ ROUTES.escala=async function(){
     <div class="spacer"></div><span class="muted">${future.length} folga(s) próximas</span></div>
   ${box('info','Folgas aprovadas de hoje em diante. <b>Editar</b> troca o dia/horário, <b>Remover</b> apaga, <b>Trocar</b> passa pra outra funcionária. As que já passaram ficam no botão abaixo.')}
   <div class="escala-grid">${daysHtml(future)||'<p class="muted" style="margin:0">Nenhuma folga próxima. Aprove no Motor de folgas ou clique em “Lançar folga”.</p>'}</div>
-  ${past.length?`<div style="margin-top:16px"><button class="btn sec sm" id="showPast">👁 Ver ${past.length} folga(s) que já passaram</button></div><div id="pastWrap" class="escala-grid" style="display:none;margin-top:12px">${daysHtml(past)}</div>`:''}`;
-  $('#showPast')?.addEventListener('click',()=>{ const w=$('#pastWrap'),b=$('#showPast'); if(!w)return; const show=(w.style.display==='none'); w.style.display=show?'grid':'none'; b.textContent=show?'🙈 Ocultar as que já passaram':`👁 Ver ${past.length} folga(s) que já passaram`; });
+  ${past.length?`<div style="margin-top:16px"><button class="btn sec sm" id="showPast">👁 Ver folgas que já passaram</button></div><div id="pastWrap" class="escala-grid" style="display:none;margin-top:12px">${daysHtml(past)}</div>`:''}`;
+  $('#showPast')?.addEventListener('click',()=>{ const w=$('#pastWrap'),b=$('#showPast'); if(!w)return; const show=(w.style.display==='none'); w.style.display=show?'grid':'none'; b.textContent=show?'🙈 Ocultar as que já passaram':`👁 Ver folgas que já passaram`; });
   $('#addFolga')?.addEventListener('click',()=>folgaModal(null,emps,rules));
   $('#delAllF')?.addEventListener('click',async()=>{ if(!gate())return;
     if(!confirm(`Remover TODAS as ${items.length} folgas aprovadas a partir deste mês? Esta ação não pode ser desfeita.`))return;
@@ -1399,9 +1399,11 @@ ROUTES.painel=async function(){
     ]);
     return {m,prev};
   };
-  const today=new Date(); const dw=(today.getDay()+6)%7; const monday=new Date(today.getFullYear(),today.getMonth(),today.getDate()-dw);
-  const wStart=Engine.fmt(monday), wEnd=Engine.fmt(new Date(monday.getFullYear(),monday.getMonth(),monday.getDate()+6));
+  const today=new Date(); const dw=(today.getDay()+6)%7; let monday=new Date(today.getFullYear(),today.getMonth(),today.getDate()-dw);
+  const mondayHoje=()=>{ const t=new Date(); const d=(t.getDay()+6)%7; return new Date(t.getFullYear(),t.getMonth(),t.getDate()-d); };
+  let wStart, wEnd; const recalcWeek=()=>{ wStart=Engine.fmt(monday); wEnd=Engine.fmt(new Date(monday.getFullYear(),monday.getMonth(),monday.getDate()+6)); }; recalcWeek();
   const loadWeek=async()=>{
+    recalcWeek();
     const [emps,rules,items,rot]=await Promise.all([
       getAll('employees',b=>b.eq('is_simulation',S.sim)),
       T('store_rules').select('*').eq('id',1).maybeSingle().then(r=>r.data||{}),
@@ -1492,13 +1494,20 @@ ROUTES.painel=async function(){
         </div>
       </div>
       <div class="tv-bot">
-        <h4>Escala da semana · ${wStart.split('-').reverse().slice(0,2).join('/')} a ${wEnd.split('-').reverse().slice(0,2).join('/')}</h4>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+          <h4>Escala da semana · ${wStart.split('-').reverse().slice(0,2).join('/')} a ${wEnd.split('-').reverse().slice(0,2).join('/')}</h4>
+          <div style="display:flex;gap:6px;align-items:center">${Engine.fmt(monday)!==Engine.fmt(mondayHoje())?`<button class="tv-exit" id="tvWkHoje" style="padding:5px 12px">Semana atual</button>`:''}<button class="tv-exit" id="tvWkPrev" style="padding:5px 13px;font-size:15px">←</button><button class="tv-exit" id="tvWkNext" style="padding:5px 13px;font-size:15px">→</button></div>
+        </div>
         <div class="tv-week">${weekHtml()}</div>
       </div>
     </div>`;
     setClock();
     const ex=$('#tvExit'); if(ex) ex.onclick=()=>{ location.hash='#home'; };
     const eb=$('#tvEdit'); if(eb) eb.onclick=openEdit;
+    const shiftWk=async(n)=>{ monday=new Date(monday.getFullYear(),monday.getMonth(),monday.getDate()+n); WK=await loadWeek(); render(); };
+    const wp=$('#tvWkPrev'); if(wp) wp.onclick=()=>shiftWk(-7);
+    const wn=$('#tvWkNext'); if(wn) wn.onclick=()=>shiftWk(7);
+    const wh=$('#tvWkHoje'); if(wh) wh.onclick=async()=>{ monday=mondayHoje(); WK=await loadWeek(); render(); };
   };
 
   function openEdit(){
