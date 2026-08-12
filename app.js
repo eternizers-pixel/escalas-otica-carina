@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v127 (Painel: ritmo referencia ONTEM (bate com acumulado até ontem); Editar ATUAL/ANTERIOR com cores)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v128 (Painel: ritmo conta seg–sáb menos feriados ÷ dias úteis configurados (bate com a conta do gestor))
 // ============================================================
 (function(){
 "use strict";
@@ -1414,6 +1414,9 @@ ROUTES.painel=async function(){
   };
 
   let META=await loadMeta(), WK=await loadWeek();
+  const _mm=String(curMes).padStart(2,'0'), _dim=new Date(curAno,curMes,0).getDate();
+  const _blk=await getAll('blocked_dates',b=>b.gte('date',`${curAno}-${_mm}-01`).lte('date',`${curAno}-${_mm}-${String(_dim).padStart(2,'0')}`));
+  const holidaySet=new Set((_blk||[]).map(x=>x.date)); // feriados/loja fechada do mês
 
   const paceOf=(pct,fr,elapsed)=>{
     if(pct>=100)return{label:'Meta batida! 🎉',tone:'ok'};
@@ -1426,13 +1429,13 @@ ROUTES.painel=async function(){
   };
   const prog=(cfg,nowd)=>{
     const total=Math.max(0,+cfg.dias_uteis||0);
-    const s=new Date(cfg.ano,cfg.mes-1,1), e=new Date(cfg.ano,cfg.mes,0);
-    // o acumulado é do que foi vendido até ONTEM, então o ritmo compara com o fim de ontem (não conta hoje)
+    const s=new Date(cfg.ano,cfg.mes-1,1);
+    // acumulado é até ONTEM → conta dias trabalhados (seg–sáb, menos feriados) do 1º até ontem, sobre os dias úteis do mês
     const ref=new Date(nowd.getFullYear(),nowd.getMonth(),nowd.getDate()-1);
-    if(ref<s)return{total,elapsed:0,fraction:0};
-    if(ref>=e)return{total,elapsed:total,fraction:1};
-    const ct=bdays(s,e),ec=bdays(s,ref); const fr=ct>0?Math.min(1,ec/ct):0;
-    return{total,elapsed:Math.min(total,Math.round(total*fr)),fraction:fr};
+    if(total<=0||ref<s)return{total,elapsed:0,fraction:0};
+    let ec=0,d=new Date(s); while(d<=ref){ const w=d.getDay(); if(w!==0 && !holidaySet.has(Engine.fmt(d))) ec++; const n=new Date(d); n.setDate(n.getDate()+1); d=n; }
+    const fr=Math.min(1,ec/total);
+    return{total,elapsed:Math.min(total,ec),fraction:fr};
   };
 
   const weekHtml=()=>{
