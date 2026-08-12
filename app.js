@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v130 (Reconciliação: ignora turnos de evento/0h; mostra período entre importações; texto mais claro)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v131 (Dashboard: alertas em 2 colunas equilibradas (sem espaço em branco) + botão Limpar detecções)
 // ============================================================
 (function(){
 "use strict";
@@ -533,7 +533,7 @@ ROUTES.dashboard=async function(){
   const usos = S.sim?[]:await getAll('bank_usage',b=>b.gte('usage_date',todayStr().slice(0,8)+'01').order('created_at',{ascending:false}).limit(8));
   const fresh=await bankFreshnessBanner();
   $('#view').innerHTML=`
-  <div class="dash-alerts${((alerts.match(/class="alert /g)||[]).length>1)?' multi':''}"><div>${fresh}</div><div>${alerts}</div></div>
+  <div class="dash-alerts">${fresh}${alerts}</div>
   <div class="cards">
     <div class="card"><h3>Disponíveis hoje</h3><div class="kpi">${availToday}<small> / ${active.length} ativas</small></div></div>
     <div class="card"><h3>Indisponíveis hoje</h3><div class="kpi">${outIds.length}${meioToday.length?`<small> + ${meioToday.length} meio turno</small>`:''}</div></div>
@@ -548,7 +548,7 @@ ROUTES.dashboard=async function(){
     const groups=Object.keys(byEmp).sort().map(nm=>`<details class="usos-emp"><summary><b>${esc(nm)}</b> <span class="muted">· ${byEmp[nm].length} registro(s)</span></summary><div style="padding:2px 0 8px 16px">${byEmp[nm].map(u=>`<div class="reason" style="border-left-color:${u.matched?'var(--green)':'var(--amber)'};font-size:13px">${esc(u.note||'')} <span class="muted">(${(u.usage_date||'').split('-').reverse().slice(0,2).join('/')})</span></div>`).join('')}</div></details>`).join('');
     return `<details class="section panel usos-acc"><summary class="ph"><h3>🔎 Uso de banco detectado</h3><span class="muted">${Object.keys(byEmp).length} funcionária(s) · clique para abrir</span></summary><div class="pb">
     <div class="reason" style="border-left-color:var(--muted);font-size:12.5px">Agrupado por funcionária. Cada item é a <b>queda de banco entre duas importações</b> (não é total). Clique num nome para ver as detecções dela.</div>
-    ${groups}</div></details>`; })():''}
+    ${isGestor()?`<div style="margin:2px 0 10px"><button class="btn ghost sm" id="clearUsos" style="color:var(--red);width:auto">🗑️ Limpar detecções</button></div>`:''}${groups}</div></details>`; })():''}
   <div class="toolbar section">
     <button class="btn" onclick="location.hash='#folgas'">⚡ Gerar escala automática</button>
     <button class="btn sec" onclick="location.hash='#tiquetaque'">🔄 Sincronizar TiqueTaque</button>
@@ -564,6 +564,7 @@ ROUTES.dashboard=async function(){
       <td data-label="Status"><span class="pill ${onFeriasToday.has(e.id)?'ferias':e.status}">${onFeriasToday.has(e.id)?'ferias':e.status}</span></td></tr>`;}).join('')
       ||'<tr><td colspan=6 class="muted" style="padding:18px">Nenhuma funcionária. Sincronize o TiqueTaque ou cadastre manualmente.</td></tr>'}
     </tbody></table></div></div>`;
+  $('#clearUsos')?.addEventListener('click',async()=>{ if(!gate())return; if(!confirm('Limpar todas as detecções de uso de banco? Elas voltam a aparecer na próxima importação do TiqueTaque.'))return; const r=await T('bank_usage').delete().gte('created_at','2000-01-01'); if(r.error){toast(r.error.message);return;} toast('Detecções limpas.'); route(); });
 };
 
 // ---------- FUNCIONÁRIAS ----------
