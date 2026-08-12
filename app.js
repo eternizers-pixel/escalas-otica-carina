@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v129 (Uso de banco: só do mês atual + considera férias (não marca saída avulsa durante férias))
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v130 (Reconciliação: ignora turnos de evento/0h; mostra período entre importações; texto mais claro)
 // ============================================================
 (function(){
 "use strict";
@@ -115,20 +115,21 @@ async function reconcileBank(){
   const keyOf=b=>b.employee_id||('n:'+(b.employee_name||'').toLowerCase());
   const prevMap={}; prevBal.forEach(b=>{prevMap[keyOf(b)]=+b.balance_hours||0;});
   const w0=(prev.imported_at||'').slice(0,10), w1=(cur.imported_at||todayStr()).slice(0,10);
-  const items=(await getAll('schedule_items',b=>b.eq('status','aprovado').gte('date',w0).lte('date',w1))).filter(it=>sIds.has(it.schedule_id));
+  const items=(await getAll('schedule_items',b=>b.eq('status','aprovado').neq('type','evento').gte('date',w0).lte('date',w1))).filter(it=>sIds.has(it.schedule_id));
   const rows=[];
   for(const cb of curBal){
     const before=prevMap[keyOf(cb)]; if(before==null) continue;
     const delta=Math.round((before-(+cb.balance_hours||0))*100)/100; // queda de banco
     if(delta<0.25) continue; // sem queda relevante (ignora arredondamento)
-    const folgas=cb.employee_id?items.filter(it=>it.employee_id===cb.employee_id):[];
+    const folgas=cb.employee_id?items.filter(it=>it.employee_id===cb.employee_id && (+it.hours||0)>0):[];
     const folgaH=Math.round(folgas.reduce((s,it)=>s+(+it.hours||0),0)*100)/100;
     const onVac=cb.employee_id&&vacs.some(v=>v.employee_id===cb.employee_id && (v.start_date||'')<=w1 && (v.end_date||'')>=w0);
+    const perBR=w0.split('-').reverse().slice(0,2).join('/')+'–'+w1.split('-').reverse().slice(0,2).join('/');
     let note, matched=false;
-    if(folgas.length && Math.abs(folgaH-delta)<=0.6){ matched=true; note=`Usou ${fmtH(delta)} — confere com folga programada (${folgas.map(f=>f.date.split('-').reverse().slice(0,2).join('/')).join(', ')}).`; }
-    else if(folgas.length){ matched=true; note=`Usou ${fmtH(delta)}; tinha folga programada de ${fmtH(folgaH)} — diferença de ${fmtH(Math.abs(delta-folgaH))} pode ser saída avulsa.`; }
-    else if(onVac){ matched=true; note=`Usou ${fmtH(delta)} — estava de férias no período (ajuste de férias, não é saída avulsa).`; }
-    else { note=`Usou ${fmtH(delta)} do banco SEM folga programada — provável saída avulsa/imprevisto.`; }
+    if(folgas.length && Math.abs(folgaH-delta)<=0.6){ matched=true; note=`Usou ${fmtH(delta)} — confere com folga programada (${[...new Set(folgas.map(f=>f.date.split('-').reverse().slice(0,2).join('/')))].join(', ')}).`; }
+    else if(folgas.length){ matched=true; note=`Usou ${fmtH(delta)}; tinha folga programada de ${fmtH(folgaH)} — diferença de ${fmtH(Math.abs(delta-folgaH))} (confira).`; }
+    else if(onVac){ matched=true; note=`Caiu ${fmtH(delta)} no banco entre ${perBR} — estava de férias no período (ajuste de férias, não é saída avulsa).`; }
+    else { note=`Caiu ${fmtH(delta)} no banco entre ${perBR}, sem folga programada — confira se foi saída avulsa ou ajuste do TiqueTaque.`; }
     rows.push({usage_date:w1, employee_id:cb.employee_id||null, employee_name:cb.employee_name, hours:delta, matched, note});
   }
   if(rows.length) await T('bank_usage').insert(rows);
