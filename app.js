@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v128 (Painel: ritmo conta seg–sáb menos feriados ÷ dias úteis configurados (bate com a conta do gestor))
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v129 (Uso de banco: só do mês atual + considera férias (não marca saída avulsa durante férias))
 // ============================================================
 (function(){
 "use strict";
@@ -106,10 +106,11 @@ async function reconcileBank(){
   if(imps.length<2) return [];
   const cur=imps[0], prev=imps[1];
   if(cur.reconciled) return []; // já processado
-  const [curBal,prevBal,scheds]=await Promise.all([
+  const [curBal,prevBal,scheds,vacs]=await Promise.all([
     getAll('time_bank_balances',b=>b.eq('import_id',cur.id)),
     getAll('time_bank_balances',b=>b.eq('import_id',prev.id)),
-    getAll('schedules',b=>b.eq('is_simulation',false))]);
+    getAll('schedules',b=>b.eq('is_simulation',false)),
+    getAll('vacation_periods')]);
   const sIds=new Set(scheds.map(s=>s.id));
   const keyOf=b=>b.employee_id||('n:'+(b.employee_name||'').toLowerCase());
   const prevMap={}; prevBal.forEach(b=>{prevMap[keyOf(b)]=+b.balance_hours||0;});
@@ -122,9 +123,11 @@ async function reconcileBank(){
     if(delta<0.25) continue; // sem queda relevante (ignora arredondamento)
     const folgas=cb.employee_id?items.filter(it=>it.employee_id===cb.employee_id):[];
     const folgaH=Math.round(folgas.reduce((s,it)=>s+(+it.hours||0),0)*100)/100;
+    const onVac=cb.employee_id&&vacs.some(v=>v.employee_id===cb.employee_id && (v.start_date||'')<=w1 && (v.end_date||'')>=w0);
     let note, matched=false;
     if(folgas.length && Math.abs(folgaH-delta)<=0.6){ matched=true; note=`Usou ${fmtH(delta)} — confere com folga programada (${folgas.map(f=>f.date.split('-').reverse().slice(0,2).join('/')).join(', ')}).`; }
     else if(folgas.length){ matched=true; note=`Usou ${fmtH(delta)}; tinha folga programada de ${fmtH(folgaH)} — diferença de ${fmtH(Math.abs(delta-folgaH))} pode ser saída avulsa.`; }
+    else if(onVac){ matched=true; note=`Usou ${fmtH(delta)} — estava de férias no período (ajuste de férias, não é saída avulsa).`; }
     else { note=`Usou ${fmtH(delta)} do banco SEM folga programada — provável saída avulsa/imprevisto.`; }
     rows.push({usage_date:w1, employee_id:cb.employee_id||null, employee_name:cb.employee_name, hours:delta, matched, note});
   }
@@ -526,7 +529,7 @@ ROUTES.dashboard=async function(){
   const totalPrev=totalBank-totalFolga;
   // reconciliação automática (também pega importações feitas pelo robô das 7h) + usos recentes
   if(!S.sim){ try{ await reconcileBank(); }catch(_){} }
-  const usos = S.sim?[]:await getAll('bank_usage',b=>b.order('created_at',{ascending:false}).limit(8));
+  const usos = S.sim?[]:await getAll('bank_usage',b=>b.gte('usage_date',todayStr().slice(0,8)+'01').order('created_at',{ascending:false}).limit(8));
   const fresh=await bankFreshnessBanner();
   $('#view').innerHTML=`
   <div class="dash-alerts${((alerts.match(/class="alert /g)||[]).length>1)?' multi':''}"><div>${fresh}</div><div>${alerts}</div></div>
