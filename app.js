@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v126 (Folgas: botão sem contagem; Painel: navegar semana (← → Semana atual) na escala de baixo)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v127 (Painel: ritmo referencia ONTEM (bate com acumulado até ontem); Editar ATUAL/ANTERIOR com cores)
 // ============================================================
 (function(){
 "use strict";
@@ -1427,9 +1427,11 @@ ROUTES.painel=async function(){
   const prog=(cfg,nowd)=>{
     const total=Math.max(0,+cfg.dias_uteis||0);
     const s=new Date(cfg.ano,cfg.mes-1,1), e=new Date(cfg.ano,cfg.mes,0);
-    if(nowd<s)return{total,elapsed:0,fraction:0};
-    if(nowd>=e)return{total,elapsed:total,fraction:1};
-    const ct=bdays(s,e),ec=bdays(s,nowd); const fr=ct>0?Math.min(1,ec/ct):0;
+    // o acumulado é do que foi vendido até ONTEM, então o ritmo compara com o fim de ontem (não conta hoje)
+    const ref=new Date(nowd.getFullYear(),nowd.getMonth(),nowd.getDate()-1);
+    if(ref<s)return{total,elapsed:0,fraction:0};
+    if(ref>=e)return{total,elapsed:total,fraction:1};
+    const ct=bdays(s,e),ec=bdays(s,ref); const fr=ct>0?Math.min(1,ec/ct):0;
     return{total,elapsed:Math.min(total,Math.round(total*fr)),fraction:fr};
   };
 
@@ -1485,7 +1487,7 @@ ROUTES.painel=async function(){
           ${deltaHtml}
           <div class="tv-faltam">${achieved?'<b>Meta batida!</b>':('Faltam <b>'+fPct(faltam)+'</b> para bater a meta')}</div>
           <span class="tv-pace ${pc.tone}">${esc(pc.label)}</span>
-          ${(!achieved&&pr.elapsed>0)?`<div class="tv-ctx">Onde deveríamos estar hoje: <b>${fPct(onPace)}</b> · onde estamos: <b>${fPct(pct,true)}</b></div>`:''}
+          ${(!achieved&&pr.elapsed>0)?`<div class="tv-ctx">Onde deveríamos estar: <b>${fPct(onPace)}</b> · onde estamos: <b>${fPct(pct,true)}</b></div>`:''}
           ${noMeta&&isGestor()?`<div class="tv-ctx" style="color:var(--tvmuted)">Toque em <b>Editar</b> para definir a meta do mês.</div>`:''}
         </div>
         <div class="tv-barwrap">
@@ -1514,9 +1516,9 @@ ROUTES.painel=async function(){
     const m=META.m||{mes:curMes,ano:curAno,meta:0,acumulado:0,dias_uteis:0,premiacao:''};
     const ontemVal=(META.prev&&META.prev.acumulado!=null)?fNum(META.prev.acumulado):'';
     openModal('Editar meta e acumulado',
-      `<div class="field"><label>Acumulado de HOJE (R$)</label><input id="me_acc_hoje" inputmode="decimal" value="${m.acumulado?fNum(m.acumulado):''}"/><div class="reason" style="font-size:11.5px">É este que você atualiza todo dia. Fica escondido no painel — só a % aparece.</div></div>
-       <div style="display:flex;justify-content:center;margin:-2px 0 10px"><button type="button" id="me_inv" class="btn ghost sm" style="width:auto">🔄 Passar hoje → ontem</button></div>
-       <div class="field"><label>Acumulado de ONTEM (R$)</label><input id="me_acc_ontem" inputmode="decimal" value="${ontemVal}"/><div class="reason" style="font-size:11.5px">Serve para a variação (▲/▼) de hoje. Deixe em branco para não mexer no de ontem.</div></div>
+      `<div class="field" style="background:#eef4ff;border:1.5px solid #bcd4ff;border-radius:12px;padding:11px 13px"><label style="color:#1d4ed8;font-weight:800">📈 Acumulado ATUAL (R$)</label><input id="me_acc_hoje" inputmode="decimal" value="${m.acumulado?fNum(m.acumulado):''}" style="border-color:#9dc0ff"/><div class="reason" style="font-size:11.5px">O valor que você lança agora (vendas até ontem). É este que vira a % no painel.</div></div>
+       <div style="display:flex;justify-content:center;margin:-2px 0 10px"><button type="button" id="me_inv" class="btn ghost sm" style="width:auto">🔄 Passar ATUAL → ANTERIOR</button></div>
+       <div class="field" style="background:#faf6ee;border:1.5px solid #ecdcbf;border-radius:12px;padding:11px 13px"><label style="color:#a9781f;font-weight:800">🕓 Acumulado ANTERIOR (R$)</label><input id="me_acc_ontem" inputmode="decimal" value="${ontemVal}" style="border-color:#e3cfa5"/><div class="reason" style="font-size:11.5px">O valor do lançamento anterior — serve só para a variação (▲/▼). Deixe em branco para não mexer nele.</div></div>
        <div class="field"><label>Meta mensal da equipe (R$)</label><input id="me_goal" inputmode="decimal" value="${m.meta?fNum(m.meta):''}"/></div>
        <div class="grid2"><div class="field"><label>Mês</label><select id="me_mes">${MONTHS.map((mn,i)=>`<option value="${i+1}" ${(i+1)===(+m.mes)?'selected':''}>${esc(mn)}</option>`).join('')}</select></div>
        <div class="field"><label>Ano</label><input id="me_ano" type="number" value="${m.ano||curAno}"/></div></div>
