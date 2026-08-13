@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v131 (Dashboard: alertas em 2 colunas equilibradas (sem espaço em branco) + botão Limpar detecções)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v132 (Dashboard: alertas em 2 colunas equilibradas; excluir detecção de banco individualmente (✕))
 // ============================================================
 (function(){
 "use strict";
@@ -545,10 +545,10 @@ ROUTES.dashboard=async function(){
     <div class="card"><h3>Banco previsto (após as folgas)</h3><div class="kpi" style="color:var(--green)">${fmtH(totalPrev)}</div></div>
   </div>
   ${usos.length?(()=>{ const byEmp={}; usos.forEach(u=>{ const k=u.employee_name||'—'; (byEmp[k]=byEmp[k]||[]).push(u); });
-    const groups=Object.keys(byEmp).sort().map(nm=>`<details class="usos-emp"><summary><b>${esc(nm)}</b> <span class="muted">· ${byEmp[nm].length} registro(s)</span></summary><div style="padding:2px 0 8px 16px">${byEmp[nm].map(u=>`<div class="reason" style="border-left-color:${u.matched?'var(--green)':'var(--amber)'};font-size:13px">${esc(u.note||'')} <span class="muted">(${(u.usage_date||'').split('-').reverse().slice(0,2).join('/')})</span></div>`).join('')}</div></details>`).join('');
+    const groups=Object.keys(byEmp).sort().map(nm=>`<details class="usos-emp"><summary><b>${esc(nm)}</b> <span class="muted">· ${byEmp[nm].length} registro(s)</span></summary><div style="padding:2px 0 8px 16px">${byEmp[nm].map(u=>`<div class="reason" style="border-left-color:${u.matched?'var(--green)':'var(--amber)'};font-size:13px;display:flex;justify-content:space-between;align-items:center;gap:8px"><span>${esc(u.note||'')} <span class="muted">(${(u.usage_date||'').split('-').reverse().slice(0,2).join('/')})</span></span>${isGestor()?`<a class="ev-x" data-delusos="${u.id}" title="Excluir esta detecção" style="flex:none;font-size:13px">✕</a>`:''}</div>`).join('')}</div></details>`).join('');
     return `<details class="section panel usos-acc"><summary class="ph"><h3>🔎 Uso de banco detectado</h3><span class="muted">${Object.keys(byEmp).length} funcionária(s) · clique para abrir</span></summary><div class="pb">
     <div class="reason" style="border-left-color:var(--muted);font-size:12.5px">Agrupado por funcionária. Cada item é a <b>queda de banco entre duas importações</b> (não é total). Clique num nome para ver as detecções dela.</div>
-    ${isGestor()?`<div style="margin:2px 0 10px"><button class="btn ghost sm" id="clearUsos" style="color:var(--red);width:auto">🗑️ Limpar detecções</button></div>`:''}${groups}</div></details>`; })():''}
+    ${groups}</div></details>`; })():''}
   <div class="toolbar section">
     <button class="btn" onclick="location.hash='#folgas'">⚡ Gerar escala automática</button>
     <button class="btn sec" onclick="location.hash='#tiquetaque'">🔄 Sincronizar TiqueTaque</button>
@@ -564,7 +564,7 @@ ROUTES.dashboard=async function(){
       <td data-label="Status"><span class="pill ${onFeriasToday.has(e.id)?'ferias':e.status}">${onFeriasToday.has(e.id)?'ferias':e.status}</span></td></tr>`;}).join('')
       ||'<tr><td colspan=6 class="muted" style="padding:18px">Nenhuma funcionária. Sincronize o TiqueTaque ou cadastre manualmente.</td></tr>'}
     </tbody></table></div></div>`;
-  $('#clearUsos')?.addEventListener('click',async()=>{ if(!gate())return; if(!confirm('Limpar todas as detecções de uso de banco? Elas voltam a aparecer na próxima importação do TiqueTaque.'))return; const r=await T('bank_usage').delete().gte('created_at','2000-01-01'); if(r.error){toast(r.error.message);return;} toast('Detecções limpas.'); route(); });
+  $$('[data-delusos]').forEach(b=>b.onclick=async()=>{ if(!gate())return; const r=await T('bank_usage').delete().eq('id',b.dataset.delusos); if(r.error){toast(r.error.message);return;} toast('Detecção excluída.'); route(); });
 };
 
 // ---------- FUNCIONÁRIAS ----------
