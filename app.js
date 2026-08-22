@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v133 (Avisos do dia: nota livre por data em Eventos, mostrada no painel da TV e no calendário)
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v133 (Avisos do dia: nota livre por data em Eventos, mostrada no painel da TV, no calendário e no relatório da semana)
 // ============================================================
 (function(){
 "use strict";
@@ -1336,7 +1336,7 @@ function folgaModal(it,emps,rules,opts){
 }
 
 // ---------- RELATÓRIO DA SEMANA (texto p/ o grupo) ----------
-function weekReportText(monday, emps, items, rot, vacs, rules){
+function weekReportText(monday, emps, items, rot, vacs, rules, agenda){
   const days=[...Array(7)].map((_,i)=>{ const d=new Date(monday); d.setDate(d.getDate()+i); return Engine.fmt(d); });
   const start=days[0], end=days[6];
   const br=(ds)=>ds.split('-').reverse().slice(0,2).join('/');
@@ -1352,6 +1352,7 @@ function weekReportText(monday, emps, items, rot, vacs, rules){
     const dow=Engine.parse(ds).getDay();
     if(dow===0) return; // domingo: loja fechada
     const lines=[];
+    (agenda||[]).filter(a=>a.data===ds).forEach(a=>lines.push(`📌 ${a.texto||''}`));
     items.filter(it=>it.date===ds && it.type!=='evento').sort((a,b)=>folgaSortKey(a,rules)-folgaSortKey(b,rules))
       .forEach(it=>lines.push(`${first(it.employee_name||nameOf(it.employee_id))} — ${lblOf(it)}`));
     const sab=rot.filter(r=>r.saturday_date===ds);
@@ -1371,13 +1372,14 @@ ROUTES.relsemana=async function(){
   let monday=new Date(today.getFullYear(),today.getMonth(),today.getDate()-dow);
   async function draw(){
     const start=Engine.fmt(monday); const end=Engine.fmt(new Date(monday.getFullYear(),monday.getMonth(),monday.getDate()+6));
-    const [emps,rules,items,rot,vacs]=await Promise.all([
+    const [emps,rules,items,rot,vacs,agenda]=await Promise.all([
       getAll('employees',b=>b.eq('is_simulation',S.sim).order('name')),
       T('store_rules').select('*').eq('id',1).maybeSingle().then(r=>r.data||{}),
       getAll('schedule_items',b=>b.gte('date',start).lte('date',end).neq('type','evento')),
       getAll('saturday_rotation',b=>b.gte('saturday_date',start).lte('saturday_date',end)),
-      getAll('vacation_periods')]);
-    const text=weekReportText(monday,emps,items,rot,vacs,rules);
+      getAll('vacation_periods'),
+      getAll('agenda',b=>b.gte('data',start).lte('data',end))]);
+    const text=weekReportText(monday,emps,items,rot,vacs,rules,agenda);
     const br=(ds)=>ds.split('-').reverse().slice(0,2).join('/');
     $('#view').innerHTML=`
     <div class="toolbar">
@@ -1386,7 +1388,7 @@ ROUTES.relsemana=async function(){
       <button class="btn sec sm" id="wkNext">→</button>
       <div class="spacer"></div><button class="btn" id="wkCopy">📋 Copiar relatório</button>
     </div>
-    ${box('info','Texto pronto para colar no grupo da empresa. Use ← → para trocar de semana. Aparecem só as alterações (folgas, sábados, férias) — dias normais não entram.')}
+    ${box('info','Texto pronto para colar no grupo da empresa. Use ← → para trocar de semana. Aparecem só as alterações (avisos do dia, folgas, sábados, férias) — dias normais não entram.')}
     <div class="panel"><div class="pb"><pre id="wkText" style="white-space:pre-wrap;font-family:inherit;font-size:14px;margin:0;line-height:1.5">${esc(text)}</pre></div></div>`;
     $('#wkPrev').onclick=()=>{ monday=new Date(monday.getFullYear(),monday.getMonth(),monday.getDate()-7); draw(); };
     $('#wkNext').onclick=()=>{ monday=new Date(monday.getFullYear(),monday.getMonth(),monday.getDate()+7); draw(); };
