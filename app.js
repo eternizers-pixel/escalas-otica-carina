@@ -1,5 +1,5 @@
 // ============================================================
-// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v132 (Dashboard: alertas em 2 colunas equilibradas; excluir detecção de banco individualmente (✕))
+// APP — Sistema de Escalas Ótica Carina  (navegação em cards) — v133 (Avisos do dia: nota livre por data em Eventos, mostrada no painel da TV e no calendário)
 // ============================================================
 (function(){
 "use strict";
@@ -879,12 +879,13 @@ ROUTES.ferias=async function(){
 
 // ---------- EVENTOS ----------
 ROUTES.eventos=async function(){
-  const [emps,rules,vacs,scheds,blk]=await Promise.all([
+  const [emps,rules,vacs,scheds,blk,agenda]=await Promise.all([
     getAll('employees',b=>b.eq('is_simulation',S.sim).order('name')),
     T('store_rules').select('*').eq('id',1).maybeSingle().then(r=>r.data||{}),
     getAll('vacation_periods'),
     getAll('schedules',b=>b.eq('is_simulation',S.sim)),
-    getAll('blocked_dates')]);
+    getAll('blocked_dates'),
+    getAll('agenda',b=>b.gte('data',todayStr().slice(0,8)+'01').order('data'))]);
   const holidaySet=new Set((blk||[]).map(b=>b.date));  // feriados/bloqueios cadastrados = loja fechada (dia extra)
   const isExtra=(d)=>Engine.parse(d).getDay()===0 || holidaySet.has(d);  // domingo ou feriado
   const schedIds=new Set(scheds.map(s=>s.id));
@@ -925,6 +926,11 @@ ROUTES.eventos=async function(){
   };
   $('#view').innerHTML=`
     <div class="toolbar"><button class="btn" id="addEv" ${isGestor()?'':'disabled'}>+ Novo evento</button></div>
+    ${isGestor()?`<div class="panel section"><div class="ph"><h3>📌 Avisos do dia</h3><span class="muted">aparecem no painel da TV e no calendário</span></div><div class="pb">
+      <div class="grid2" style="align-items:end"><div class="field"><label>Data</label><input id="ag_date" type="date" value="${todayStr()}"/></div><div class="field"><label>Aviso</label><input id="ag_text" maxlength="60" placeholder="ex.: Treinamento de ótica"/></div></div>
+      <button class="btn sm" id="ag_add">+ Adicionar aviso</button>
+      <div style="margin-top:10px;display:flex;flex-direction:column;gap:6px">${(agenda||[]).length?agenda.map(a=>`<div class="reason" style="display:flex;justify-content:space-between;align-items:center;gap:8px"><span>📌 <b>${a.data.split('-').reverse().slice(0,2).join('/')}</b> · ${esc(a.texto||'')}</span><a class="ev-x" data-delag="${a.id}" title="Remover" style="flex:none">✕</a></div>`).join(''):'<span class="muted" style="font-size:12px">Nenhum aviso cadastrado.</span>'}</div>
+    </div></div>`:''}
     ${box('info','O sistema distribui só as <b>5 do banco</b> (roxo), no rodízio justo por <b>horas</b> (cada turno = 4h): as <b>noites</b> e os <b>dias em que a loja fecha</b> (domingos e feriados) — e <b>quem trabalha domingo não pega o feriado</b>. O <b>apoio/gestão</b> (verde) e a manhã/tarde dos outros dias você põe na mão pelo “+ add”, como decidir. O 🔎 <b>log de decisão</b> mostra as horas das 5. Cada funcionária vê a escala dela no login.')}
     ${events.length? events.map(eventCard).join('') : '<div class="reason" style="margin-top:6px">Nenhum evento cadastrado. Clique em “Novo evento” para montar a escala de manhã/tarde/noite.</div>'}`;
   const openEventModal=(ev)=>{ const isReb=!!ev;
@@ -960,6 +966,8 @@ ROUTES.eventos=async function(){
     $('#ev_start')&&($('#ev_start').onchange=renderDays); $('#ev_end')&&($('#ev_end').onchange=renderDays); renderDays();
   };
   $('#addEv')?.addEventListener('click',()=>openEventModal(null));
+  $('#ag_add')?.addEventListener('click',async()=>{ if(!gate())return; const d=$('#ag_date').value, t=($('#ag_text').value||'').trim(); if(!d||!t){toast('Preencha a data e o aviso.');return;} const r=await T('agenda').insert({data:d,texto:t}); if(r.error){toast(r.error.message);return;} toast('Aviso adicionado.'); route(); });
+  $$('[data-delag]').forEach(b=>b.onclick=async()=>{ if(!gate())return; await T('agenda').delete().eq('id',b.dataset.delag); toast('Aviso removido.'); route(); });
   $$('[data-reb-ev]').forEach(b=>b.onclick=()=>{ const name=b.dataset.rebEv; const ev=events.find(e=>e.name===name); if(!ev)return;
     let n=0,dom=0; ev.dates.forEach(d=>{ const cn=ev.items.filter(i=>i.date===d&&i.shift==='noite').length; if(cn>n)n=cn; if(isExtra(d)){ const cm=ev.items.filter(i=>i.date===d&&i.shift==='manha').length; if(cm>dom)dom=cm; } });
     openEventModal({name, start:ev.dates[0], end:ev.dates[ev.dates.length-1], n:n||3, dom:dom||2}); });
@@ -1409,13 +1417,14 @@ ROUTES.painel=async function(){
   let wStart, wEnd; const recalcWeek=()=>{ wStart=Engine.fmt(monday); wEnd=Engine.fmt(new Date(monday.getFullYear(),monday.getMonth(),monday.getDate()+6)); }; recalcWeek();
   const loadWeek=async()=>{
     recalcWeek();
-    const [emps,rules,items,rot]=await Promise.all([
+    const [emps,rules,items,rot,agenda]=await Promise.all([
       getAll('employees',b=>b.eq('is_simulation',S.sim)),
       T('store_rules').select('*').eq('id',1).maybeSingle().then(r=>r.data||{}),
       getAll('schedule_items',b=>b.gte('date',wStart).lte('date',wEnd).neq('type','evento')),
-      getAll('saturday_rotation',b=>b.gte('saturday_date',wStart).lte('saturday_date',wEnd))
+      getAll('saturday_rotation',b=>b.gte('saturday_date',wStart).lte('saturday_date',wEnd)),
+      getAll('agenda',b=>b.gte('data',wStart).lte('data',wEnd))
     ]);
-    return {emps,rules,items,rot};
+    return {emps,rules,items,rot,agenda};
   };
 
   let META=await loadMeta(), WK=await loadWeek();
@@ -1444,7 +1453,7 @@ ROUTES.painel=async function(){
   };
 
   const weekHtml=()=>{
-    const {emps,rules,items,rot}=WK;
+    const {emps,rules,items,rot,agenda}=WK;
     const nameOf=id=>{const e=emps.find(x=>x.id===id);return e?(e.name.split(' ')[0]||e.name):'';};
     const first=n=>(String(n||'').split(' ')[0]||n||'');
     const ss=(rules.saturday_start||'14:00').slice(0,5), se=(rules.saturday_end||'17:00').slice(0,5);
@@ -1454,6 +1463,7 @@ ROUTES.painel=async function(){
     for(let i=0;i<6;i++){
       const d=new Date(monday.getFullYear(),monday.getMonth(),monday.getDate()+i); const ds=Engine.fmt(d); const wd=d.getDay();
       const lis=[];
+      (agenda||[]).filter(a=>a.data===ds).forEach(a=>lis.push(`<div class="tv-li aviso">📌 ${esc(a.texto||'')}</div>`));
       items.filter(it=>it.date===ds).sort((a,b)=>folgaSortKey(a,rules)-folgaSortKey(b,rules)).forEach(it=>lis.push(`<div class="tv-li"><b>${esc(first(it.employee_name||nameOf(it.employee_id)))}</b> — ${esc(lblOf(it))}</div>`));
       const sab=rot.filter(r=>r.saturday_date===ds);
       if(sab.length) lis.push(`<div class="tv-li work">Trabalham ${ss}–${se}: ${sab.map(r=>esc(first(r.employee_name||nameOf(r.employee_id)))).join(', ')}</div>`);
@@ -1701,15 +1711,17 @@ ROUTES.calendario=async function(){
   async function draw(){
     const first=new Date(year,month-1,1), startDow=first.getDay(), dim=Engine.daysInMonth(year,month);
     const mm=String(month).padStart(2,'0');
-    const [items,vacs,rules,blk,emps,rot,evItems]=await Promise.all([
+    const [items,vacs,rules,blk,emps,rot,evItems,agenda]=await Promise.all([
       getAll('schedule_items',b=>b.gte('date',`${year}-${mm}-01`).lte('date',`${year}-${mm}-${dim}`).neq('type','evento')),
       getAll('vacation_periods'),T('store_rules').select('*').eq('id',1).maybeSingle().then(r=>r.data||{}),getAll('blocked_dates'),
       getAll('employees',b=>b.eq('is_simulation',S.sim)),
       getAll('saturday_rotation',b=>b.eq('year',year).eq('month',month)),
-      getAll('schedule_items',b=>b.gte('date',`${year}-${mm}-01`).lte('date',`${year}-${mm}-${dim}`).eq('type','evento'))]);
+      getAll('schedule_items',b=>b.gte('date',`${year}-${mm}-01`).lte('date',`${year}-${mm}-${dim}`).eq('type','evento')),
+      getAll('agenda',b=>b.gte('data',`${year}-${mm}-01`).lte('data',`${year}-${mm}-${dim}`))]);
     const mset=await T('month_settings').select('*').eq('year',year).eq('month',month).maybeSingle().then(r=>r.data||null);
     const nm=Object.fromEntries(emps.map(e=>[e.id,e.name]));
     const evByDay={}; (evItems||[]).forEach(x=>{ (evByDay[x.date]=evByDay[x.date]||new Set()).add(x.reason||'Evento'); });
+    const agByDay={}; (agenda||[]).forEach(a=>{ (agByDay[a.data]=agByDay[a.data]||[]).push(a.texto||''); });
     const calLibHol=new Set(String(rules.holidays_allowed||'').split(',').map(s=>s.trim()).filter(Boolean));
     const satMode=(mset&&mset.sat_mode)||rules.saturday_open_mode||'dois_primeiros';
     const sats=Engine.openSaturdays(year,month,satMode).map(Engine.fmt);
@@ -1718,6 +1730,7 @@ ROUTES.calendario=async function(){
     for(let d=1;d<=dim;d++){
       const ds=`${year}-${mm}-${String(d).padStart(2,'0')}`; const dow=new Date(year,month-1,d).getDay();
       let ev='';
+      if(agByDay[ds]) agByDay[ds].forEach(t=>{ ev+=`<span class="ev" style="background:#f3ecff;color:#6d28d9;border:1px solid #c4b0f0;font-weight:700" title="Aviso do dia">📌 ${esc(t)}</span>`; });
       if(evByDay[ds]) [...evByDay[ds]].forEach(n=>{ ev+=`<span class="ev" style="background:var(--brand-soft);color:var(--brand-d);border:1px solid var(--brand);font-weight:700" title="Evento">🎪 ${esc(n)}</span>`; });
       items.filter(x=>x.date===ds).sort((a,b)=>folgaSortKey(a,rules)-folgaSortKey(b,rules)).forEach(x=>{ const fn=(x.employee_name||'').split(' ')[0]; const t=folgaTimeLabel(x,rules); ev+=`<span class="ev folga" title="${esc(x.employee_name||'')} — ${esc(t)}">${esc(fn)}<span class="evt">${esc(t)}</span></span>`; });
       vacs.filter(v=>ds>=v.start_date&&ds<=v.end_date).forEach(v=>{ const fn=(nm[v.employee_id]||'').split(' ')[0]; ev+=`<span class="ev fer">${esc(fn)}<span class="evt">Férias</span></span>`; });
